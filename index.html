@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EVORΛ Inner Circle — Programma Creator Selettivo</title>
+  <meta name="description" content="Il programma creator EVORΛ non cerca influencer. Cerca persone che incarnano disciplina, evoluzione, performance.">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ─── DATA & SCORING ENGINE ───────────────────────────────────────────────────
+    const scoreCandidate = (data) => {
+      let score = 0;
+      const reasons = [];
+
+      const followers = parseInt(data.followers) || 0;
+      if (followers >= 100000) { score += 30; reasons.push("100K+ follower"); }
+      else if (followers >= 30000) { score += 22; reasons.push("30K+ follower"); }
+      else if (followers >= 10000) { score += 14; reasons.push("10K+ follower"); }
+      else if (followers >= 3000) { score += 6; reasons.push("3K+ follower"); }
+      else { reasons.push("Micro audience"); }
+
+      const er = parseFloat(data.engagementRate) || 0;
+      if (er >= 6) { score += 25; reasons.push("ER eccellente"); }
+      else if (er >= 4) { score += 18; reasons.push("ER solido"); }
+      else if (er >= 2) { score += 10; reasons.push("ER nella media"); }
+      else { reasons.push("ER basso"); }
+
+      if (data.niche === "fitness" || data.niche === "bodybuilding") { score += 20; reasons.push("Nicchia core"); }
+      else if (data.niche === "lifestyle" || data.niche === "nutrition") { score += 12; reasons.push("Nicchia affine"); }
+      else { score += 4; }
+
+      if (data.hasCollaborations === "yes") { score += 10; reasons.push("Exp. collaborazioni"); }
+      if (data.contentFrequency === "daily") { score += 8; reasons.push("Content daily"); }
+      else if (data.contentFrequency === "3-5week") { score += 5; }
+
+      const motivation = (data.motivation || "").length;
+      if (motivation > 300) { score += 7; reasons.push("Motivazione elaborata"); }
+      else if (motivation > 150) { score += 3; }
+
+      if (data.platforms && data.platforms.length >= 3) { score += 5; reasons.push("Multi-platform"); }
+
+      let tier, tierColor, tierLabel;
+      if (score >= 75) { tier = "ELITE"; tierColor = "#b22222"; tierLabel = "Priorità Assoluta"; }
+      else if (score >= 55) { tier = "PRO"; tierColor = "#c0a060"; tierLabel = "Alta Priorità"; }
+      else if (score >= 35) { tier = "RISING"; tierColor = "#6a9a7a"; tierLabel = "Da Monitorare"; }
+      else { tier = "PENDING"; tierColor = "#555"; tierLabel = "In Attesa"; }
+
+      return { score, tier, tierColor, tierLabel, reasons };
+    };
+
+    // ─── STORAGE ─────────────────────────────────────────────────────────────────
+    const getApps = () => {
+      try { return JSON.parse(localStorage.getItem("evora_apps") || "[]"); } catch { return []; }
+    };
+    const saveApps = (apps) => localStorage.setItem("evora_apps", JSON.stringify(apps));
+
+    // ─── FONTS via inline style injection ────────────────────────────────────────
+    const FONTS = `
+      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap');
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      :root {
+        --red: #b22222;
+        --red-bright: #d42828;
+        --gold: #c0a060;
+        --black: #080808;
+        --deep: #0d0d0d;
+        --surface: #111111;
+        --border: #1e1e1e;
+        --text: #e8e8e8;
+        --muted: #666;
+        --font-display: 'Bebas Neue', sans-serif;
+        --font-ui: 'Barlow Condensed', sans-serif;
+        --font-body: 'Barlow', sans-serif;
+      }
+      body { background: var(--black); color: var(--text); font-family: var(--font-body); }
+      ::selection { background: var(--red); color: white; }
+      ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: var(--black); }
+      ::-webkit-scrollbar-thumb { background: var(--red); }
+      @keyframes fadeUp { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:translateY(0); } }
+      @keyframes glitch {
+        0%,100% { clip-path: inset(0 0 100% 0); }
+        10% { clip-path: inset(10% 0 85% 0); transform: translate(-4px,0); }
+        20% { clip-path: inset(40% 0 50% 0); transform: translate(4px,0); }
+        30% { clip-path: inset(80% 0 5% 0); transform: translate(-2px,0); }
+        40% { clip-path: inset(0 0 100% 0); }
+      }
+      @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
+      @keyframes pulse { 0%,100% { opacity:.6; } 50% { opacity:1; } }
+      @keyframes borderPulse { 0%,100% { border-color: #1e1e1e; } 50% { border-color: var(--red); } }
+    `;
+
+    // ─── COMPONENTS ──────────────────────────────────────────────────────────────
+
+    function Logo({ size = 32 }) {
+      return (
+        <div style={{ fontFamily: "var(--font-display)", fontSize: size, letterSpacing: "0.15em", color: "white" }}>
+          EVORΛ
+          <span style={{ color: "var(--red)", marginLeft: 4, fontSize: size * 0.55, fontFamily: "var(--font-ui)", letterSpacing: "0.3em", verticalAlign: "middle" }}>
+            INNER CIRCLE
+          </span>
+        </div>
+      );
+    }
+
+    function RedLine() {
+      return <div style={{ width: 48, height: 2, background: "var(--red)", margin: "16px 0" }} />;
+    }
+
+    function Tag({ children, color = "var(--red)" }) {
+      return (
+        <span style={{
+          background: `${color}22`, border: `1px solid ${color}44`,
+          color, padding: "2px 10px", fontSize: 11,
+          fontFamily: "var(--font-ui)", letterSpacing: "0.2em", textTransform: "uppercase"
+        }}>{children}</span>
+      );
+    }
+
+    // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
+    function Landing({ onApply, onAdmin }) {
+      const [scrollY, setScrollY] = useState(0);
+      useEffect(() => {
+        const h = () => setScrollY(window.scrollY);
+        window.addEventListener("scroll", h);
+        return () => window.removeEventListener("scroll", h);
+      }, []);
+
+      return (
+        <div style={{ minHeight: "100vh", overflowX: "hidden" }}>
+
+          {/* NAV */}
+          <nav style={{
+            position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
+            padding: "20px 40px", display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: scrollY > 60 ? "rgba(8,8,8,0.97)" : "transparent",
+            borderBottom: scrollY > 60 ? "1px solid #1e1e1e" : "none",
+            transition: "all 0.4s ease"
+          }}>
+            <Logo size={22} />
+            <div style={{ display: "flex", gap: 32, alignItems: "center" }}>
+              {["Filosofia", "Livelli", "Requisiti", "Candidatura"].map(l => (
+                <a key={l} href={`#${l.toLowerCase()}`}
+                  style={{ color: "#888", fontSize: 13, fontFamily: "var(--font-ui)", letterSpacing: "0.15em",
+                    textDecoration: "none", textTransform: "uppercase", transition: "color 0.2s" }}
+                  onMouseEnter={e => e.target.style.color = "white"}
+                  onMouseLeave={e => e.target.style.color = "#888"}>{l}</a>
+              ))}
+              <button onClick={onAdmin}
+                style={{ background: "transparent", border: "1px solid #333", color: "#555",
+                  padding: "6px 16px", fontSize: 11, fontFamily: "var(--font-ui)", letterSpacing: "0.2em",
+                  textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.target.style.borderColor = "#555"; e.target.style.color = "#888"; }}
+                onMouseLeave={e => { e.target.style.borderColor = "#333"; e.target.style.color = "#555"; }}>
+                ADMIN
+              </button>
+            </div>
+          </nav>
+
+          {/* HERO */}
+          <section style={{
+            minHeight: "100vh", display: "flex", alignItems: "center",
+            position: "relative", overflow: "hidden",
+            background: `radial-gradient(ellipse at 20% 50%, #1a0505 0%, var(--black) 60%)`
+          }}>
+            {/* Grain overlay */}
+            <div style={{
+              position: "absolute", inset: 0, opacity: 0.04,
+              backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")",
+              backgroundSize: "150px"
+            }} />
+            {/* Vertical lines */}
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+              {[15, 35, 65, 85].map(p => (
+                <div key={p} style={{
+                  position: "absolute", left: `${p}%`, top: 0, bottom: 0,
+                  width: 1, background: "linear-gradient(to bottom, transparent, #1e1e1e22, transparent)"
+                }} />
+              ))}
+            </div>
+            {/* Red accent line */}
+            <div style={{
+              position: "absolute", right: "8%", top: "15%", bottom: "15%",
+              width: 1, background: "linear-gradient(to bottom, transparent, var(--red), transparent)"
+            }} />
+
+            <div style={{ padding: "0 40px", maxWidth: 900, animation: "fadeUp 1s ease both" }}>
+              <div style={{
+                fontFamily: "var(--font-ui)", fontSize: 12, letterSpacing: "0.5em",
+                color: "var(--red)", textTransform: "uppercase", marginBottom: 32
+              }}>
+                ▸ Programma Creator Selettivo · 2025
+              </div>
+
+              <h1 style={{
+                fontFamily: "var(--font-display)", fontSize: "clamp(72px,12vw,160px)",
+                lineHeight: 0.9, color: "white", marginBottom: 8
+              }}>
+                NON<br />
+                <span style={{ color: "var(--red)", WebkitTextStroke: "1px var(--red)" }}>TUTTI</span><br />
+                ENTRANO.
+              </h1>
+
+              <div style={{ marginTop: 40, maxWidth: 520 }}>
+                <p style={{
+                  fontFamily: "var(--font-ui)", fontSize: 18, lineHeight: 1.7,
+                  color: "#888", letterSpacing: "0.02em"
+                }}>
+                  EVORΛ non cerca influencer. Cerca persone che incarnano
+                  un'identità — disciplina, evoluzione, performance.
+                  Il programma <strong style={{ color: "white" }}>Inner Circle</strong> è costruito
+                  per chi ha qualcosa da dimostrare.
+                </p>
+              </div>
+
+              <div style={{ marginTop: 56, display: "flex", gap: 16, alignItems: "center" }}>
+                <button onClick={onApply}
+                  style={{
+                    background: "var(--red)", border: "none", color: "white",
+                    padding: "18px 44px", fontSize: 14, fontFamily: "var(--font-ui)",
+                    letterSpacing: "0.3em", textTransform: "uppercase", cursor: "pointer",
+                    transition: "all 0.3s", fontWeight: 700
+                  }}
+                  onMouseEnter={e => e.target.style.background = "var(--red-bright)"}
+                  onMouseLeave={e => e.target.style.background = "var(--red)"}>
+                  CANDIDATI ORA
+                </button>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "#444", letterSpacing: "0.2em" }}>
+                  SELEZIONE CONTINUA · POSTI LIMITATI
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div style={{ marginTop: 80, display: "flex", gap: 48, borderTop: "1px solid #1e1e1e", paddingTop: 32 }}>
+                {[["<5%", "Tasso di accettazione"], ["3 livelli", "Di partnership"], ["0 DM", "Solo candidature formali"]].map(([n, l]) => (
+                  <div key={n}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 40, color: "var(--red)" }}>{n}</div>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "#555", letterSpacing: "0.15em", textTransform: "uppercase", marginTop: 4 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* PHILOSOPHY */}
+          <section id="filosofia" style={{ padding: "120px 40px", maxWidth: 1100, margin: "0 auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center" }}>
+              <div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, letterSpacing: "0.5em", color: "var(--red)", textTransform: "uppercase", marginBottom: 16 }}>
+                  Filosofia del Programma
+                </div>
+                <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(42px,6vw,72px)", lineHeight: 1, color: "white", marginBottom: 24 }}>
+                  NON VENDIAMO.<br />
+                  <span style={{ color: "#444" }}>RAPPRESENTIAMO.</span>
+                </h2>
+                <RedLine />
+                <p style={{ fontFamily: "var(--font-body)", fontSize: 15, lineHeight: 1.9, color: "#777" }}>
+                  EVORΛ è nata dalla disciplina, non dal marketing.
+                  Il nostro programma creator non è un canale pubblicitario —
+                  è una rete di persone che condividono una visione.
+                </p>
+                <p style={{ fontFamily: "var(--font-body)", fontSize: 15, lineHeight: 1.9, color: "#777", marginTop: 16 }}>
+                  Cerchiamo atleti, content creator e figure di riferimento
+                  che possano amplificare un messaggio genuino: evoluzione
+                  continua, performance reale, mentalità da costruire ogni giorno.
+                </p>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                {[
+                  ["DISCIPLINA", "Non si tratta di quanto sei grande oggi, ma di quanto lavori per diventarlo."],
+                  ["AUTENTICITÀ", "Il pubblico sente quando parli di un prodotto che non usi davvero."],
+                  ["CRESCITA", "Cresciamo insieme. Il tuo successo potenzia il brand, non il contrario."],
+                  ["STANDARD", "Lavoriamo con chi tiene alta la qualità. Sempre."]
+                ].map(([t, d]) => (
+                  <div key={t} style={{
+                    background: "var(--surface)", border: "1px solid var(--border)",
+                    padding: 28, transition: "border-color 0.3s"
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "var(--red)"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--red)", marginBottom: 10, letterSpacing: "0.1em" }}>{t}</div>
+                    <div style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "#666", lineHeight: 1.7 }}>{d}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* LEVELS */}
+          <section id="livelli" style={{ padding: "120px 40px", background: "var(--deep)" }}>
+            <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+              <div style={{ textAlign: "center", marginBottom: 72 }}>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, letterSpacing: "0.5em", color: "var(--red)", textTransform: "uppercase", marginBottom: 16 }}>
+                  Struttura del Programma
+                </div>
+                <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(42px,6vw,64px)", color: "white" }}>
+                  TRE LIVELLI.<br />UN SISTEMA.
+                </h2>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 2 }}>
+                {[
+                  {
+                    tier: "AFFILIATO", badge: "01", color: "#444",
+                    desc: "Primo punto di ingresso nel network EVORΛ. Accesso a codici sconto personalizzati e commissioni sulle vendite generate.",
+                    perks: ["Codice creator dedicato", "Commissione 10%", "Kit digitale EVORΛ", "Accesso contenuti B2B", "Newsletter interna"]
+                  },
+                  {
+                    tier: "AMBASSADOR", badge: "02", color: "var(--gold)",
+                    desc: "Profili selezionati con audience consolidata e alta coerenza con i valori EVORΛ. Partnership strutturata con supporto dedicato.",
+                    perks: ["Tutto da Affiliato +", "Prodotti mensili", "Commissione 15%", "Co-creazione contenuti", "Menzione canali ufficiali", "Accesso early drop"]
+                  },
+                  {
+                    tier: "ELITE CREATOR", badge: "03", color: "var(--red)",
+                    desc: "Il livello più alto. Facce del brand EVORΛ in Italia e all'estero. Collaborazione strategica, contratti formali, esclusività.",
+                    perks: ["Tutto da Ambassador +", "Contratto formale", "Campagne dedicate", "Produzione video EVORΛ", "Revenue sharing", "Advisory role"]
+                  }
+                ].map((l, i) => (
+                  <div key={l.tier} style={{
+                    background: i === 1 ? "#0f0f0f" : "var(--surface)",
+                    border: `1px solid ${i === 1 ? l.color + "44" : "var(--border)"}`,
+                    padding: 40, position: "relative", overflow: "hidden"
+                  }}>
+                    {i === 1 && <div style={{
+                      position: "absolute", top: 0, left: 0, right: 0, height: 2,
+                      background: `linear-gradient(to right, transparent, var(--gold), transparent)`
+                    }} />}
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 80, color: l.color + "15", position: "absolute", right: 16, top: 0, lineHeight: 1 }}>
+                      {l.badge}
+                    </div>
+                    <Tag color={l.color}>{l.tier}</Tag>
+                    <p style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "#666", lineHeight: 1.8, margin: "20px 0 24px" }}>{l.desc}</p>
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20 }}>
+                      {l.perks.map(p => (
+                        <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                          <div style={{ width: 4, height: 4, background: l.color, flexShrink: 0 }} />
+                          <span style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "#888", letterSpacing: "0.05em" }}>{p}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* REQUIREMENTS */}
+          <section id="requisiti" style={{ padding: "120px 40px", maxWidth: 1100, margin: "0 auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 80 }}>
+              <div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, letterSpacing: "0.5em", color: "var(--red)", textTransform: "uppercase", marginBottom: 16 }}>
+                  Criteri di Selezione
+                </div>
+                <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(42px,5vw,60px)", lineHeight: 1, color: "white" }}>
+                  COSA<br />VALUTIAMO.
+                </h2>
+    
