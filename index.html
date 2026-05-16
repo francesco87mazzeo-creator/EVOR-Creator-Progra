@@ -14,54 +14,54 @@
   
   <script type="text/babel">
     const { useState, useEffect } = React;
-
+ 
     // ─── DATA & SCORING ENGINE ───────────────────────────────────────────────────
     const scoreCandidate = (data) => {
       let score = 0;
       const reasons = [];
-
+ 
       const followers = parseInt(data.followers) || 0;
       if (followers >= 100000) { score += 30; reasons.push("100K+ follower"); }
       else if (followers >= 30000) { score += 22; reasons.push("30K+ follower"); }
       else if (followers >= 10000) { score += 14; reasons.push("10K+ follower"); }
       else if (followers >= 3000) { score += 6; reasons.push("3K+ follower"); }
       else { reasons.push("Micro audience"); }
-
+ 
       const er = parseFloat(data.engagementRate) || 0;
       if (er >= 6) { score += 25; reasons.push("ER eccellente"); }
       else if (er >= 4) { score += 18; reasons.push("ER solido"); }
       else if (er >= 2) { score += 10; reasons.push("ER nella media"); }
       else { reasons.push("ER basso"); }
-
+ 
       if (data.niche === "fitness" || data.niche === "bodybuilding") { score += 20; reasons.push("Nicchia core"); }
       else if (data.niche === "lifestyle" || data.niche === "nutrition") { score += 12; reasons.push("Nicchia affine"); }
       else { score += 4; }
-
+ 
       if (data.hasCollaborations === "yes") { score += 10; reasons.push("Exp. collaborazioni"); }
       if (data.contentFrequency === "daily") { score += 8; reasons.push("Content daily"); }
       else if (data.contentFrequency === "3-5week") { score += 5; }
-
+ 
       const motivation = (data.motivation || "").length;
       if (motivation > 300) { score += 7; reasons.push("Motivazione elaborata"); }
       else if (motivation > 150) { score += 3; }
-
+ 
       if (data.platforms && data.platforms.length >= 3) { score += 5; reasons.push("Multi-platform"); }
-
+ 
       let tier, tierColor, tierLabel;
       if (score >= 75) { tier = "ELITE"; tierColor = "#b22222"; tierLabel = "Priorità Assoluta"; }
       else if (score >= 55) { tier = "PRO"; tierColor = "#c0a060"; tierLabel = "Alta Priorità"; }
       else if (score >= 35) { tier = "RISING"; tierColor = "#6a9a7a"; tierLabel = "Da Monitorare"; }
       else { tier = "PENDING"; tierColor = "#555"; tierLabel = "In Attesa"; }
-
+ 
       return { score, tier, tierColor, tierLabel, reasons };
     };
-
+ 
     // ─── STORAGE ─────────────────────────────────────────────────────────────────
     const getApps = () => {
       try { return JSON.parse(localStorage.getItem("evora_apps") || "[]"); } catch { return []; }
     };
     const saveApps = (apps) => localStorage.setItem("evora_apps", JSON.stringify(apps));
-
+ 
     // ─── FONTS via inline style injection ────────────────────────────────────────
     const FONTS = `
       @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap');
@@ -96,9 +96,9 @@
       @keyframes pulse { 0%,100% { opacity:.6; } 50% { opacity:1; } }
       @keyframes borderPulse { 0%,100% { border-color: #1e1e1e; } 50% { border-color: var(--red); } }
     `;
-
+ 
     // ─── COMPONENTS ──────────────────────────────────────────────────────────────
-
+ 
     function Logo({ size = 32 }) {
       return (
         <div style={{ fontFamily: "var(--font-display)", fontSize: size, letterSpacing: "0.15em", color: "white" }}>
@@ -109,11 +109,11 @@
         </div>
       );
     }
-
+ 
     function RedLine() {
       return <div style={{ width: 48, height: 2, background: "var(--red)", margin: "16px 0" }} />;
     }
-
+ 
     function Tag({ children, color = "var(--red)" }) {
       return (
         <span style={{
@@ -123,7 +123,7 @@
         }}>{children}</span>
       );
     }
-
+ 
     // ─── LANDING PAGE ─────────────────────────────────────────────────────────────
     function Landing({ onApply, onAdmin }) {
       const [scrollY, setScrollY] = useState(0);
@@ -132,10 +132,10 @@
         window.addEventListener("scroll", h);
         return () => window.removeEventListener("scroll", h);
       }, []);
-
+ 
       return (
         <div style={{ minHeight: "100vh", overflowX: "hidden" }}>
-
+ 
           {/* NAV */}
           <nav style={{
             position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
@@ -163,7 +163,7 @@
               </button>
             </div>
           </nav>
-
+ 
           {/* HERO */}
           <section style={{
             minHeight: "100vh", display: "flex", alignItems: "center",
@@ -190,7 +190,7 @@
               position: "absolute", right: "8%", top: "15%", bottom: "15%",
               width: 1, background: "linear-gradient(to bottom, transparent, var(--red), transparent)"
             }} />
-
+ 
             <div style={{ padding: "0 40px", maxWidth: 900, animation: "fadeUp 1s ease both" }}>
               <div style={{
                 fontFamily: "var(--font-ui)", fontSize: 12, letterSpacing: "0.5em",
@@ -198,7 +198,7 @@
               }}>
                 ▸ Programma Creator Selettivo · 2025
               </div>
-
+ 
               <h1 style={{
                 fontFamily: "var(--font-display)", fontSize: "clamp(72px,12vw,160px)",
                 lineHeight: 0.9, color: "white", marginBottom: 8
@@ -207,7 +207,7 @@
                 <span style={{ color: "var(--red)", WebkitTextStroke: "1px var(--red)" }}>TUTTI</span><br />
                 ENTRANO.
               </h1>
-
+ 
               <div style={{ marginTop: 40, maxWidth: 520 }}>
                 <p style={{
                   fontFamily: "var(--font-ui)", fontSize: 18, lineHeight: 1.7,
@@ -219,7 +219,7 @@
                   per chi ha qualcosa da dimostrare.
                 </p>
               </div>
-
+ 
               <div style={{ marginTop: 56, display: "flex", gap: 16, alignItems: "center" }}>
                 <button onClick={onApply}
                   style={{
@@ -236,7 +236,7 @@
                   SELEZIONE CONTINUA · POSTI LIMITATI
                 </div>
               </div>
-
+ 
               {/* Stats */}
               <div style={{ marginTop: 80, display: "flex", gap: 48, borderTop: "1px solid #1e1e1e", paddingTop: 32 }}>
                 {[["<5%", "Tasso di accettazione"], ["3 livelli", "Di partnership"], ["0 DM", "Solo candidature formali"]].map(([n, l]) => (
@@ -248,7 +248,7 @@
               </div>
             </div>
           </section>
-
+ 
           {/* PHILOSOPHY */}
           <section id="filosofia" style={{ padding: "120px 40px", maxWidth: 1100, margin: "0 auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center" }}>
@@ -292,7 +292,7 @@
               </div>
             </div>
           </section>
-
+ 
           {/* LEVELS */}
           <section id="livelli" style={{ padding: "120px 40px", background: "var(--deep)" }}>
             <div style={{ maxWidth: 1100, margin: "0 auto" }}>
@@ -304,7 +304,7 @@
                   TRE LIVELLI.<br />UN SISTEMA.
                 </h2>
               </div>
-
+ 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 2 }}>
                 {[
                   {
@@ -350,7 +350,7 @@
               </div>
             </div>
           </section>
-
+ 
           {/* REQUIREMENTS */}
           <section id="requisiti" style={{ padding: "120px 40px", maxWidth: 1100, margin: "0 auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 80 }}>
@@ -361,4 +361,770 @@
                 <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(42px,5vw,60px)", lineHeight: 1, color: "white" }}>
                   COSA<br />VALUTIAMO.
                 </h2>
-    
+                <RedLine />
+                <p style={{ fontFamily: "var(--font-body)", fontSize: 14, color: "#666", lineHeight: 1.9 }}>
+                  Ogni candidatura viene analizzata manualmente.
+                  Non esistono criteri automatici che garantiscono l'accesso.
+                  Quello che conta è la combinazione di numeri, identità e potenziale reale.
+                </p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {[
+                  ["Audience reale", "Non contano i follower comprati. Contiamo chi ti ascolta davvero — engagement rate, qualità dei commenti, sentiment."],
+                  ["Coerenza verticale", "Il tuo contenuto deve essere radicato in fitness, performance, lifestyle di qualità. Nicchie ibride accettate se rilevanti."],
+                  ["Qualità produzione", "Non serve uno studio. Serve uno standard. Guardiamo luce, audio, montaggio, identità visiva del profilo."],
+                  ["Identità personale", "Chi sei fuori dal telefono è più importante di quante stories fai. Il brand si seleziona persone, non account."],
+                  ["Potenziale commerciale", "Quante vendite riesci a generare? Hai mai fatto collaborazioni? I risultati parlano più di qualsiasi pitch deck."]
+                ].map(([t, d]) => (
+                  <div key={t} style={{
+                    padding: "20px 24px", border: "1px solid var(--border)",
+                    display: "flex", gap: 20, alignItems: "flex-start",
+                    transition: "all 0.3s"
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#333"; e.currentTarget.style.background = "#0d0d0d"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "transparent"; }}>
+                    <div style={{ width: 2, height: "100%", background: "var(--red)", flexShrink: 0, marginTop: 3, alignSelf: "stretch" }} />
+                    <div>
+                      <div style={{ fontFamily: "var(--font-ui)", fontSize: 14, color: "white", letterSpacing: "0.05em", marginBottom: 6 }}>{t}</div>
+                      <div style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "#666", lineHeight: 1.7 }}>{d}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+ 
+          {/* CTA */}
+          <section id="candidatura" style={{
+            padding: "120px 40px", textAlign: "center",
+            background: `linear-gradient(to bottom, var(--black), #120404, var(--black))`,
+            position: "relative", overflow: "hidden"
+          }}>
+            <div style={{
+              position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
+              width: 600, height: 600, borderRadius: "50%",
+              background: "radial-gradient(circle, #b2222215 0%, transparent 70%)",
+              pointerEvents: "none"
+            }} />
+            <div style={{ position: "relative" }}>
+              <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, letterSpacing: "0.5em", color: "var(--red)", textTransform: "uppercase", marginBottom: 20 }}>
+                Candidatura Aperta
+              </div>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(52px,9vw,110px)", color: "white", lineHeight: 0.95, marginBottom: 32 }}>
+                SEI PRONTO<br />
+                <span style={{ color: "var(--red)" }}>A PROVARTI?</span>
+              </h2>
+              <p style={{ fontFamily: "var(--font-body)", fontSize: 16, color: "#666", maxWidth: 480, margin: "0 auto 48px", lineHeight: 1.8 }}>
+                La candidatura è aperta. La selezione è continuativa.
+                Compila il modulo con precisione — è la tua unica prima impressione.
+              </p>
+              <button onClick={onApply}
+                style={{
+                  background: "var(--red)", border: "none", color: "white",
+                  padding: "22px 60px", fontSize: 15, fontFamily: "var(--font-ui)",
+                  letterSpacing: "0.4em", textTransform: "uppercase", cursor: "pointer",
+                  fontWeight: 700, transition: "all 0.3s"
+                }}
+                onMouseEnter={e => { e.target.style.background = "var(--red-bright)"; e.target.style.letterSpacing = "0.5em"; }}
+                onMouseLeave={e => { e.target.style.background = "var(--red)"; e.target.style.letterSpacing = "0.4em"; }}>
+                INVIA CANDIDATURA
+              </button>
+            </div>
+          </section>
+ 
+          {/* FOOTER */}
+          <footer style={{ padding: "40px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Logo size={18} />
+            <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, color: "#333", letterSpacing: "0.2em" }}>
+              © 2025 EVORΛ · INNER CIRCLE PROGRAM · ALL RIGHTS RESERVED
+            </div>
+          </footer>
+        </div>
+      );
+    }
+ 
+    // ─── APPLICATION FORM ─────────────────────────────────────────────────────────
+    function ApplicationForm({ onBack, onSubmit }) {
+      const [step, setStep] = useState(0);
+      const [form, setForm] = useState({
+        name: "", email: "", instagram: "", tiktok: "", youtube: "",
+        followers: "", engagementRate: "", platforms: [], niche: "",
+        contentFrequency: "", contentStyle: "", bestPost: "", hasCollaborations: "",
+        motivation: "", goal: "", exclusivity: "", knowEvora: ""
+      });
+      const [submitted, setSubmitted] = useState(false);
+ 
+      const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
+      const togglePlatform = (p) => {
+        const arr = form.platforms.includes(p) ? form.platforms.filter(x => x !== p) : [...form.platforms, p];
+        update("platforms", arr);
+      };
+ 
+      const steps = ["IDENTITÀ", "I TUOI NUMERI", "IL TUO CONTENUTO", "PERCHÉ EVORΛ"];
+ 
+      const handleSubmit = () => {
+        const scoring = scoreCandidate(form);
+        const app = {
+          id: Date.now(),
+          date: new Date().toISOString(),
+          ...form,
+          ...scoring,
+          status: "new",
+          notes: "",
+          creatorCode: ""
+        };
+        const apps = getApps();
+        apps.unshift(app);
+        saveApps(apps);
+        setSubmitted(true);
+        onSubmit && onSubmit(app);
+      };
+ 
+      if (submitted) return (
+        <div style={{
+          minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+          background: "var(--black)", textAlign: "center", padding: 40
+        }}>
+          <div style={{ animation: "fadeUp 0.8s ease both" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 80, color: "var(--red)", marginBottom: 8 }}>✓</div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 52, color: "white", marginBottom: 16 }}>CANDIDATURA RICEVUTA.</h2>
+            <p style={{ fontFamily: "var(--font-body)", fontSize: 16, color: "#666", maxWidth: 440, margin: "0 auto 40px", lineHeight: 1.8 }}>
+              Il team EVORΛ analizzerà il tuo profilo. Se sei in linea con gli standard, ti contatteremo entro 7 giorni lavorativi.
+              <br /><strong style={{ color: "#888" }}>Non mandare DM — rispettiamo chi rispetta il processo.</strong>
+            </p>
+            <button onClick={onBack} style={{
+              background: "transparent", border: "1px solid #333", color: "#888",
+              padding: "14px 36px", fontFamily: "var(--font-ui)", letterSpacing: "0.2em",
+              fontSize: 12, textTransform: "uppercase", cursor: "pointer"
+            }}>TORNA AL SITO</button>
+          </div>
+        </div>
+      );
+ 
+      const inputStyle = {
+        width: "100%", background: "#0d0d0d", border: "1px solid #222",
+        color: "white", padding: "14px 16px", fontSize: 14,
+        fontFamily: "var(--font-body)", outline: "none", transition: "border-color 0.2s"
+      };
+      const labelStyle = {
+        fontFamily: "var(--font-ui)", fontSize: 11, letterSpacing: "0.25em",
+        color: "#555", textTransform: "uppercase", marginBottom: 8, display: "block"
+      };
+ 
+      return (
+        <div style={{ minHeight: "100vh", background: "var(--black)", padding: "40px 20px" }}>
+          <div style={{ maxWidth: 720, margin: "0 auto 48px" }}>
+            <button onClick={onBack} style={{
+              background: "none", border: "none", color: "#555", fontFamily: "var(--font-ui)",
+              fontSize: 12, letterSpacing: "0.2em", cursor: "pointer", marginBottom: 32, display: "flex", alignItems: "center", gap: 8
+            }}>← INDIETRO</button>
+            <Logo size={24} />
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px,6vw,56px)", color: "white", margin: "24px 0 8px" }}>
+              CANDIDATURA<br /><span style={{ color: "var(--red)" }}>INNER CIRCLE</span>
+            </h1>
+            <p style={{ fontFamily: "var(--font-body)", fontSize: 14, color: "#555", lineHeight: 1.7 }}>
+              Compila ogni campo con precisione. Dati incompleti o superficiali portano automaticamente alla non selezione.
+            </p>
+          </div>
+ 
+          <div style={{ maxWidth: 720, margin: "0 auto 48px", display: "flex", gap: 2 }}>
+            {steps.map((s, i) => (
+              <div key={s} style={{ flex: 1 }}>
+                <div style={{
+                  height: 2, background: i <= step ? "var(--red)" : "#1e1e1e",
+                  transition: "background 0.3s", marginBottom: 8
+                }} />
+                <div style={{
+                  fontFamily: "var(--font-ui)", fontSize: 10, letterSpacing: "0.15em",
+                  color: i === step ? "white" : "#333", textTransform: "uppercase"
+                }}>{s}</div>
+              </div>
+            ))}
+          </div>
+ 
+          <div style={{ maxWidth: 720, margin: "0 auto" }}>
+ 
+            {step === 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24, animation: "fadeUp 0.4s ease both" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "white" }}>CHI SEI</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={labelStyle}>Nome completo *</label>
+                    <input style={inputStyle} value={form.name} onChange={e => update("name", e.target.value)}
+                      onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Email *</label>
+                    <input style={inputStyle} type="email" value={form.email} onChange={e => update("email", e.target.value)}
+                      onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Instagram (handle, es. @username) *</label>
+                  <input style={inputStyle} value={form.instagram} onChange={e => update("instagram", e.target.value)}
+                    onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={labelStyle}>TikTok (opzionale)</label>
+                    <input style={inputStyle} value={form.tiktok} onChange={e => update("tiktok", e.target.value)}
+                      onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>YouTube (opzionale)</label>
+                    <input style={inputStyle} value={form.youtube} onChange={e => update("youtube", e.target.value)}
+                      onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  </div>
+                </div>
+              </div>
+            )}
+ 
+            {step === 1 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24, animation: "fadeUp 0.4s ease both" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "white" }}>I TUOI NUMERI</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={labelStyle}>Follower totali (profilo principale) *</label>
+                    <input style={inputStyle} type="number" placeholder="es. 25000" value={form.followers} onChange={e => update("followers", e.target.value)}
+                      onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Engagement rate % (medio) *</label>
+                    <input style={inputStyle} type="number" step="0.1" placeholder="es. 4.2" value={form.engagementRate} onChange={e => update("engagementRate", e.target.value)}
+                      onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Piattaforme attive *</label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {["Instagram", "TikTok", "YouTube", "Podcast", "Blog/Sito", "Telegram"].map(p => (
+                      <button key={p} onClick={() => togglePlatform(p)}
+                        style={{
+                          padding: "10px 20px", fontFamily: "var(--font-ui)", fontSize: 12,
+                          letterSpacing: "0.15em", textTransform: "uppercase", cursor: "pointer",
+                          background: form.platforms.includes(p) ? "var(--red)" : "#0d0d0d",
+                          border: `1px solid ${form.platforms.includes(p) ? "var(--red)" : "#222"}`,
+                          color: form.platforms.includes(p) ? "white" : "#666", transition: "all 0.2s"
+                        }}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Nicchia principale *</label>
+                  <select style={{ ...inputStyle, appearance: "none" }} value={form.niche} onChange={e => update("niche", e.target.value)}
+                    onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"}>
+                    <option value="">Seleziona nicchia</option>
+                    <option value="fitness">Fitness / Allenamento</option>
+                    <option value="bodybuilding">Bodybuilding / Powerlifting</option>
+                    <option value="nutrition">Nutrizione / Integrazione</option>
+                    <option value="lifestyle">Lifestyle / Wellness</option>
+                    <option value="sport">Sport specifico</option>
+                    <option value="other">Altro</option>
+                  </select>
+                </div>
+              </div>
+            )}
+ 
+            {step === 2 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24, animation: "fadeUp 0.4s ease both" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "white" }}>IL TUO CONTENUTO</h3>
+                <div>
+                  <label style={labelStyle}>Frequenza di pubblicazione *</label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[["daily", "Ogni giorno"], ["3-5week", "3-5 volte/sett"], ["weekly", "1-2 volte/sett"], ["sporadic", "Irregolare"]].map(([v, l]) => (
+                      <button key={v} onClick={() => update("contentFrequency", v)}
+                        style={{
+                          padding: "10px 20px", fontFamily: "var(--font-ui)", fontSize: 12,
+                          letterSpacing: "0.1em", cursor: "pointer",
+                          background: form.contentFrequency === v ? "var(--red)" : "#0d0d0d",
+                          border: `1px solid ${form.contentFrequency === v ? "var(--red)" : "#222"}`,
+                          color: form.contentFrequency === v ? "white" : "#666", transition: "all 0.2s"
+                        }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Descrivi il tuo stile di contenuto *</label>
+                  <textarea style={{ ...inputStyle, height: 100, resize: "vertical" }}
+                    placeholder="Come descriveresti il tuo approccio? Cosa ti distingue dagli altri?"
+                    value={form.contentStyle} onChange={e => update("contentStyle", e.target.value)}
+                    onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Link al tuo miglior post/video</label>
+                  <input style={inputStyle} placeholder="https://" value={form.bestPost} onChange={e => update("bestPost", e.target.value)}
+                    onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Hai già collaborato con brand? *</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[["yes", "Sì, ho esperienza"], ["no", "No, prima volta"]].map(([v, l]) => (
+                      <button key={v} onClick={() => update("hasCollaborations", v)}
+                        style={{
+                          padding: "12px 24px", fontFamily: "var(--font-ui)", fontSize: 12,
+                          letterSpacing: "0.1em", cursor: "pointer", flex: 1,
+                          background: form.hasCollaborations === v ? "var(--red)" : "#0d0d0d",
+                          border: `1px solid ${form.hasCollaborations === v ? "var(--red)" : "#222"}`,
+                          color: form.hasCollaborations === v ? "white" : "#666", transition: "all 0.2s"
+                        }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+ 
+            {step === 3 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24, animation: "fadeUp 0.4s ease both" }}>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "white" }}>PERCHÉ EVORΛ</h3>
+                <div>
+                  <label style={labelStyle}>Perché vuoi entrare nell'Inner Circle? *</label>
+                  <textarea style={{ ...inputStyle, height: 130, resize: "vertical" }}
+                    placeholder="Spiegaci cosa ti ha spinto a candidarti. Sii specifico, non generico."
+                    value={form.motivation} onChange={e => update("motivation", e.target.value)}
+                    onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#333", marginTop: 6, letterSpacing: "0.15em" }}>
+                    {form.motivation.length}/500 — risposte generiche vengono scartate automaticamente
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Qual è il tuo obiettivo con EVORΛ nei prossimi 12 mesi?</label>
+                  <textarea style={{ ...inputStyle, height: 100, resize: "vertical" }}
+                    placeholder="Cosa vuoi costruire? Cosa puoi portare al brand?"
+                    value={form.goal} onChange={e => update("goal", e.target.value)}
+                    onFocus={e => e.target.style.borderColor = "var(--red)"} onBlur={e => e.target.style.borderColor = "#222"} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Saresti disposto a lavorare in esclusiva nel settore? *</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[["yes", "Sì"], ["partial", "Parziale"], ["no", "No"]].map(([v, l]) => (
+                      <button key={v} onClick={() => update("exclusivity", v)}
+                        style={{
+                          padding: "12px 24px", fontFamily: "var(--font-ui)", fontSize: 12,
+                          letterSpacing: "0.1em", cursor: "pointer", flex: 1,
+                          background: form.exclusivity === v ? "var(--red)" : "#0d0d0d",
+                          border: `1px solid ${form.exclusivity === v ? "var(--red)" : "#222"}`,
+                          color: form.exclusivity === v ? "white" : "#666", transition: "all 0.2s"
+                        }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Come hai conosciuto EVORΛ?</label>
+                  <select style={{ ...inputStyle, appearance: "none" }} value={form.knowEvora} onChange={e => update("knowEvora", e.target.value)}>
+                    <option value="">Seleziona</option>
+                    <option value="instagram">Instagram EVORΛ</option>
+                    <option value="friend">Amico / collega</option>
+                    <option value="event">Evento / fiera</option>
+                    <option value="google">Ricerca online</option>
+                    <option value="other">Altro</option>
+                  </select>
+                </div>
+ 
+                {form.name && form.followers && (
+                  <div style={{
+                    background: "#0d0d0d", border: "1px solid var(--border)", padding: 20,
+                    marginTop: 8
+                  }}>
+                    {(() => {
+                      const { score, tier, tierColor, tierLabel } = scoreCandidate(form);
+                      return (
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.2em", marginBottom: 4 }}>PROFILO STIMATO</div>
+                            <Tag color={tierColor}>{tier}</Tag>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontFamily: "var(--font-display)", fontSize: 36, color: tierColor }}>{score}</div>
+                            <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444" }}>SCORE / 100</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+ 
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 40, paddingTop: 32, borderTop: "1px solid var(--border)" }}>
+              <button onClick={() => step > 0 ? setStep(step - 1) : onBack()}
+                style={{
+                  background: "transparent", border: "1px solid #222", color: "#666",
+                  padding: "14px 28px", fontFamily: "var(--font-ui)", letterSpacing: "0.2em",
+                  fontSize: 12, textTransform: "uppercase", cursor: "pointer"
+                }}>
+                {step === 0 ? "ANNULLA" : "INDIETRO"}
+              </button>
+              <button onClick={() => step < 3 ? setStep(step + 1) : handleSubmit()}
+                style={{
+                  background: "var(--red)", border: "none", color: "white",
+                  padding: "14px 36px", fontFamily: "var(--font-ui)", letterSpacing: "0.3em",
+                  fontSize: 13, textTransform: "uppercase", cursor: "pointer", fontWeight: 700
+                }}>
+                {step < 3 ? "CONTINUA →" : "INVIA CANDIDATURA"}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+ 
+    // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
+    function AdminPanel({ onBack }) {
+      const [password, setPassword] = useState("");
+      const [auth, setAuth] = useState(false);
+      const [apps, setApps] = useState([]);
+      const [selected, setSelected] = useState(null);
+      const [filter, setFilter] = useState("ALL");
+      const [search, setSearch] = useState("");
+      const [editNote, setEditNote] = useState("");
+      const [editCode, setEditCode] = useState("");
+ 
+      const PASS = "evora2025";
+ 
+      const loadApps = () => setApps(getApps());
+      useEffect(() => { if (auth) loadApps(); }, [auth]);
+ 
+      const updateApp = (id, patch) => {
+        const updated = apps.map(a => a.id === id ? { ...a, ...patch } : a);
+        setApps(updated);
+        saveApps(updated);
+        if (selected?.id === id) setSelected(prev => ({ ...prev, ...patch }));
+      };
+ 
+      const deleteApp = (id) => {
+        const updated = apps.filter(a => a.id !== id);
+        setApps(updated);
+        saveApps(updated);
+        setSelected(null);
+      };
+ 
+      const filtered = apps.filter(a => {
+        const matchTier = filter === "ALL" || a.tier === filter;
+        const matchSearch = !search || a.name?.toLowerCase().includes(search.toLowerCase()) ||
+          a.instagram?.toLowerCase().includes(search.toLowerCase());
+        return matchTier && matchSearch;
+      });
+ 
+      const stats = {
+        total: apps.length,
+        elite: apps.filter(a => a.tier === "ELITE").length,
+        pro: apps.filter(a => a.tier === "PRO").length,
+        rising: apps.filter(a => a.tier === "RISING").length,
+        new: apps.filter(a => a.status === "new").length,
+      };
+ 
+      if (!auth) return (
+        <div style={{
+          minHeight: "100vh", background: "var(--black)", display: "flex",
+          alignItems: "center", justifyContent: "center"
+        }}>
+          <div style={{ width: 360, animation: "fadeUp 0.6s ease both" }}>
+            <Logo size={22} />
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 36, color: "white", margin: "32px 0 8px" }}>
+              AREA RISERVATA
+            </h2>
+            <p style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "#555", marginBottom: 32 }}>
+              Accesso esclusivo team EVORΛ
+            </p>
+            <input
+              type="password" placeholder="Password admin"
+              style={{
+                width: "100%", background: "#0d0d0d", border: "1px solid #222",
+                color: "white", padding: "14px 16px", fontSize: 14,
+                fontFamily: "var(--font-body)", outline: "none", marginBottom: 12
+              }}
+              value={password} onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && password === PASS && setAuth(true)}
+            />
+            <button
+              onClick={() => password === PASS ? setAuth(true) : alert("Password errata")}
+              style={{
+                width: "100%", background: "var(--red)", border: "none", color: "white",
+                padding: "14px", fontFamily: "var(--font-ui)", letterSpacing: "0.3em",
+                fontSize: 13, textTransform: "uppercase", cursor: "pointer"
+              }}>
+              ACCEDI
+            </button>
+            <button onClick={onBack}
+              style={{
+                width: "100%", background: "transparent", border: "1px solid #1e1e1e",
+                color: "#444", padding: "12px", fontFamily: "var(--font-ui)", letterSpacing: "0.2em",
+                fontSize: 11, textTransform: "uppercase", cursor: "pointer", marginTop: 8
+              }}>
+              ← TORNA AL SITO
+            </button>
+            <div style={{ marginTop: 16, fontFamily: "var(--font-ui)", fontSize: 10, color: "#333", letterSpacing: "0.15em", textAlign: "center" }}>
+              DEMO PASSWORD: evora2025
+            </div>
+          </div>
+        </div>
+      );
+ 
+      return (
+        <div style={{ minHeight: "100vh", background: "var(--black)", display: "flex", flexDirection: "column" }}>
+          <div style={{
+            padding: "16px 24px", borderBottom: "1px solid var(--border)",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: "var(--deep)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+              <Logo size={18} />
+              <Tag color="var(--red)">ADMIN PANEL</Tag>
+            </div>
+            <button onClick={onBack} style={{
+              background: "transparent", border: "1px solid #222", color: "#555",
+              padding: "8px 18px", fontFamily: "var(--font-ui)", fontSize: 11,
+              letterSpacing: "0.2em", textTransform: "uppercase", cursor: "pointer"
+            }}>← SITO</button>
+          </div>
+ 
+          <div style={{
+            display: "flex", gap: 2, padding: "0 0 0 0",
+            background: "var(--surface)", borderBottom: "1px solid var(--border)"
+          }}>
+            {[
+              ["TOTALE", stats.total, "white"],
+              ["NUOVE", stats.new, "var(--red)"],
+              ["ELITE", stats.elite, "var(--red)"],
+              ["PRO", stats.pro, "var(--gold)"],
+              ["RISING", stats.rising, "#6a9a7a"]
+            ].map(([l, v, c]) => (
+              <div key={l} style={{ padding: "16px 32px", borderRight: "1px solid var(--border)", flex: 1, textAlign: "center" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 28, color: c }}>{v}</div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.2em" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+ 
+          <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+            <div style={{ width: 380, borderRight: "1px solid var(--border)", overflow: "auto" }}>
+              <div style={{ padding: "16px", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--black)", zIndex: 10 }}>
+                <input
+                  placeholder="Cerca nome o @handle..."
+                  style={{
+                    width: "100%", background: "#0d0d0d", border: "1px solid #1e1e1e",
+                    color: "white", padding: "10px 14px", fontSize: 13, fontFamily: "var(--font-body)", outline: "none", marginBottom: 10
+                  }}
+                  value={search} onChange={e => setSearch(e.target.value)}
+                />
+                <div style={{ display: "flex", gap: 4 }}>
+                  {["ALL", "ELITE", "PRO", "RISING", "PENDING"].map(f => (
+                    <button key={f} onClick={() => setFilter(f)}
+                      style={{
+                        flex: 1, padding: "6px 4px", fontFamily: "var(--font-ui)", fontSize: 9,
+                        letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer",
+                        background: filter === f ? "var(--red)" : "#0d0d0d",
+                        border: `1px solid ${filter === f ? "var(--red)" : "#1e1e1e"}`,
+                        color: filter === f ? "white" : "#555", transition: "all 0.2s"
+                      }}>{f}</button>
+                  ))}
+                </div>
+              </div>
+              {filtered.length === 0 && (
+                <div style={{ padding: 32, textAlign: "center", fontFamily: "var(--font-ui)", fontSize: 12, color: "#333", letterSpacing: "0.2em" }}>
+                  NESSUNA CANDIDATURA
+                </div>
+              )}
+              {filtered.map(a => (
+                <div key={a.id}
+                  onClick={() => { setSelected(a); setEditNote(a.notes || ""); setEditCode(a.creatorCode || ""); }}
+                  style={{
+                    padding: "16px 20px", borderBottom: "1px solid var(--border)", cursor: "pointer",
+                    background: selected?.id === a.id ? "#111" : "transparent",
+                    borderLeft: selected?.id === a.id ? "2px solid var(--red)" : "2px solid transparent",
+                    transition: "all 0.2s"
+                  }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontFamily: "var(--font-ui)", fontSize: 14, color: "white", letterSpacing: "0.05em" }}>{a.name}</div>
+                      <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "#555" }}>{a.instagram}</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                      <Tag color={a.tierColor}>{a.tier}</Tag>
+                      {a.status === "new" && <Tag color="var(--red)">NEW</Tag>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, color: "#555" }}>
+                      👥 {parseInt(a.followers || 0).toLocaleString()}
+                    </div>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 11, color: "#555" }}>
+                      ER {a.engagementRate}%
+                    </div>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: a.tierColor, marginLeft: "auto" }}>
+                      {a.score}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+ 
+            {selected ? (
+              <div style={{ flex: 1, overflow: "auto", padding: 32 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32 }}>
+                  <div>
+                    <h2 style={{ fontFamily: "var(--font-display)", fontSize: 42, color: "white", lineHeight: 1 }}>{selected.name}</h2>
+                    <div style={{ fontFamily: "var(--font-body)", fontSize: 14, color: "#666", marginTop: 4 }}>{selected.email}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <Tag color={selected.tierColor}>{selected.tier}</Tag>
+                      <Tag color="#555">{selected.tierLabel}</Tag>
+                      <span style={{ fontFamily: "var(--font-ui)", fontSize: 11, color: "#333", letterSpacing: "0.1em", padding: "2px 8px" }}>
+                        {new Date(selected.date).toLocaleDateString("it-IT")}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 72, color: selected.tierColor, lineHeight: 1 }}>{selected.score}</div>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.2em" }}>SCORE</div>
+                  </div>
+                </div>
+ 
+                <div style={{ background: "#0d0d0d", border: "1px solid var(--border)", padding: 20, marginBottom: 24 }}>
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 12 }}>MOTIVAZIONI SCORE</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {selected.reasons?.map(r => <Tag key={r} color="#555">{r}</Tag>)}
+                  </div>
+                </div>
+ 
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 2, marginBottom: 24 }}>
+                  {[
+                    ["Instagram", selected.instagram],
+                    ["TikTok", selected.tiktok || "—"],
+                    ["YouTube", selected.youtube || "—"],
+                    ["Follower", parseInt(selected.followers || 0).toLocaleString()],
+                    ["Engagement", `${selected.engagementRate}%`],
+                    ["Nicchia", selected.niche],
+                    ["Frequenza", selected.contentFrequency],
+                    ["Collaborazioni", selected.hasCollaborations === "yes" ? "Sì" : "No"],
+                    ["Esclusività", selected.exclusivity || "—"],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: 16 }}>
+                      <div style={{ fontFamily: "var(--font-ui)", fontSize: 9, color: "#444", letterSpacing: "0.25em", textTransform: "uppercase", marginBottom: 6 }}>{k}</div>
+                      <div style={{ fontFamily: "var(--font-ui)", fontSize: 14, color: "white" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+ 
+                {selected.platforms?.length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 10 }}>PIATTAFORME</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {selected.platforms.map(p => <Tag key={p} color="#555">{p}</Tag>)}
+                    </div>
+                  </div>
+                )}
+ 
+                {selected.motivation && (
+                  <div style={{ marginBottom: 20, background: "#0d0d0d", border: "1px solid var(--border)", padding: 20 }}>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 10 }}>MOTIVAZIONE</div>
+                    <p style={{ fontFamily: "var(--font-body)", fontSize: 14, color: "#888", lineHeight: 1.8 }}>{selected.motivation}</p>
+                  </div>
+                )}
+                {selected.goal && (
+                  <div style={{ marginBottom: 20, background: "#0d0d0d", border: "1px solid var(--border)", padding: 20 }}>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 10 }}>OBIETTIVO</div>
+                    <p style={{ fontFamily: "var(--font-body)", fontSize: 14, color: "#888", lineHeight: 1.8 }}>{selected.goal}</p>
+                  </div>
+                )}
+ 
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 24, marginTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 8 }}>CODICE CREATOR</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input style={{
+                        flex: 1, background: "#0d0d0d", border: "1px solid #222",
+                        color: "white", padding: "10px 14px", fontSize: 13, fontFamily: "var(--font-body)", outline: "none"
+                      }}
+                        placeholder="es. NOME10" value={editCode} onChange={e => setEditCode(e.target.value)} />
+                      <button onClick={() => updateApp(selected.id, { creatorCode: editCode })}
+                        style={{
+                          background: "#111", border: "1px solid #333", color: "#888",
+                          padding: "10px 16px", fontFamily: "var(--font-ui)", fontSize: 11,
+                          letterSpacing: "0.1em", cursor: "pointer"
+                        }}>SALVA</button>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 8 }}>STATO</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {["new", "review", "approved", "rejected"].map(s => (
+                        <button key={s} onClick={() => updateApp(selected.id, { status: s })}
+                          style={{
+                            flex: 1, padding: "10px 4px", fontFamily: "var(--font-ui)", fontSize: 9,
+                            letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer",
+                            background: selected.status === s ? (s === "approved" ? "#1a4a1a" : s === "rejected" ? "#4a1a1a" : "var(--red)") : "#0d0d0d",
+                            border: `1px solid ${selected.status === s ? (s === "approved" ? "#2a7a2a" : s === "rejected" ? "#7a2a2a" : "var(--red)") : "#1e1e1e"}`,
+                            color: selected.status === s ? "white" : "#555", transition: "all 0.2s"
+                          }}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+ 
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 10, color: "#444", letterSpacing: "0.3em", marginBottom: 8 }}>NOTE INTERNE</div>
+                  <textarea style={{
+                    width: "100%", background: "#0d0d0d", border: "1px solid #222",
+                    color: "white", padding: "12px 16px", fontSize: 13,
+                    fontFamily: "var(--font-body)", outline: "none", height: 90, resize: "vertical"
+                  }}
+                    value={editNote} onChange={e => setEditNote(e.target.value)} />
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                    <button onClick={() => updateApp(selected.id, { notes: editNote })}
+                      style={{
+                        background: "var(--red)", border: "none", color: "white",
+                        padding: "10px 24px", fontFamily: "var(--font-ui)", fontSize: 11,
+                        letterSpacing: "0.2em", textTransform: "uppercase", cursor: "pointer"
+                      }}>SALVA NOTE</button>
+                    <button onClick={() => { if (window.confirm("Eliminare questa candidatura?")) deleteApp(selected.id); }}
+                      style={{
+                        background: "transparent", border: "1px solid #3a1010", color: "#7a3030",
+                        padding: "10px 24px", fontFamily: "var(--font-ui)", fontSize: 11,
+                        letterSpacing: "0.2em", textTransform: "uppercase", cursor: "pointer"
+                      }}>ELIMINA</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "var(--font-ui)", fontSize: 12, color: "#222", letterSpacing: "0.3em"
+              }}>
+                SELEZIONA UNA CANDIDATURA
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+ 
+    // ─── APP ROOT ─────────────────────────────────────────────────────────────────
+    function App() {
+      const [view, setView] = useState("landing");
+ 
+      return (
+        <>
+          <style>{FONTS}</style>
+          {view === "landing" && (
+            <Landing
+              onApply={() => setView("apply")}
+              onAdmin={() => setView("admin")}
+            />
+          )}
+          {view === "apply" && (
+            <ApplicationForm
+              onBack={() => setView("landing")}
+              onSubmit={() => {}}
+            />
+          )}
+          {view === "admin" && (
+            <AdminPanel onBack={() => setView("landing")} />
+          )}
+        </>
+      );
+    }
+ 
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
