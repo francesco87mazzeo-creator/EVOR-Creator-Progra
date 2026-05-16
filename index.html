@@ -2,18 +2,218 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>EVORΛ ATHLETES — Application 2025</title>
-  <meta name="description" content="EVORΛ non è per tutti. Cerchiamo persone che vogliono rappresentare un'identità, non promuovere un prodotto.">
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #b22222;
+      --red2: #d42828;
+      --gold: #c0a060;
+      --black: #080808;
+      --deep: #0d0d0d;
+      --surf: #111111;
+      --brd: #1e1e1e;
+      --fd: 'Bebas Neue', sans-serif;
+      --fu: 'Barlow Condensed', sans-serif;
+      --fb: 'Barlow', sans-serif;
+      --nav-h: 60px;
+    }
+
+    html, body {
+      background: var(--black);
+      color: #e8e8e8;
+      font-family: var(--fb);
+      overflow-x: hidden;
+      width: 100%;
+      max-width: 100vw;
+    }
+
+    ::selection { background: var(--red); color: #fff; }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: var(--black); }
+    ::-webkit-scrollbar-thumb { background: var(--red); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* NAV */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      height: var(--nav-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: rgba(8,8,8,0.97);
+      border-bottom: 1px solid var(--brd);
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: #444;
+      font-size: 11px;
+      font-family: var(--fu);
+      letter-spacing: 0.2em;
+      text-decoration: none;
+      text-transform: uppercase;
+      transition: color .2s;
+    }
+    .nav-link:hover { color: white; }
+
+    /* PAGE WRAPPER — pushes content below fixed nav */
+    .page { padding-top: var(--nav-h); width: 100%; overflow-x: hidden; }
+
+    /* SECTIONS */
+    .section { width: 100%; padding: 80px 20px; }
+    .section-inner { max-width: 1080px; margin: 0 auto; }
+
+    /* HERO */
+    .hero {
+      min-height: calc(100vh - var(--nav-h));
+      display: flex;
+      align-items: center;
+      padding: 60px 20px;
+      background: radial-gradient(ellipse at 10% 60%, #1c0404 0%, var(--black) 55%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-inner { max-width: 900px; animation: fadeUp 1s ease both; }
+
+    .hero-title {
+      font-family: var(--fd);
+      font-size: clamp(52px, 12vw, 130px);
+      line-height: 0.88;
+      color: white;
+    }
+
+    .hero-sub {
+      margin-top: 32px;
+      border-left: 2px solid var(--red);
+      padding-left: 18px;
+      max-width: 480px;
+    }
+
+    .hero-stats {
+      margin-top: 56px;
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+      border-top: 1px solid #161616;
+      padding-top: 24px;
+    }
+
+    /* GRIDS */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+    }
+    .grid-2x2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+    }
+
+    /* FORM */
+    .form-page { padding-top: var(--nav-h); width: 100%; }
+    .form-inner { max-width: 700px; margin: 0 auto; padding: 32px 20px 80px; }
+
+    .steps-bar { display: flex; gap: 3px; margin-bottom: 36px; }
+    .step-item { flex: 1; }
+    .step-line { height: 2px; margin-bottom: 5px; transition: background .3s; }
+    .step-label { font-family: var(--fu); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.3; }
+
+    input, textarea, select {
+      background: #0d0d0d;
+      border: 1px solid #222;
+      color: white;
+      padding: 13px 15px;
+      font-size: 14px;
+      font-family: var(--fb);
+      outline: none;
+      transition: border-color .2s;
+      width: 100%;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--red); }
+    input::placeholder, textarea::placeholder { color: #3a3a3a; }
+    select { appearance: none; cursor: pointer; }
+    select option { background: #111; }
+    textarea { resize: vertical; }
+    button { cursor: pointer; font-family: var(--fu); }
+
+    /* CARDS */
+    .card {
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      padding: 24px;
+      transition: border-color .3s;
+    }
+    .card:hover { border-color: var(--red); }
+
+    /* UPLOAD AREA */
+    .upload-area {
+      border: 1px dashed #252525;
+      padding: 28px 20px;
+      text-align: center;
+      background: #090909;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+    .upload-area:hover { border-color: var(--red); }
+
+    /* ADMIN */
+    .admin-wrap { display: flex; height: calc(100vh - var(--nav-h) - 48px); overflow: hidden; }
+    .admin-list { width: 320px; border-right: 1px solid var(--brd); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+    .admin-detail { flex: 1; overflow-y: auto; padding: 24px; }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; gap: 16px; }
+      .grid-2x2 { grid-template-columns: 1fr 1fr; }
+      .nav-links .nav-link { display: none; }
+      .nav-links .nav-link.admin-btn { display: flex; }
+      .hero { padding: 40px 20px; }
+      .section { padding: 60px 20px; }
+      .admin-list { width: 100%; }
+      .admin-detail { display: none; }
+      .admin-detail.active { display: block; width: 100%; }
+    }
+
+    @media (max-width: 480px) {
+      .grid-2x2 { grid-template-columns: 1fr; }
+      .hero-stats { gap: 20px; }
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
+    // ─── SCORING ──────────────────────────────────────────────────────────────
     const scoreCandidate = (data) => {
       let score = 0;
       const reasons = [];
@@ -22,7 +222,6 @@
       const interactions = parseInt(data.interactions) || 0;
       const newFollowers = parseInt(data.newFollowers) || 0;
 
-      // 1. FOLLOWER BASE (max 20pt)
       if (followers >= 100000) { score += 20; reasons.push("100K+ follower"); }
       else if (followers >= 50000) { score += 17; reasons.push("50K+ follower"); }
       else if (followers >= 30000) { score += 14; reasons.push("30K+ follower"); }
@@ -30,7 +229,6 @@
       else if (followers >= 5000)  { score += 6;  reasons.push("5K+ follower"); }
       else if (followers >= 1000)  { score += 3;  reasons.push("1K+ follower"); }
 
-      // 2. REACH RATE (max 15pt)
       const reachRate = followers > 0 ? views / followers : 0;
       if (followers < 10000) {
         if (reachRate >= 1.5) { score += 15; reasons.push("Reach virale"); }
@@ -49,7 +247,6 @@
         else if (reachRate >= 0.1) score += 4;
       }
 
-      // 3. ER SU REACH (max 25pt)
       const erReach = views > 0 ? (interactions / views) * 100 : 0;
       if (erReach >= 5) { score += 25; reasons.push("ER eccezionale"); }
       else if (erReach >= 3) { score += 20; reasons.push("ER ottimo"); }
@@ -57,7 +254,6 @@
       else if (erReach >= 1) { score += 10; reasons.push("ER nella media"); }
       else if (erReach >= 0.5) score += 5;
 
-      // 4. GROWTH RATE (max 15pt)
       const growthRate = followers > 0 ? (newFollowers / followers) * 100 : 0;
       if (followers < 10000) {
         if (growthRate >= 2) { score += 15; reasons.push("Crescita forte"); }
@@ -73,20 +269,19 @@
         else if (growthRate >= 0.1) score += 6;
       }
 
-      // 5. QUALITÀ RISPOSTE (max 25pt)
       const keyFields = [data.motivation, data.contentIntegration, data.brandMeaning, data.qualityVsSell];
       let qs = 0;
       keyFields.forEach(f => {
-        const len = (f||"").length;
+        const len = (f || "").length;
         if (len > 300) qs += 5;
         else if (len > 150) qs += 3;
         else if (len > 50) qs += 1;
       });
       const kws = ["identità","rappresentare","costruire","disciplina","autenticità","valori","reale","genuino","evoluz"];
       const allText = keyFields.join(" ").toLowerCase();
-      let kwScore = 0;
-      kws.forEach(k => { if (allText.includes(k)) kwScore++; });
-      qs = Math.min(qs + Math.min(kwScore, 5), 25);
+      let kw = 0;
+      kws.forEach(k => { if (allText.includes(k)) kw++; });
+      qs = Math.min(qs + Math.min(kw, 5), 25);
       if (qs >= 20) reasons.push("Risposte eccellenti");
       else if (qs >= 12) reasons.push("Risposte solide");
       score += qs;
@@ -98,7 +293,7 @@
       if (finalScore >= 75)      { tier="ELITE";   tierColor="#b22222"; tierLabel="Priorità Assoluta"; }
       else if (finalScore >= 55) { tier="PRO";     tierColor="#c0a060"; tierLabel="Alta Priorità"; }
       else if (finalScore >= 35) { tier="RISING";  tierColor="#6a9a7a"; tierLabel="Da Monitorare"; }
-      else                       { tier="PENDING"; tierColor="#555555"; tierLabel="In Attesa"; }
+      else                       { tier="PENDING"; tierColor="#555";    tierLabel="In Attesa"; }
 
       return { score: finalScore, tier, tierColor, tierLabel, reasons, erReach: erReach.toFixed(2), reachRate: (reachRate*100).toFixed(1), growthRate: growthRate.toFixed(2) };
     };
@@ -106,46 +301,41 @@
     const getApps = () => { try { return JSON.parse(localStorage.getItem("evora_athletes")||"[]"); } catch { return []; } };
     const saveApps = (a) => localStorage.setItem("evora_athletes", JSON.stringify(a));
 
-    const CSS = `
-      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap');
-      *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-      :root{--red:#b22222;--red2:#d42828;--gold:#c0a060;--black:#080808;--deep:#0d0d0d;--surf:#111;--brd:#1e1e1e;--fd:'Bebas Neue',sans-serif;--fu:'Barlow Condensed',sans-serif;--fb:'Barlow',sans-serif}
-      html{scroll-behavior:smooth}
-      body{background:var(--black);color:#e8e8e8;font-family:var(--fb);overflow-x:hidden}
-      ::selection{background:var(--red);color:#fff}
-      ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--black)}::-webkit-scrollbar-thumb{background:var(--red)}
-      @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-      input,textarea,select{background:#0d0d0d;border:1px solid #222;color:#fff;padding:13px 15px;font-size:14px;font-family:var(--fb);outline:none;transition:border-color .2s;width:100%}
-      input:focus,textarea:focus,select:focus{border-color:var(--red)}
-      input::placeholder,textarea::placeholder{color:#3a3a3a}
-      select{appearance:none;cursor:pointer}select option{background:#111}
-      textarea{resize:vertical}
-      button{cursor:pointer;font-family:var(--fu)}
-    `;
-
-    function Logo({ size=26 }) {
+    // ─── SHARED ───────────────────────────────────────────────────────────────
+    function Logo({ size=24 }) {
       return (
-        <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+        <div style={{display:"flex",alignItems:"baseline",gap:7,flexShrink:0}}>
           <span style={{fontFamily:"var(--fd)",fontSize:size,letterSpacing:"0.12em",color:"white",lineHeight:1}}>EVORΛ</span>
-          <span style={{fontFamily:"var(--fu)",fontSize:size*.46,letterSpacing:"0.38em",color:"var(--red)",textTransform:"uppercase"}}>ATHLETES</span>
+          <span style={{fontFamily:"var(--fu)",fontSize:size*.44,letterSpacing:"0.35em",color:"var(--red)",textTransform:"uppercase"}}>ATHLETES</span>
         </div>
       );
     }
 
     function Tag({ children, color="var(--red)" }) {
-      return <span style={{background:`${color}20`,border:`1px solid ${color}50`,color,padding:"3px 12px",fontSize:10,fontFamily:"var(--fu)",letterSpacing:"0.22em",textTransform:"uppercase",display:"inline-block"}}>{children}</span>;
+      return (
+        <span style={{background:`${color}20`,border:`1px solid ${color}50`,color,padding:"3px 10px",fontSize:10,fontFamily:"var(--fu)",letterSpacing:"0.2em",textTransform:"uppercase",display:"inline-block",flexShrink:0}}>
+          {children}
+        </span>
+      );
     }
 
-    function Btn({ children, onClick, ghost=false, style={} }) {
-      const [hov, setHov] = useState(false);
+    function PrimaryBtn({ children, onClick, style={} }) {
       return (
         <button onClick={onClick}
-          onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-          style={{border:"none",padding:"14px 34px",fontSize:12,letterSpacing:"0.3em",textTransform:"uppercase",fontWeight:700,transition:"all .25s",
-            background: ghost ? "transparent" : hov ? "var(--red2)" : "var(--red)",
-            color: ghost ? (hov?"#999":"#555") : "white",
-            borderWidth: ghost?1:0, borderStyle:"solid", borderColor: ghost?(hov?"#444":"#2a2a2a"):"transparent",
-            ...style}}>
+          style={{background:"var(--red)",border:"none",color:"white",padding:"14px 32px",fontSize:12,letterSpacing:"0.3em",textTransform:"uppercase",fontWeight:700,transition:"background .2s",...style}}
+          onMouseEnter={e=>e.currentTarget.style.background="var(--red2)"}
+          onMouseLeave={e=>e.currentTarget.style.background="var(--red)"}>
+          {children}
+        </button>
+      );
+    }
+
+    function GhostBtn({ children, onClick, style={} }) {
+      return (
+        <button onClick={onClick}
+          style={{background:"transparent",border:"1px solid #2a2a2a",color:"#555",padding:"14px 32px",fontSize:12,letterSpacing:"0.3em",textTransform:"uppercase",fontWeight:700,transition:"all .2s",...style}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="#444";e.currentTarget.style.color="#999";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2a2a";e.currentTarget.style.color="#555";}}>
           {children}
         </button>
       );
@@ -153,12 +343,12 @@
 
     function Field({ label, required, hint, children }) {
       return (
-        <div>
-          <label style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.25em",color:"#555",textTransform:"uppercase",marginBottom:8,display:"block"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          <label style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.22em",color:"#555",textTransform:"uppercase"}}>
             {label}{required && <span style={{color:"var(--red)"}}> *</span>}
           </label>
           {children}
-          {hint && <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#333",marginTop:5,letterSpacing:"0.1em"}}>{hint}</div>}
+          {hint && <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#333",letterSpacing:"0.1em"}}>{hint}</span>}
         </div>
       );
     }
@@ -166,9 +356,7 @@
     function Choice({ label, value, selected, onClick }) {
       return (
         <button onClick={()=>onClick(value)}
-          style={{padding:"10px 18px",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",
-            background:selected?"var(--red)":"#0d0d0d",border:`1px solid ${selected?"var(--red)":"#222"}`,
-            color:selected?"white":"#555",transition:"all .2s"}}>
+          style={{padding:"10px 16px",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",background:selected?"var(--red)":"#0d0d0d",border:`1px solid ${selected?"var(--red)":"#222"}`,color:selected?"white":"#555",transition:"all .2s",flexShrink:0}}>
           {label}
         </button>
       );
@@ -176,53 +364,49 @@
 
     // ─── LANDING ──────────────────────────────────────────────────────────────
     function Landing({ onApply, onAdmin }) {
-      const [sy, setSy] = useState(0);
-      useEffect(()=>{ const h=()=>setSy(window.scrollY); window.addEventListener("scroll",h); return()=>window.removeEventListener("scroll",h); },[]);
-
       return (
-        <div>
-          <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"18px 48px",display:"flex",justifyContent:"space-between",alignItems:"center",background:sy>80?"rgba(8,8,8,.96)":"transparent",borderBottom:sy>80?"1px solid var(--brd)":"none",backdropFilter:sy>80?"blur(8px)":"none",transition:"all .4s"}}>
-            <Logo size={19}/>
-            <div style={{display:"flex",gap:32,alignItems:"center"}}>
-              {[["Filosofia","#filosofia"],["Livelli","#livelli"],["Requisiti","#requisiti"],["Apply","#apply"]].map(([l,h])=>(
-                <a key={l} href={h} style={{color:"#444",fontSize:11,fontFamily:"var(--fu)",letterSpacing:"0.2em",textDecoration:"none",textTransform:"uppercase",transition:"color .2s"}}
-                  onMouseEnter={e=>e.target.style.color="white"} onMouseLeave={e=>e.target.style.color="#444"}>{l}</a>
-              ))}
-              <button onClick={onAdmin} style={{background:"transparent",border:"1px solid #1e1e1e",color:"#333",padding:"6px 16px",fontSize:10,fontFamily:"var(--fu)",letterSpacing:"0.2em",textTransform:"uppercase",transition:"all .2s"}}
-                onMouseEnter={e=>{e.target.style.borderColor="#333";e.target.style.color="#666";}}
-                onMouseLeave={e=>{e.target.style.borderColor="#1e1e1e";e.target.style.color="#333";}}>ADMIN</button>
+        <div className="page">
+          {/* NAV */}
+          <nav className="nav">
+            <Logo size={20}/>
+            <div className="nav-links">
+              <a href="#filosofia" className="nav-link">Filosofia</a>
+              <a href="#livelli" className="nav-link">Livelli</a>
+              <a href="#requisiti" className="nav-link">Requisiti</a>
+              <a href="#apply" className="nav-link">Apply</a>
+              <button onClick={onAdmin} className="nav-link admin-btn"
+                style={{background:"transparent",border:"1px solid #1e1e1e",color:"#333",padding:"5px 14px",fontSize:10,fontFamily:"var(--fu)",letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>
+                ADMIN
+              </button>
             </div>
           </nav>
 
           {/* HERO */}
-          <section style={{minHeight:"100vh",display:"flex",alignItems:"center",position:"relative",overflow:"hidden",background:"radial-gradient(ellipse at 15% 60%, #1c0404 0%, var(--black) 55%)"}}>
-            {[12,28,52,68,88].map(p=>(
-              <div key={p} style={{position:"absolute",left:`${p}%`,top:0,bottom:0,width:1,background:"linear-gradient(to bottom,transparent,#ffffff06,transparent)",pointerEvents:"none"}}/>
-            ))}
-            <div style={{position:"absolute",right:"10%",top:"12%",bottom:"12%",width:1,background:"linear-gradient(to bottom,transparent,var(--red) 50%,transparent)"}}/>
-            <div style={{position:"absolute",left:"5%",top:"30%",width:500,height:500,borderRadius:"50%",background:"radial-gradient(circle,#b2222210,transparent 70%)",pointerEvents:"none"}}/>
-
-            <div style={{padding:"0 48px",maxWidth:960,animation:"fadeUp 1s ease both"}}>
-              <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.6em",color:"var(--red)",textTransform:"uppercase",marginBottom:36}}>
+          <section className="hero">
+            <div className="hero-inner">
+              <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.5em",color:"var(--red)",textTransform:"uppercase",marginBottom:28}}>
                 ▸ Application · 2025 · Programma Selettivo
               </div>
-              <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(64px,11vw,144px)",lineHeight:.88,color:"white"}}>
-                EVORΛ<br/><span style={{color:"var(--red)"}}>NON È</span><br/>PER TUTTI.
+              <h1 className="hero-title">
+                EVORΛ<br/>
+                <span style={{color:"var(--red)"}}>NON È</span><br/>
+                PER TUTTI.
               </h1>
-              <div style={{marginTop:44,maxWidth:500,borderLeft:"2px solid var(--red)",paddingLeft:24}}>
-                <p style={{fontFamily:"var(--fu)",fontSize:16,lineHeight:1.85,color:"#666",letterSpacing:"0.02em"}}>
-                  Cerchiamo persone che vogliono <strong style={{color:"#aaa"}}>rappresentare un'identità</strong>, non promuovere un prodotto.<br/>Se entri, entri per costruire qualcosa.
+              <div className="hero-sub">
+                <p style={{fontFamily:"var(--fu)",fontSize:16,lineHeight:1.85,color:"#666"}}>
+                  Cerchiamo persone che vogliono <strong style={{color:"#aaa"}}>rappresentare un'identità</strong>, non promuovere un prodotto.<br/>
+                  Se entri, entri per costruire qualcosa.
                 </p>
               </div>
-              <div style={{marginTop:52,display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
-                <Btn onClick={onApply} style={{padding:"18px 48px",fontSize:13,letterSpacing:"0.35em"}}>CANDIDATI ORA</Btn>
-                <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#2a2a2a",letterSpacing:"0.25em"}}>SELEZIONE CONTINUA · POSTI LIMITATI</div>
+              <div style={{marginTop:40,display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+                <PrimaryBtn onClick={onApply} style={{padding:"16px 40px",fontSize:13,letterSpacing:"0.35em"}}>CANDIDATI ORA</PrimaryBtn>
+                <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#2a2a2a",letterSpacing:"0.22em"}}>SELEZIONE CONTINUA · POSTI LIMITATI</span>
               </div>
-              <div style={{marginTop:76,display:"flex",gap:52,borderTop:"1px solid #161616",paddingTop:28,flexWrap:"wrap"}}>
+              <div className="hero-stats">
                 {[["<5%","Tasso di accettazione"],["3","Livelli di partnership"],["0 DM","Solo candidature formali"]].map(([n,l])=>(
                   <div key={n}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:40,color:"var(--red)",lineHeight:1}}>{n}</div>
-                    <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#333",letterSpacing:"0.18em",textTransform:"uppercase",marginTop:4}}>{l}</div>
+                    <div style={{fontFamily:"var(--fd)",fontSize:38,color:"var(--red)",lineHeight:1}}>{n}</div>
+                    <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#333",letterSpacing:"0.15em",textTransform:"uppercase",marginTop:3}}>{l}</div>
                   </div>
                 ))}
               </div>
@@ -230,61 +414,61 @@
           </section>
 
           {/* FILOSOFIA */}
-          <section id="filosofia" style={{padding:"120px 48px"}}>
-            <div style={{maxWidth:1080,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1fr",gap:80,alignItems:"center"}}>
-              <div>
-                <Tag>Filosofia del Programma</Tag>
-                <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(38px,5vw,66px)",lineHeight:.94,color:"white",margin:"18px 0 0"}}>
-                  NON VENDIAMO.<br/><span style={{color:"#222"}}>RAPPRESENTIAMO.</span>
-                </h2>
-                <div style={{width:40,height:2,background:"var(--red)",margin:"16px 0"}}/>
-                <p style={{fontFamily:"var(--fb)",fontSize:15,lineHeight:1.9,color:"#555",marginBottom:14}}>
-                  EVORΛ è nata dalla disciplina, non dal marketing. Il nostro programma non è un canale pubblicitario — è una rete di persone che condividono una visione.
-                </p>
-                <p style={{fontFamily:"var(--fb)",fontSize:15,lineHeight:1.9,color:"#555"}}>
-                  Cerchiamo atleti e creator che amplificano un messaggio genuino: evoluzione continua, performance reale, mentalità costruita ogni giorno.
-                </p>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
-                {[["DISCIPLINA","Non si tratta di quanto sei grande oggi, ma di quanto lavori ogni giorno."],
-                  ["AUTENTICITÀ","Il pubblico sente quando parli di un prodotto che non usi davvero."],
-                  ["CRESCITA","Cresciamo insieme. Il tuo successo potenzia il brand, non il contrario."],
-                  ["STANDARD","Lavoriamo con chi tiene alta la qualità. Sempre."]
-                ].map(([t,d])=>(
-                  <div key={t} style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:26,transition:"border-color .3s"}}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor="var(--red)"}
-                    onMouseLeave={e=>e.currentTarget.style.borderColor="var(--brd)"}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:15,color:"var(--red)",marginBottom:9,letterSpacing:"0.08em"}}>{t}</div>
-                    <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",lineHeight:1.75}}>{d}</div>
-                  </div>
-                ))}
+          <section id="filosofia" className="section">
+            <div className="section-inner">
+              <div className="grid-2">
+                <div>
+                  <Tag>Filosofia del Programma</Tag>
+                  <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(36px,5vw,64px)",lineHeight:.94,color:"white",margin:"16px 0 0"}}>
+                    NON VENDIAMO.<br/><span style={{color:"#222"}}>RAPPRESENTIAMO.</span>
+                  </h2>
+                  <div style={{width:40,height:2,background:"var(--red)",margin:"14px 0"}}/>
+                  <p style={{fontFamily:"var(--fb)",fontSize:15,lineHeight:1.9,color:"#555",marginBottom:12}}>
+                    EVORΛ è nata dalla disciplina, non dal marketing. Il nostro programma non è un canale pubblicitario — è una rete di persone che condividono una visione.
+                  </p>
+                  <p style={{fontFamily:"var(--fb)",fontSize:15,lineHeight:1.9,color:"#555"}}>
+                    Cerchiamo atleti e creator che amplificano un messaggio genuino: evoluzione continua, performance reale, mentalità costruita ogni giorno.
+                  </p>
+                </div>
+                <div className="grid-2x2">
+                  {[["DISCIPLINA","Non si tratta di quanto sei grande oggi, ma di quanto lavori ogni giorno."],
+                    ["AUTENTICITÀ","Il pubblico sente quando parli di un prodotto che non usi davvero."],
+                    ["CRESCITA","Cresciamo insieme. Il tuo successo potenzia il brand, non il contrario."],
+                    ["STANDARD","Lavoriamo con chi tiene alta la qualità. Sempre."]
+                  ].map(([t,d])=>(
+                    <div key={t} className="card">
+                      <div style={{fontFamily:"var(--fd)",fontSize:15,color:"var(--red)",marginBottom:8,letterSpacing:"0.08em"}}>{t}</div>
+                      <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",lineHeight:1.75}}>{d}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </section>
 
           {/* LIVELLI */}
-          <section id="livelli" style={{padding:"120px 48px",background:"var(--deep)"}}>
-            <div style={{maxWidth:1080,margin:"0 auto"}}>
-              <div style={{textAlign:"center",marginBottom:60}}>
+          <section id="livelli" className="section" style={{background:"var(--deep)"}}>
+            <div className="section-inner">
+              <div style={{textAlign:"center",marginBottom:52}}>
                 <Tag>Struttura del Programma</Tag>
-                <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(36px,5vw,58px)",color:"white",marginTop:18}}>TRE LIVELLI. UN SISTEMA.</h2>
+                <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(34px,5vw,56px)",color:"white",marginTop:16}}>TRE LIVELLI. UN SISTEMA.</h2>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2}}>
+              <div className="grid-3">
                 {[
                   {tier:"AFFILIATO",n:"01",color:"#444",desc:"Primo ingresso nel network EVORΛ. Codici sconto personalizzati e commissioni sulle vendite.",perks:["Codice creator dedicato","Commissione 10%","Kit digitale EVORΛ","Accesso contenuti B2B","Newsletter interna"]},
                   {tier:"AMBASSADOR",n:"02",color:"var(--gold)",desc:"Profili selezionati con audience consolidata e alta coerenza con i valori EVORΛ.",perks:["Tutto da Affiliato +","Prodotti mensili","Commissione 15%","Co-creazione contenuti","Menzione canali ufficiali","Early access drop"]},
                   {tier:"ELITE",n:"03",color:"var(--red)",desc:"Il livello più alto. Facce del brand EVORΛ. Collaborazione strategica e contratti formali.",perks:["Tutto da Ambassador +","Contratto formale","Campagne dedicate","Produzione video EVORΛ","Revenue sharing","Advisory role"]}
                 ].map((l,i)=>(
-                  <div key={l.tier} style={{background:i===1?"#0e0e0e":"var(--surf)",border:`1px solid ${i===1?l.color+"40":"var(--brd)"}`,padding:38,position:"relative",overflow:"hidden"}}>
+                  <div key={l.tier} style={{background:i===1?"#0e0e0e":"var(--surf)",border:`1px solid ${i===1?l.color+"40":"var(--brd)"}`,padding:28,position:"relative",overflow:"hidden"}}>
                     {i===1&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(to right,transparent,var(--gold),transparent)`}}/>}
-                    <div style={{fontFamily:"var(--fd)",fontSize:68,color:l.color+"12",position:"absolute",right:10,top:-4,lineHeight:1,pointerEvents:"none"}}>{l.n}</div>
+                    <div style={{fontFamily:"var(--fd)",fontSize:60,color:l.color+"12",position:"absolute",right:8,top:-2,lineHeight:1,pointerEvents:"none"}}>{l.n}</div>
                     <Tag color={l.color}>{l.tier}</Tag>
-                    <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",lineHeight:1.8,margin:"16px 0 20px"}}>{l.desc}</p>
-                    <div style={{borderTop:"1px solid var(--brd)",paddingTop:16}}>
+                    <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",lineHeight:1.8,margin:"14px 0 18px"}}>{l.desc}</p>
+                    <div style={{borderTop:"1px solid var(--brd)",paddingTop:14}}>
                       {l.perks.map(p=>(
-                        <div key={p} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
+                        <div key={p} style={{display:"flex",alignItems:"center",gap:9,marginBottom:7}}>
                           <div style={{width:3,height:3,background:l.color,flexShrink:0,borderRadius:"50%"}}/>
-                          <span style={{fontFamily:"var(--fu)",fontSize:12,color:"#666",letterSpacing:"0.04em"}}>{p}</span>
+                          <span style={{fontFamily:"var(--fu)",fontSize:12,color:"#666"}}>{p}</span>
                         </div>
                       ))}
                     </div>
@@ -295,55 +479,56 @@
           </section>
 
           {/* REQUISITI */}
-          <section id="requisiti" style={{padding:"120px 48px"}}>
-            <div style={{maxWidth:1080,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1.6fr",gap:80}}>
-              <div>
-                <Tag>Criteri di Selezione</Tag>
-                <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(36px,4vw,54px)",lineHeight:.94,color:"white",margin:"18px 0 0"}}>COSA<br/>VALUTIAMO.</h2>
-                <div style={{width:40,height:2,background:"var(--red)",margin:"16px 0"}}/>
-                <p style={{fontFamily:"var(--fb)",fontSize:14,color:"#4a4a4a",lineHeight:1.9}}>
-                  Ogni candidatura viene analizzata manualmente. Non esistono criteri automatici che garantiscono l'accesso. Conta la combinazione di numeri, identità e potenziale reale.
-                </p>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                {[["Audience reale","Non contano i follower comprati. Contiamo chi ti ascolta davvero — reach, engagement, qualità dei commenti."],
-                  ["Coerenza verticale","Il tuo contenuto deve essere radicato in fitness, performance, lifestyle di qualità."],
-                  ["Qualità produzione","Non serve uno studio. Serve uno standard. Luce, montaggio, identità visiva del profilo."],
-                  ["Identità personale","Chi sei fuori dal telefono è più importante di quante stories fai."],
-                  ["Mentalità costruttiva","Cerchiamo persone che pensano in termini di brand building, non di guadagno immediato."]
-                ].map(([t,d])=>(
-                  <div key={t} style={{padding:"18px 22px",border:"1px solid var(--brd)",display:"flex",gap:16,transition:"all .3s"}}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#2a2a2a";e.currentTarget.style.background="#0a0a0a";}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--brd)";e.currentTarget.style.background="transparent";}}>
-                    <div style={{width:2,background:"var(--red)",flexShrink:0,alignSelf:"stretch"}}/>
-                    <div>
-                      <div style={{fontFamily:"var(--fu)",fontSize:13,color:"white",letterSpacing:"0.05em",marginBottom:4}}>{t}</div>
-                      <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",lineHeight:1.75}}>{d}</div>
+          <section id="requisiti" className="section">
+            <div className="section-inner">
+              <div className="grid-2">
+                <div>
+                  <Tag>Criteri di Selezione</Tag>
+                  <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(34px,4vw,52px)",lineHeight:.94,color:"white",margin:"16px 0 0"}}>COSA<br/>VALUTIAMO.</h2>
+                  <div style={{width:40,height:2,background:"var(--red)",margin:"14px 0"}}/>
+                  <p style={{fontFamily:"var(--fb)",fontSize:14,color:"#4a4a4a",lineHeight:1.9}}>
+                    Ogni candidatura viene analizzata manualmente. Non esistono criteri automatici che garantiscono l'accesso.
+                  </p>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  {[["Audience reale","Non contano i follower comprati. Contiamo chi ti ascolta davvero."],
+                    ["Coerenza verticale","Il tuo contenuto deve essere radicato in fitness, performance, lifestyle."],
+                    ["Qualità produzione","Non serve uno studio. Serve uno standard."],
+                    ["Identità personale","Chi sei fuori dal telefono è più importante di quante stories fai."],
+                    ["Mentalità costruttiva","Cerchiamo chi pensa in termini di brand building, non di guadagno immediato."]
+                  ].map(([t,d])=>(
+                    <div key={t} style={{padding:"16px 20px",border:"1px solid var(--brd)",display:"flex",gap:14,transition:"all .3s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="#2a2a2a";e.currentTarget.style.background="#0a0a0a";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--brd)";e.currentTarget.style.background="transparent";}}>
+                      <div style={{width:2,background:"var(--red)",flexShrink:0,alignSelf:"stretch"}}/>
+                      <div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:13,color:"white",marginBottom:4}}>{t}</div>
+                        <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",lineHeight:1.75}}>{d}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </section>
 
           {/* CTA */}
-          <section id="apply" style={{padding:"140px 48px",textAlign:"center",background:"linear-gradient(to bottom,var(--black),#130303,var(--black))",position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",width:700,height:700,borderRadius:"50%",background:"radial-gradient(circle,#b2222210,transparent 65%)",pointerEvents:"none"}}/>
-            <div style={{position:"relative"}}>
+          <section id="apply" className="section" style={{textAlign:"center",background:"linear-gradient(to bottom,var(--black),#130303,var(--black))"}}>
+            <div className="section-inner">
               <Tag>Application Aperta</Tag>
-              <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(46px,8vw,100px)",color:"white",lineHeight:.92,margin:"22px 0 30px"}}>
+              <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(44px,8vw,96px)",color:"white",lineHeight:.92,margin:"20px 0 28px"}}>
                 SEI PRONTO<br/><span style={{color:"var(--red)"}}>A PROVARTI?</span>
               </h2>
-              <p style={{fontFamily:"var(--fb)",fontSize:15,color:"#4a4a4a",maxWidth:440,margin:"0 auto 44px",lineHeight:1.9}}>
+              <p style={{fontFamily:"var(--fb)",fontSize:15,color:"#4a4a4a",maxWidth:420,margin:"0 auto 40px",lineHeight:1.9}}>
                 La candidatura è aperta. La selezione è continuativa.<br/>Compila il form con precisione — è la tua unica prima impressione.
               </p>
-              <Btn onClick={onApply} style={{padding:"19px 54px",fontSize:13,letterSpacing:"0.4em"}}>INVIA CANDIDATURA</Btn>
+              <PrimaryBtn onClick={onApply} style={{padding:"18px 52px",fontSize:13,letterSpacing:"0.4em"}}>INVIA CANDIDATURA</PrimaryBtn>
             </div>
           </section>
 
-          <footer style={{padding:"32px 48px",borderTop:"1px solid var(--brd)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+          <footer style={{padding:"28px 20px",borderTop:"1px solid var(--brd)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
             <Logo size={16}/>
-            <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#222",letterSpacing:"0.2em"}}>© 2025 EVORΛ · ATHLETES PROGRAM · ALL RIGHTS RESERVED</div>
+            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#222",letterSpacing:"0.18em"}}>© 2025 EVORΛ · ATHLETES PROGRAM</div>
           </footer>
         </div>
       );
@@ -383,15 +568,15 @@
       };
 
       if (done) return (
-        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--black)",textAlign:"center",padding:40}}>
-          <div style={{animation:"fadeUp .8s ease both"}}>
-            <div style={{fontFamily:"var(--fd)",fontSize:88,color:"var(--red)",lineHeight:1,marginBottom:10}}>✓</div>
-            <h2 style={{fontFamily:"var(--fd)",fontSize:50,color:"white",marginBottom:14}}>CANDIDATURA RICEVUTA.</h2>
-            <p style={{fontFamily:"var(--fb)",fontSize:15,color:"#4a4a4a",maxWidth:460,margin:"0 auto 40px",lineHeight:1.9}}>
+        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--black)",textAlign:"center",padding:24}}>
+          <div style={{animation:"fadeUp .8s ease both",maxWidth:460}}>
+            <div style={{fontFamily:"var(--fd)",fontSize:80,color:"var(--red)",lineHeight:1,marginBottom:10}}>✓</div>
+            <h2 style={{fontFamily:"var(--fd)",fontSize:46,color:"white",marginBottom:14}}>CANDIDATURA RICEVUTA.</h2>
+            <p style={{fontFamily:"var(--fb)",fontSize:15,color:"#4a4a4a",lineHeight:1.9,marginBottom:36}}>
               Il team EVORΛ analizzerà il tuo profilo.<br/>Se sei in linea con gli standard, ti contatteremo entro <strong style={{color:"#777"}}>7 giorni lavorativi</strong>.<br/><br/>
               <span style={{fontSize:13,color:"#333"}}>Non mandare DM — rispettiamo chi rispetta il processo.</span>
             </p>
-            <Btn ghost onClick={onBack}>← TORNA AL SITO</Btn>
+            <GhostBtn onClick={onBack}>← TORNA AL SITO</GhostBtn>
           </div>
         </div>
       );
@@ -399,34 +584,35 @@
       const sc = form.followers && form.views ? scoreCandidate(form) : null;
 
       return (
-        <div style={{minHeight:"100vh",background:"var(--black)",paddingBottom:80}}>
-          <div style={{padding:"32px 40px 0",maxWidth:760,margin:"0 auto"}}>
-            <button onClick={onBack} style={{background:"none",border:"none",color:"#3a3a3a",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:24,display:"flex",alignItems:"center",gap:8}}>← INDIETRO</button>
-            <Logo size={21}/>
-            <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(30px,5vw,50px)",color:"white",margin:"18px 0 8px",lineHeight:1}}>
+        <div className="form-page">
+          {/* Mini nav */}
+          <nav className="nav">
+            <Logo size={19}/>
+            <button onClick={onBack} style={{background:"transparent",border:"1px solid #1e1e1e",color:"#444",padding:"5px 14px",fontSize:10,fontFamily:"var(--fu)",letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>← INDIETRO</button>
+          </nav>
+
+          <div className="form-inner">
+            <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(28px,5vw,46px)",color:"white",lineHeight:1,marginBottom:8}}>
               ATHLETES APPLICATION <span style={{color:"var(--red)"}}>2025</span>
             </h1>
-            <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,marginBottom:36}}>
+            <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,marginBottom:32}}>
               Compila ogni campo con precisione. Risposte incomplete o superficiali portano automaticamente alla non selezione.
             </p>
-          </div>
 
-          <div style={{maxWidth:760,margin:"0 auto",padding:"0 40px 36px"}}>
-            <div style={{display:"flex",gap:3}}>
+            {/* Steps bar */}
+            <div className="steps-bar">
               {STEPS.map((s,i)=>(
-                <div key={s} style={{flex:1}}>
-                  <div style={{height:2,background:i<=step?"var(--red)":"#1a1a1a",transition:"background .3s",marginBottom:5}}/>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,letterSpacing:"0.1em",color:i===step?"white":"#222",textTransform:"uppercase",lineHeight:1.4}}>{s}</div>
+                <div key={s} className="step-item">
+                  <div className="step-line" style={{background:i<=step?"var(--red)":"#1a1a1a"}}/>
+                  <div className="step-label" style={{color:i===step?"white":"#222"}}>{s}</div>
                 </div>
               ))}
             </div>
-          </div>
 
-          <div style={{maxWidth:760,margin:"0 auto",padding:"0 40px"}}>
-
+            {/* STEP 1 */}
             {step===0 && (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"fadeUp .4s ease both"}}>
-                <h3 style={{fontFamily:"var(--fd)",fontSize:30,color:"white"}}>CHI SEI</h3>
+              <div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"white"}}>CHI SEI</h3>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                   <Field label="Nome e cognome" required><input value={form.fullName} onChange={e=>u("fullName",e.target.value)} placeholder="Mario Rossi"/></Field>
                   <Field label="Età" required><input type="number" value={form.age} onChange={e=>u("age",e.target.value)} placeholder="24"/></Field>
@@ -436,63 +622,61 @@
               </div>
             )}
 
+            {/* STEP 2 */}
             {step===1 && (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"fadeUp .4s ease both"}}>
-                <h3 style={{fontFamily:"var(--fd)",fontSize:30,color:"white"}}>SOCIAL & NUMERI</h3>
+              <div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"white"}}>SOCIAL & NUMERI</h3>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                  <Field label="Instagram (link o @handle)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
+                  <Field label="Instagram (@handle o link)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
                   <Field label="Follower totali Instagram" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
                 </div>
 
                 <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Deve mostrare: Visualizzazioni · Interazioni · Nuovi follower">
-                  <div style={{border:"1px dashed #252525",padding:28,textAlign:"center",background:"#090909",cursor:"pointer",transition:"border-color .2s"}}
-                    onClick={()=>fileRef.current?.click()}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor="var(--red)"}
-                    onMouseLeave={e=>e.currentTarget.style.borderColor="#252525"}>
+                  <div className="upload-area" onClick={()=>fileRef.current?.click()}>
                     <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
                     {form.screenshotData ? (
                       <div>
                         <img src={form.screenshotData} alt="Insights" style={{maxHeight:180,maxWidth:"100%",marginBottom:10,objectFit:"contain"}}/>
                         <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em"}}>✓ {form.screenshotName}</div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#333",marginTop:4,letterSpacing:"0.12em"}}>Clicca per cambiare</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#333",marginTop:4}}>Clicca per cambiare</div>
                       </div>
                     ) : (
                       <div>
-                        <div style={{fontSize:32,marginBottom:8}}>📊</div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#333",letterSpacing:"0.18em"}}>CLICCA PER CARICARE</div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#222",marginTop:4,letterSpacing:"0.12em"}}>JPG · PNG · Max 10MB</div>
+                        <div style={{fontSize:28,marginBottom:8}}>📊</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#333",letterSpacing:"0.15em"}}>CLICCA PER CARICARE</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#222",marginTop:4}}>JPG · PNG · Max 10MB</div>
                       </div>
                     )}
                   </div>
                 </Field>
 
-                <div style={{background:"#0c0c0c",border:"1px solid #1a1a1a",padding:18}}>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#333",letterSpacing:"0.3em",marginBottom:14}}>DATI DALLO SCREENSHOT — inserisci i numeri che vedi</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-                    <Field label="Visualizzazioni (30gg)" required><input type="number" value={form.views} onChange={e=>u("views",e.target.value)} placeholder="es. 3540"/></Field>
-                    <Field label="Interazioni (30gg)" required hint="Like+commenti+salvataggi+condivisioni"><input type="number" value={form.interactions} onChange={e=>u("interactions",e.target.value)} placeholder="es. 109"/></Field>
-                    <Field label="Nuovi follower (30gg)" required><input type="number" value={form.newFollowers} onChange={e=>u("newFollowers",e.target.value)} placeholder="es. 18"/></Field>
+                <div style={{background:"#0c0c0c",border:"1px solid #1a1a1a",padding:16}}>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#333",letterSpacing:"0.28em",marginBottom:14}}>DATI DALLO SCREENSHOT</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                    <Field label="Visualizzazioni (30gg)" required><input type="number" value={form.views} onChange={e=>u("views",e.target.value)} placeholder="3540"/></Field>
+                    <Field label="Interazioni (30gg)" required hint="Like+commenti+salvataggi"><input type="number" value={form.interactions} onChange={e=>u("interactions",e.target.value)} placeholder="109"/></Field>
+                    <Field label="Nuovi follower (30gg)" required><input type="number" value={form.newFollowers} onChange={e=>u("newFollowers",e.target.value)} placeholder="18"/></Field>
                   </div>
                   {form.views>0 && form.interactions>0 && (
-                    <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid #1a1a1a",display:"flex",gap:28}}>
+                    <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #1a1a1a",display:"flex",gap:24,flexWrap:"wrap"}}>
                       <div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.25em",marginBottom:3}}>ENGAGEMENT RATE</div>
-                        <div style={{fontFamily:"var(--fd)",fontSize:26,color:"var(--red)"}}>{((form.interactions/form.views)*100).toFixed(2)}%</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em",marginBottom:2}}>ENGAGEMENT RATE</div>
+                        <div style={{fontFamily:"var(--fd)",fontSize:24,color:"var(--red)"}}>{((form.interactions/form.views)*100).toFixed(2)}%</div>
                       </div>
                       {form.followers>0 && (
                         <div>
-                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.25em",marginBottom:3}}>REACH RATE</div>
-                          <div style={{fontFamily:"var(--fd)",fontSize:26,color:"var(--gold)"}}>{((form.views/form.followers)*100).toFixed(1)}%</div>
+                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em",marginBottom:2}}>REACH RATE</div>
+                          <div style={{fontFamily:"var(--fd)",fontSize:24,color:"var(--gold)"}}>{((form.views/form.followers)*100).toFixed(1)}%</div>
                         </div>
                       )}
                     </div>
                   )}
                 </div>
 
-                <Field label="TikTok (link o @handle)" hint="Opzionale"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
+                <Field label="TikTok (@handle o link)" hint="Opzionale"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
 
                 <Field label="Hai già collaborato con brand fitness?" required>
-                  <div style={{display:"flex",gap:8}}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=>(
                       <Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>
                     ))}
@@ -500,16 +684,19 @@
                 </Field>
                 {form.hasBrandCollabs==="yes" && (
                   <Field label="Quali brand? Hai collaborazioni in corso?">
-                    <textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi brevemente il tipo di collaborazione..."/>
+                    <textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..."/>
                   </Field>
                 )}
               </div>
             )}
 
+            {/* STEP 3 */}
             {step===2 && (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"fadeUp .4s ease both"}}>
-                <h3 style={{fontFamily:"var(--fd)",fontSize:30,color:"white"}}>POSIZIONAMENTO</h3>
-                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,padding:"12px 16px",border:"1px solid #1a1a1a"}}>Questa sezione serve a capire chi sei come creator, al di là dei numeri.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"white"}}>POSIZIONAMENTO</h3>
+                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,padding:"12px 16px",border:"1px solid #1a1a1a"}}>
+                  Questa sezione serve a capire chi sei come creator, al di là dei numeri.
+                </div>
                 <Field label="Come ti descriveresti in 3 parole come creator?" required>
                   <input value={form.threeWords} onChange={e=>u("threeWords",e.target.value)} placeholder="es. Autentico, Diretto, Consistente"/>
                 </Field>
@@ -517,22 +704,23 @@
                   <textarea value={form.contentType} onChange={e=>u("contentType",e.target.value)} rows={4} placeholder="Formato, temi, approccio, frequenza..."/>
                 </Field>
                 <Field label="Cosa vuoi trasmettere alle persone che ti seguono?" required>
-                  <textarea value={form.whatToTransmit} onChange={e=>u("whatToTransmit",e.target.value)} rows={4} placeholder="Qual è il messaggio centrale che porti avanti con i tuoi contenuti?"/>
+                  <textarea value={form.whatToTransmit} onChange={e=>u("whatToTransmit",e.target.value)} rows={4} placeholder="Qual è il messaggio centrale che porti avanti?"/>
                 </Field>
               </div>
             )}
 
+            {/* STEP 4 */}
             {step===3 && (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"fadeUp .4s ease both"}}>
-                <h3 style={{fontFamily:"var(--fd)",fontSize:30,color:"white"}}>FIT CON EVORΛ</h3>
-                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,padding:"12px 16px",border:"1px solid var(--red)",borderLeft:"3px solid var(--red)"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"white"}}>FIT CON EVORΛ</h3>
+                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,padding:"12px 16px",borderLeft:"3px solid var(--red)",background:"#0c0404"}}>
                   La sezione più importante. Qui capiamo se hai davvero capito cosa è EVORΛ.
                 </div>
                 <Field label="Perché vuoi entrare in EVORΛ?" required hint="Sii specifico. Risposte generiche vengono scartate.">
                   <textarea value={form.motivation} onChange={e=>u("motivation",e.target.value)} rows={5} placeholder="Non dirci cosa vuoi ottenere. Dicci perché EVORΛ e non un altro brand..."/>
                 </Field>
-                <div style={{fontFamily:"var(--fu)",fontSize:10,color:form.motivation.length>200?"#6a9a7a":form.motivation.length>100?"var(--gold)":"#2a2a2a",letterSpacing:"0.15em",marginTop:-14}}>
-                  {form.motivation.length} caratteri {form.motivation.length<150?"— scrivi almeno 150 caratteri":form.motivation.length<300?"— buono":"— ottimo"}
+                <div style={{fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.12em",color:form.motivation.length>200?"#6a9a7a":form.motivation.length>100?"var(--gold)":"#2a2a2a",marginTop:-12}}>
+                  {form.motivation.length} caratteri {form.motivation.length<150?"— scrivi almeno 150":form.motivation.length<300?"— buono":"— ottimo"}
                 </div>
                 <Field label="Cosa ti piace del brand EVORΛ?" required>
                   <textarea value={form.brandLike} onChange={e=>u("brandLike",e.target.value)} rows={4} placeholder="Cosa ti ha colpito? Cosa sai di EVORΛ?"/>
@@ -540,30 +728,31 @@
                 <Field label="Come integreresti EVORΛ nei tuoi contenuti senza renderlo una pubblicità?" required>
                   <textarea value={form.contentIntegration} onChange={e=>u("contentIntegration",e.target.value)} rows={5} placeholder="Spiega concretamente come mostreresti EVORΛ nel tuo contesto..."/>
                 </Field>
-                <Field label="Che tipo di immagine pensi debba trasmettere un atleta EVORΛ?" required>
+                <Field label="Che tipo di immagine deve trasmettere un atleta EVORΛ?" required>
                   <textarea value={form.athleteImage} onChange={e=>u("athleteImage",e.target.value)} rows={4} placeholder="Come vedi l'atleta EVORΛ ideale?"/>
                 </Field>
               </div>
             )}
 
+            {/* STEP 5 */}
             {step===4 && (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"fadeUp .4s ease both"}}>
-                <h3 style={{fontFamily:"var(--fd)",fontSize:30,color:"white"}}>MENTALITÀ</h3>
-                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,padding:"12px 16px",border:"1px solid var(--red)",borderLeft:"3px solid var(--red)"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"white"}}>MENTALITÀ</h3>
+                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",lineHeight:1.8,padding:"12px 16px",borderLeft:"3px solid var(--red)",background:"#0c0404"}}>
                   Questa sezione filtra il 90% delle candidature. Non esistono risposte giuste o sbagliate — esistono risposte oneste.
                 </div>
                 <Field label="Preferisci creare contenuti di qualità o puntare subito a vendere? Perché?" required>
                   <textarea value={form.qualityVsSell} onChange={e=>u("qualityVsSell",e.target.value)} rows={5} placeholder="Non dirci quello che vuoi sentire. Sii onesto/a..."/>
                 </Field>
                 <Field label="Sei disposto/a a lavorare sulla costruzione del brand senza aspettarti risultati economici immediati?" required>
-                  <div style={{display:"flex",gap:8,marginBottom:4}}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {[["yes","Sì"],["no","No"],["depends","Dipende"]].map(([v,l])=>(
                       <Choice key={v} label={l} value={v} selected={form.buildWithoutEarnings===v} onClick={v=>u("buildWithoutEarnings",v)}/>
                     ))}
                   </div>
                 </Field>
                 <Field label="Come reagisci se un contenuto non performa?" required>
-                  <textarea value={form.badContentReaction} onChange={e=>u("badContentReaction",e.target.value)} rows={4} placeholder="Descrivi il tuo processo mentale quando qualcosa non va come previsto..."/>
+                  <textarea value={form.badContentReaction} onChange={e=>u("badContentReaction",e.target.value)} rows={4} placeholder="Descrivi il tuo processo mentale..."/>
                 </Field>
                 <Field label="Cosa significa per te rappresentare un brand?" required>
                   <textarea value={form.brandMeaning} onChange={e=>u("brandMeaning",e.target.value)} rows={5} placeholder="Cosa cambia nel tuo modo di creare contenuti quando sei ambassador?"/>
@@ -571,17 +760,18 @@
               </div>
             )}
 
+            {/* STEP 6 */}
             {step===5 && (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"fadeUp .4s ease both"}}>
-                <h3 style={{fontFamily:"var(--fd)",fontSize:30,color:"white"}}>IMPEGNO & EXTRA</h3>
-                <Field label="Quanti contenuti sei disposto/a a creare al mese per EVORΛ?" required>
+              <div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"white"}}>IMPEGNO & EXTRA</h3>
+                <Field label="Quanti contenuti al mese per EVORΛ?" required>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {[["1-2","1-2/mese"],["3-5","3-5/mese"],["6-10","6-10/mese"],["10+","10+/mese"]].map(([v,l])=>(
                       <Choice key={v} label={l} value={v} selected={form.contentPerMonth===v} onClick={v=>u("contentPerMonth",v)}/>
                     ))}
                   </div>
                 </Field>
-                <Field label="Hai già una routine di pubblicazione costante?" required>
+                <Field label="Hai una routine di pubblicazione costante?" required>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {[["yes","Sì, sono consistente"],["no","No, sono irregolare"],["building","La sto costruendo"]].map(([v,l])=>(
                       <Choice key={v} label={l} value={v} selected={form.hasRoutine===v} onClick={v=>u("hasRoutine",v)}/>
@@ -590,15 +780,15 @@
                 </Field>
                 <Field label="Sei disponibile a seguire linee guida creative e di brand?" required>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {[["yes","Sì, senza problemi"],["mostly","Sì, con flessibilità"],["no","No"]].map(([v,l])=>(
+                    {[["yes","Sì"],["mostly","Con flessibilità"],["no","No"]].map(([v,l])=>(
                       <Choice key={v} label={l} value={v} selected={form.followsGuidelines===v} onClick={v=>u("followsGuidelines",v)}/>
                     ))}
                   </div>
                 </Field>
 
                 <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:4}}>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:18}}>CAMPI OPZIONALI</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:18}}>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:16}}>CAMPI OPZIONALI</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:16}}>
                     <Field label="Hai mai acquistato prodotti EVORΛ? Se sì, quali?">
                       <input value={form.boughtProducts} onChange={e=>u("boughtProducts",e.target.value)} placeholder="es. Pre-workout, abbigliamento..."/>
                     </Field>
@@ -612,26 +802,26 @@
                 </div>
 
                 {sc && (
-                  <div style={{background:"#0a0a0a",border:`1px solid ${sc.tierColor}30`,padding:22,marginTop:4}}>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.35em",marginBottom:14}}>ANTEPRIMA PROFILO</div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{background:"#0a0a0a",border:`1px solid ${sc.tierColor}30`,padding:20,marginTop:4}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:12}}>ANTEPRIMA PROFILO</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                       <div>
                         <Tag color={sc.tierColor}>{sc.tier}</Tag>
-                        <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#333",marginTop:7,letterSpacing:"0.15em"}}>{sc.tierLabel}</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#333",marginTop:6}}>{sc.tierLabel}</div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontFamily:"var(--fd)",fontSize:50,color:sc.tierColor,lineHeight:1}}>{sc.score}</div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em"}}>/ 100</div>
+                        <div style={{fontFamily:"var(--fd)",fontSize:48,color:sc.tierColor,lineHeight:1}}>{sc.score}</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a"}}>/ 100</div>
                       </div>
                     </div>
-                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+                    <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
                       {sc.reasons.map(r=><Tag key={r} color="#2a2a2a">{r}</Tag>)}
                     </div>
-                    <div style={{display:"flex",gap:24,paddingTop:14,borderTop:"1px solid #1a1a1a"}}>
+                    <div style={{display:"flex",gap:20,paddingTop:12,borderTop:"1px solid #1a1a1a",flexWrap:"wrap"}}>
                       {[["ER REACH",`${sc.erReach}%`,"var(--red)"],["REACH RATE",`${sc.reachRate}%`,"var(--gold)"],["GROWTH",`${sc.growthRate}%`,"#6a9a7a"]].map(([l,v,c])=>(
                         <div key={l}>
-                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em"}}>{l}</div>
-                          <div style={{fontFamily:"var(--fd)",fontSize:22,color:c}}>{v}</div>
+                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.15em"}}>{l}</div>
+                          <div style={{fontFamily:"var(--fd)",fontSize:20,color:c}}>{v}</div>
                         </div>
                       ))}
                     </div>
@@ -640,9 +830,14 @@
               </div>
             )}
 
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:44,paddingTop:28,borderTop:"1px solid var(--brd)"}}>
-              <Btn ghost onClick={()=>step>0?setStep(step-1):onBack()}>{step===0?"ANNULLA":"← INDIETRO"}</Btn>
-              <Btn onClick={()=>step<5?setStep(step+1):submit()}>{step<5?"CONTINUA →":"INVIA CANDIDATURA"}</Btn>
+            {/* NAV BUTTONS */}
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:40,paddingTop:24,borderTop:"1px solid var(--brd)",gap:12}}>
+              <GhostBtn onClick={()=>step>0?setStep(step-1):onBack()} style={{flex:1,padding:"13px 16px",fontSize:11}}>
+                {step===0?"ANNULLA":"← INDIETRO"}
+              </GhostBtn>
+              <PrimaryBtn onClick={()=>step<5?setStep(step+1):submit()} style={{flex:2,padding:"13px 16px",fontSize:11}}>
+                {step<5?"CONTINUA →":"INVIA CANDIDATURA"}
+              </PrimaryBtn>
             </div>
           </div>
         </div>
@@ -659,6 +854,7 @@
       const [search,setSearch]=useState("");
       const [note,setNote]=useState("");
       const [code,setCode]=useState("");
+      const [showDetail,setShowDetail]=useState(false);
       const PASS="evora2025";
 
       useEffect(()=>{if(auth)setApps(getApps());},[auth]);
@@ -671,67 +867,76 @@
       const del=(id)=>{
         if(!window.confirm("Eliminare?"))return;
         const u=apps.filter(a=>a.id!==id);
-        setApps(u);saveApps(u);setSel(null);
+        setApps(u);saveApps(u);setSel(null);setShowDetail(false);
       };
 
+      const selectApp = (a) => { setSel(a); setNote(a.notes||""); setCode(a.creatorCode||""); setShowDetail(true); };
+
       const list=apps.filter(a=>{
-        const mt=filter==="ALL"||a.tier===filter||(filter==="NEW"&&a.status==="new");
+        const mt=filter==="ALL"?true:filter==="NEW"?a.status==="new":a.tier===filter;
         const ms=!search||(a.fullName||"").toLowerCase().includes(search.toLowerCase())||(a.instagram||"").toLowerCase().includes(search.toLowerCase());
         return mt&&ms;
       });
 
       const st={total:apps.length,nw:apps.filter(a=>a.status==="new").length,el:apps.filter(a=>a.tier==="ELITE").length,pr:apps.filter(a=>a.tier==="PRO").length,ri:apps.filter(a=>a.tier==="RISING").length,ap:apps.filter(a=>a.status==="approved").length};
 
-      if(!auth)return(
-        <div style={{minHeight:"100vh",background:"var(--black)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{width:340,animation:"fadeUp .6s ease both"}}>
-            <Logo size={19}/>
-            <h2 style={{fontFamily:"var(--fd)",fontSize:38,color:"white",margin:"26px 0 6px"}}>AREA RISERVATA</h2>
-            <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",marginBottom:26}}>Accesso esclusivo team EVORΛ</p>
+      if(!auth) return (
+        <div style={{minHeight:"100vh",background:"var(--black)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{width:"100%",maxWidth:340,animation:"fadeUp .6s ease both"}}>
+            <Logo size={20}/>
+            <h2 style={{fontFamily:"var(--fd)",fontSize:36,color:"white",margin:"24px 0 6px"}}>AREA RISERVATA</h2>
+            <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#3a3a3a",marginBottom:24}}>Accesso esclusivo team EVORΛ</p>
             <input type="password" placeholder="Password admin" style={{marginBottom:10}} value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&pw===PASS&&setAuth(true)}/>
-            <Btn onClick={()=>pw===PASS?setAuth(true):alert("Password errata")} style={{width:"100%"}}>ACCEDI</Btn>
-            <Btn ghost onClick={onBack} style={{width:"100%",marginTop:8}}>← TORNA AL SITO</Btn>
+            <PrimaryBtn onClick={()=>pw===PASS?setAuth(true):alert("Password errata")} style={{width:"100%",padding:"13px"}}>ACCEDI</PrimaryBtn>
+            <GhostBtn onClick={onBack} style={{width:"100%",marginTop:8,padding:"13px"}}>← TORNA AL SITO</GhostBtn>
             <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#1e1e1e",letterSpacing:"0.15em",textAlign:"center",marginTop:12}}>DEMO: evora2025</div>
           </div>
         </div>
       );
 
-      return(
-        <div style={{minHeight:"100vh",background:"var(--black)",display:"flex",flexDirection:"column"}}>
-          <div style={{padding:"13px 22px",borderBottom:"1px solid var(--brd)",display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--deep)",flexShrink:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:18}}><Logo size={16}/><Tag color="var(--red)">ADMIN</Tag></div>
-            <Btn ghost onClick={onBack} style={{padding:"6px 16px",fontSize:10}}>← SITO</Btn>
+      return (
+        <div style={{height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          {/* Nav */}
+          <div style={{height:60,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px",borderBottom:"1px solid var(--brd)",background:"var(--deep)",flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:14}}>
+              <Logo size={16}/>
+              <Tag color="var(--red)">ADMIN</Tag>
+            </div>
+            <GhostBtn onClick={onBack} style={{padding:"6px 14px",fontSize:10}}>← SITO</GhostBtn>
           </div>
 
+          {/* Stats */}
           <div style={{display:"flex",background:"var(--surf)",borderBottom:"1px solid var(--brd)",flexShrink:0,overflowX:"auto"}}>
-            {[["TOTALE",st.total,"white"],["NUOVE",st.nw,"var(--red)"],["ELITE",st.el,"var(--red)"],["PRO",st.pr,"var(--gold)"],["RISING",st.ri,"#6a9a7a"],["APPROVATI",st.ap,"#6a9a7a"]].map(([l,v,c])=>(
-              <div key={l} style={{padding:"13px 24px",borderRight:"1px solid var(--brd)",textAlign:"center",minWidth:85}}>
-                <div style={{fontFamily:"var(--fd)",fontSize:24,color:c,lineHeight:1}}>{v}</div>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em",marginTop:2}}>{l}</div>
+            {[["TOT",st.total,"white"],["NUOVE",st.nw,"var(--red)"],["ELITE",st.el,"var(--red)"],["PRO",st.pr,"var(--gold)"],["RISING",st.ri,"#6a9a7a"],["OK",st.ap,"#6a9a7a"]].map(([l,v,c])=>(
+              <div key={l} style={{padding:"12px 20px",borderRight:"1px solid var(--brd)",textAlign:"center",minWidth:70,flexShrink:0}}>
+                <div style={{fontFamily:"var(--fd)",fontSize:22,color:c,lineHeight:1}}>{v}</div>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.15em",marginTop:2}}>{l}</div>
               </div>
             ))}
           </div>
 
+          {/* Content */}
           <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-            <div style={{width:340,borderRight:"1px solid var(--brd)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-              <div style={{padding:"12px 14px",borderBottom:"1px solid var(--brd)",background:"var(--black)"}}>
-                <input placeholder="Cerca nome, @handle, email..." style={{marginBottom:9,fontSize:12}} value={search} onChange={e=>setSearch(e.target.value)}/>
+            {/* List — hidden on mobile when detail is open */}
+            <div style={{width:"min(320px, 100%)",borderRight:"1px solid var(--brd)",display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0,display:showDetail?"none":"flex"}} className="admin-list-wrap">
+              <div style={{padding:"12px 14px",borderBottom:"1px solid var(--brd)"}}>
+                <input placeholder="Cerca nome, @handle..." style={{marginBottom:8,fontSize:12}} value={search} onChange={e=>setSearch(e.target.value)}/>
                 <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
                   {["ALL","NEW","ELITE","PRO","RISING","PENDING"].map(f=>(
                     <button key={f} onClick={()=>setFilter(f)}
-                      style={{padding:"4px 9px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",background:filter===f?"var(--red)":"#0d0d0d",border:`1px solid ${filter===f?"var(--red)":"#1a1a1a"}`,color:filter===f?"white":"#3a3a3a",transition:"all .2s"}}>{f}</button>
+                      style={{padding:"4px 8px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.08em",textTransform:"uppercase",cursor:"pointer",background:filter===f?"var(--red)":"#0d0d0d",border:`1px solid ${filter===f?"var(--red)":"#1a1a1a"}`,color:filter===f?"white":"#3a3a3a",transition:"all .2s"}}>{f}</button>
                   ))}
                 </div>
               </div>
               <div style={{overflow:"auto",flex:1}}>
-                {list.length===0&&<div style={{padding:28,textAlign:"center",fontFamily:"var(--fu)",fontSize:10,color:"#1e1e1e",letterSpacing:"0.2em"}}>NESSUNA CANDIDATURA</div>}
+                {list.length===0&&<div style={{padding:24,textAlign:"center",fontFamily:"var(--fu)",fontSize:10,color:"#1e1e1e",letterSpacing:"0.2em"}}>NESSUNA CANDIDATURA</div>}
                 {list.map(a=>(
-                  <div key={a.id} onClick={()=>{setSel(a);setNote(a.notes||"");setCode(a.creatorCode||"");}}
-                    style={{padding:"13px 16px",borderBottom:"1px solid var(--brd)",cursor:"pointer",background:sel?.id===a.id?"#0e0e0e":"transparent",borderLeft:`2px solid ${sel?.id===a.id?"var(--red)":"transparent"}`,transition:"all .15s"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
+                  <div key={a.id} onClick={()=>selectApp(a)}
+                    style={{padding:"12px 16px",borderBottom:"1px solid var(--brd)",cursor:"pointer",background:sel?.id===a.id?"#0e0e0e":"transparent",borderLeft:`2px solid ${sel?.id===a.id?"var(--red)":"transparent"}`,transition:"all .15s"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
                       <div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:13,color:"white",letterSpacing:"0.03em"}}>{a.fullName||"—"}</div>
-                        <div style={{fontFamily:"var(--fb)",fontSize:11,color:"#3a3a3a",marginTop:2}}>{a.instagram} · {a.city}</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:13,color:"white"}}>{a.fullName||"—"}</div>
+                        <div style={{fontFamily:"var(--fb)",fontSize:11,color:"#3a3a3a",marginTop:1}}>{a.instagram}</div>
                       </div>
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
                         <Tag color={a.tierColor}>{a.tier}</Tag>
@@ -743,101 +948,114 @@
                     <div style={{display:"flex",gap:12,alignItems:"center"}}>
                       <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#3a3a3a"}}>👥 {parseInt(a.followers||0).toLocaleString()}</span>
                       <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#3a3a3a"}}>ER {a.erReach}%</span>
-                      <span style={{fontFamily:"var(--fd)",fontSize:19,color:a.tierColor,marginLeft:"auto"}}>{a.score}</span>
+                      <span style={{fontFamily:"var(--fd)",fontSize:18,color:a.tierColor,marginLeft:"auto"}}>{a.score}</span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {sel ? (
-              <div style={{flex:1,overflow:"auto",padding:28}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+            {/* Detail */}
+            {sel && showDetail && (
+              <div style={{flex:1,overflow:"auto",padding:20}}>
+                {/* Back button on mobile */}
+                <button onClick={()=>setShowDetail(false)}
+                  style={{background:"transparent",border:"none",color:"#555",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:20,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                  ← LISTA
+                </button>
+
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
                   <div>
-                    <h2 style={{fontFamily:"var(--fd)",fontSize:42,color:"white",lineHeight:1}}>{sel.fullName}</h2>
+                    <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(28px,5vw,40px)",color:"white",lineHeight:1}}>{sel.fullName}</h2>
                     <div style={{fontFamily:"var(--fb)",fontSize:13,color:"#4a4a4a",marginTop:3}}>{sel.email} · {sel.city} · {sel.age} anni</div>
                     <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap"}}>
                       <Tag color={sel.tierColor}>{sel.tier}</Tag>
                       <Tag color="#2a2a2a">{sel.tierLabel}</Tag>
-                      <span style={{fontFamily:"var(--fu)",fontSize:9,color:"#222",padding:"3px 8px",letterSpacing:"0.1em"}}>{new Date(sel.date).toLocaleDateString("it-IT")}</span>
                     </div>
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontFamily:"var(--fd)",fontSize:68,color:sel.tierColor,lineHeight:1}}>{sel.score}</div>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em"}}>SCORE / 100</div>
+                    <div style={{fontFamily:"var(--fd)",fontSize:60,color:sel.tierColor,lineHeight:1}}>{sel.score}</div>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a"}}>/ 100</div>
                   </div>
                 </div>
 
-                <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:18}}>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:9}}>ANALISI PROFILO</div>
-                  <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+                {/* Score breakdown */}
+                <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:16}}>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.28em",marginBottom:8}}>ANALISI</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
                     {sel.reasons?.map(r=><Tag key={r} color="#2a2a2a">{r}</Tag>)}
                   </div>
-                  <div style={{display:"flex",gap:24}}>
-                    {[["ER REACH",`${sel.erReach}%`,"var(--red)"],["REACH RATE",`${sel.reachRate}%`,"var(--gold)"],["GROWTH",`${sel.growthRate}%`,"#6a9a7a"]].map(([l,v,c])=>(
+                  <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+                    {[["ER",`${sel.erReach}%`,"var(--red)"],["REACH",`${sel.reachRate}%`,"var(--gold)"],["GROWTH",`${sel.growthRate}%`,"#6a9a7a"]].map(([l,v,c])=>(
                       <div key={l}>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em"}}>{l}</div>
-                        <div style={{fontFamily:"var(--fd)",fontSize:22,color:c}}>{v}</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a"}}>{l}</div>
+                        <div style={{fontFamily:"var(--fd)",fontSize:20,color:c}}>{v}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div style={{display:"grid",gridTemplateColumns:sel.screenshotData?"1fr 1fr":"1fr",gap:14,marginBottom:18}}>
-                  {sel.screenshotData&&(
-                    <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14}}>
-                      <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:10}}>SCREENSHOT INSIGHTS</div>
-                      <img src={sel.screenshotData} alt="Insights" style={{width:"100%",objectFit:"contain",maxHeight:280}}/>
+                {/* Screenshot */}
+                {sel.screenshotData && (
+                  <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div>
+                    <img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:300,objectFit:"contain"}}/>
+                  </div>
+                )}
+
+                {/* Dati griglia */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:16}}>
+                  {[["Instagram",sel.instagram],["TikTok",sel.tiktok||"—"],["Follower",parseInt(sel.followers||0).toLocaleString()],["Visualizzazioni",parseInt(sel.views||0).toLocaleString()],["Interazioni",parseInt(sel.interactions||0).toLocaleString()],["+Follower",`+${sel.newFollowers||0}`]].map(([k,v])=>(
+                    <div key={k} style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:"10px 12px"}}>
+                      <div style={{fontFamily:"var(--fu)",fontSize:8,color:"#2a2a2a",letterSpacing:"0.18em",marginBottom:3}}>{k}</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:12,color:"white"}}>{v}</div>
                     </div>
-                  )}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2,alignContent:"start"}}>
-                    {[["Instagram",sel.instagram],["TikTok",sel.tiktok||"—"],["Follower",parseInt(sel.followers||0).toLocaleString()],["Visualizzazioni",parseInt(sel.views||0).toLocaleString()],["Interazioni",parseInt(sel.interactions||0).toLocaleString()],["+Follower 30gg",`+${sel.newFollowers||0}`],["Brand collabs",sel.hasBrandCollabs==="yes"?"Sì":"No"],["Età",sel.age]].map(([k,v])=>(
-                      <div key={k} style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:"11px 14px"}}>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.2em",marginBottom:3}}>{k}</div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:13,color:"white"}}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
+                  ))}
                 </div>
 
-                {[["3 PAROLE COME CREATOR",sel.threeWords],["TIPO DI CONTENUTI",sel.contentType],["COSA TRASMETTE",sel.whatToTransmit],["PERCHÉ EVORΛ",sel.motivation],["COSA GLI PIACE DI EVORΛ",sel.brandLike],["COME INTEGREREBBE EVORΛ",sel.contentIntegration],["IMMAGINE ATLETA EVORΛ",sel.athleteImage],["QUALITÀ VS VENDERE",sel.qualityVsSell],["COSTRUIRE SENZA GUADAGNO IMMEDIATO",sel.buildWithoutEarnings],["REAZIONE CONTENUTO NON PERFORMA",sel.badContentReaction],["SIGNIFICATO RAPPRESENTARE UN BRAND",sel.brandMeaning],["CONTENUTI/MESE",sel.contentPerMonth],["ROUTINE",sel.hasRoutine],["LINEE GUIDA",sel.followsGuidelines],["PRODOTTI ACQUISTATI",sel.boughtProducts],["MIGLIORAMENTI",sel.improvements],["NOTA EXTRA",sel.extra],["DETTAGLI COLLABORAZIONI",sel.brandCollabDetails]].filter(([,v])=>v).map(([k,v])=>(
-                  <div key={k} style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:6}}>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:7}}>{k}</div>
+                {/* Risposte */}
+                {[["3 PAROLE",sel.threeWords],["TIPO CONTENUTI",sel.contentType],["COSA TRASMETTE",sel.whatToTransmit],["PERCHÉ EVORΛ",sel.motivation],["COSA GLI PIACE",sel.brandLike],["COME INTEGREREBBE",sel.contentIntegration],["IMMAGINE ATLETA",sel.athleteImage],["QUALITÀ VS VENDERE",sel.qualityVsSell],["COSTRUIRE SENZA GUADAGNO",sel.buildWithoutEarnings],["REAZIONE BAD CONTENT",sel.badContentReaction],["RAPPRESENTARE UN BRAND",sel.brandMeaning],["CONTENUTI/MESE",sel.contentPerMonth],["ROUTINE",sel.hasRoutine],["LINEE GUIDA",sel.followsGuidelines],["PRODOTTI ACQUISTATI",sel.boughtProducts],["MIGLIORAMENTI",sel.improvements],["NOTA EXTRA",sel.extra],["DETTAGLI COLLABS",sel.brandCollabDetails]].filter(([,v])=>v).map(([k,v])=>(
+                  <div key={k} style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:6}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.25em",marginBottom:6}}>{k}</div>
                     <p style={{fontFamily:"var(--fb)",fontSize:13,color:"#777",lineHeight:1.8}}>{v}</p>
                   </div>
                 ))}
 
-                <div style={{borderTop:"1px solid var(--brd)",paddingTop:22,marginTop:20,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                {/* Admin tools */}
+                <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                   <div>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:7}}>CODICE CREATOR</div>
-                    <div style={{display:"flex",gap:7}}>
-                      <input value={code} onChange={e=>setCode(e.target.value)} placeholder="es. MARIO10" style={{fontSize:13}}/>
-                      <button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #2a2a2a",color:"#555",padding:"10px 14px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.1em",cursor:"pointer",whiteSpace:"nowrap"}}>SALVA</button>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.25em",marginBottom:7}}>CODICE CREATOR</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/>
+                      <button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #2a2a2a",color:"#555",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>SALVA</button>
                     </div>
-                    {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5,letterSpacing:"0.12em"}}>✓ {sel.creatorCode}</div>}
+                    {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5}}>✓ {sel.creatorCode}</div>}
                   </div>
                   <div>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:7}}>STATO</div>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.25em",marginBottom:7}}>STATO</div>
                     <div style={{display:"flex",gap:3}}>
-                      {[["new","NUOVA","#2a2a2a"],["review","REVIEW","var(--gold)"],["approved","OK","#1a4a1a"],["rejected","NO","#4a1a1a"]].map(([s,l,c])=>(
-                        <button key={s} onClick={()=>upd(sel.id,{status:s})} style={{flex:1,padding:"9px 4px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.08em",textTransform:"uppercase",cursor:"pointer",background:sel.status===s?c:"#0d0d0d",border:`1px solid ${sel.status===s?c:"#1a1a1a"}`,color:sel.status===s?"white":"#3a3a3a",transition:"all .2s"}}>{l}</button>
+                      {[["new","NEW","#2a2a2a"],["review","REV","var(--gold)"],["approved","OK","#1a4a1a"],["rejected","NO","#4a1a1a"]].map(([s,l,c])=>(
+                        <button key={s} onClick={()=>upd(sel.id,{status:s})} style={{flex:1,padding:"9px 4px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.06em",textTransform:"uppercase",cursor:"pointer",background:sel.status===s?c:"#0d0d0d",border:`1px solid ${sel.status===s?c:"#1a1a1a"}`,color:sel.status===s?"white":"#3a3a3a",transition:"all .2s"}}>{l}</button>
                       ))}
                     </div>
                   </div>
                 </div>
 
                 <div style={{marginTop:14}}>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.3em",marginBottom:7}}>NOTE INTERNE</div>
-                  <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Note riservate al team EVORΛ..." style={{fontSize:13}}/>
-                  <div style={{display:"flex",justifyContent:"space-between",marginTop:9}}>
-                    <Btn onClick={()=>upd(sel.id,{notes:note})} style={{padding:"10px 22px",fontSize:11}}>SALVA NOTE</Btn>
-                    <button onClick={()=>del(sel.id)} style={{background:"transparent",border:"1px solid #3a1010",color:"#5a2020",padding:"10px 22px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>ELIMINA</button>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"#2a2a2a",letterSpacing:"0.25em",marginBottom:7}}>NOTE INTERNE</div>
+                  <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Note riservate al team..." style={{fontSize:13}}/>
+                  <div style={{display:"flex",justifyContent:"space-between",marginTop:9,gap:8}}>
+                    <PrimaryBtn onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>SALVA NOTE</PrimaryBtn>
+                    <button onClick={()=>del(sel.id)} style={{background:"transparent",border:"1px solid #3a1010",color:"#5a2020",padding:"11px 18px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>ELIMINA</button>
                   </div>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {/* Empty state — only on desktop */}
+            {!showDetail && (
               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}>
-                <div style={{fontFamily:"var(--fd)",fontSize:44,color:"#141414"}}>EVORΛ</div>
+                <div style={{fontFamily:"var(--fd)",fontSize:40,color:"#141414"}}>EVORΛ</div>
                 <div style={{fontFamily:"var(--fu)",fontSize:10,color:"#1e1e1e",letterSpacing:"0.3em"}}>SELEZIONA UNA CANDIDATURA</div>
               </div>
             )}
@@ -846,18 +1064,19 @@
       );
     }
 
+    // ─── APP ──────────────────────────────────────────────────────────────────
     function App() {
       const [view,setView]=useState("landing");
-      return(
+      return (
         <>
-          <style>{CSS}</style>
-          {view==="landing"&&<Landing onApply={()=>setView("apply")} onAdmin={()=>setView("admin")}/>}
-          {view==="apply"&&<ApplicationForm onBack={()=>setView("landing")}/>}
-          {view==="admin"&&<AdminPanel onBack={()=>setView("landing")}/>}
+          {view==="landing" && <Landing onApply={()=>setView("apply")} onAdmin={()=>setView("admin")}/>}
+          {view==="apply"   && <ApplicationForm onBack={()=>setView("landing")}/>}
+          {view==="admin"   && <AdminPanel onBack={()=>setView("landing")}/>}
         </>
       );
     }
-    ReactDOM.render(<App/>,document.getElementById("root"));
+
+    ReactDOM.render(<App/>, document.getElementById("root"));
   </script>
 </body>
 </html>
