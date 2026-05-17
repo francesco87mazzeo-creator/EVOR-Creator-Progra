@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v10 — Application 2025</title>
+  <title>EVORΛ ATHLETES v11 — Application 2025</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -164,15 +164,16 @@ const extractInsights = async (base64Image, apiKey) => {
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
 
+  const PROXY = "https://throbbing-feather-957f.francesco87-mazzeo.workers.dev";
+
   let res;
   try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
+    res = await fetch(PROXY, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
@@ -186,7 +187,7 @@ const extractInsights = async (base64Image, apiKey) => {
         }]
       })
     });
-  } catch(e) { throw new Error("Errore di rete"); }
+  } catch(e) { throw new Error("Errore di rete: " + e.message); }
 
   if (!res.ok) {
     let msg = "Errore API";
