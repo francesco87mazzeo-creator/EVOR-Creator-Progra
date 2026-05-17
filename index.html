@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v13 — Application 2025</title>
+  <title>EVORΛ ATHLETES v14 — Application 2025</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -462,69 +462,82 @@ function ApplicationForm({onBack,onAdmin}){
           <Field label="Email" required><input type="email" value={form.email} onChange={e=>u("email",e.target.value)} placeholder="nome@email.com"/></Field>
         </div>}
 
-        {step===1&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+        {step===1&&<div style={{display:"flex",flexDirection:"column",gap:24,animation:"fadeUp .4s ease both"}}>
           <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>SOCIAL & NUMERI</h3>
 
-          {/* INSTAGRAM */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Field label="Instagram (@handle)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
-            <Field label="Follower Instagram" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
-          </div>
+          {/* ── INSTAGRAM ── */}
+          <div>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--red)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>
+              ▸ INSTAGRAM
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                <Field label="Handle (@username)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
+                <Field label="Follower" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
+              </div>
 
-          {/* TIKTOK */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Field label="TikTok (@handle)" hint="Opzionale"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
-            <Field label="Follower TikTok" hint="Opzionale"><input type="number" value={form.tiktokFollowers} onChange={e=>u("tiktokFollowers",e.target.value)} placeholder="es. 10000"/></Field>
-          </div>
+              <Field label="Screenshot Insights — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante — i dati vengono letti automaticamente">
+                <div
+                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
+                  onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
+                  onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
+                  style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                  {form.screenshotData?(
+                    <>
+                      <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
+                      {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
+                      {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
+                      {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
+                      {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
+                    </>
+                  ):(
+                    <>
+                      <div style={{fontSize:36}}>📊</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente dall'AI</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>JPG · PNG · Max 10MB</div>
+                    </>
+                  )}
+                </div>
+                <label style={{display:"block",marginTop:8,padding:"11px 24px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center",transition:"all .2s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
+                  {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
+                </label>
+              </Field>
 
-          {/* UPLOAD SCREENSHOT */}
-          <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante — i dati vengono letti automaticamente">
-            <div
-              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
-              onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
-              onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
-              style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-              {form.screenshotData?(
-                <>
-                  <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
-                  {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
-                  {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
-                  {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
-                  {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
-                </>
-              ):(
-                <>
-                  <div style={{fontSize:36}}>📊</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente dall'AI</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>JPG · PNG · Max 10MB</div>
-                </>
+              {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Lettura automatica dello screenshot...</div></div></div>}
+
+              {ocrStatus==="done"&&(
+                <div className="ocr-box" style={{borderColor:"#6a9a7a50"}}>
+                  <div style={{fontSize:18}}>✅</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",marginBottom:10}}>DATI ESTRATTI AUTOMATICAMENTE</div>
+                    <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+                      {[["Visualizzazioni",form.views],["Interazioni",form.interactions],["Nuovi follower",form.newFollowers]].filter(([,v])=>v).map(([l,v])=>(
+                        <div key={l}>
+                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:2}}>{l}</div>
+                          <div style={{fontFamily:"var(--fd)",fontSize:24,color:"var(--t1)"}}>{parseInt(v).toLocaleString()}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-            <label style={{display:"block",marginTop:8,padding:"11px 24px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center",transition:"all .2s"}}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
-              {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
-              <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
-            </label>
-          </Field>
+          </div>
 
-          {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Lettura automatica dello screenshot...</div></div></div>}
-          {ocrStatus==="done"&&<div className="ocr-box" style={{borderColor:"#6a9a7a50"}}>
-            <div style={{fontSize:18}}>✅</div>
-            <div>
-              <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em"}}>DATI ESTRATTI AUTOMATICAMENTE</div>
-              {/* Mostra dati in sola lettura */}
-              <div style={{display:"flex",gap:20,marginTop:10,flexWrap:"wrap"}}>
-                {[["Visualizzazioni",form.views],["Interazioni",form.interactions],["Nuovi follower",form.newFollowers]].filter(([,v])=>v).map(([l,v])=>(
-                  <div key={l}>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em"}}>{l}</div>
-                    <div style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--t2)"}}>{parseInt(v).toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
+          {/* ── TIKTOK ── */}
+          <div>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--t3)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>
+              ▸ TIKTOK <span style={{fontSize:9,color:"var(--t4)",letterSpacing:"0.2em"}}>(OPZIONALE)</span>
             </div>
-          </div>}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <Field label="Handle (@username)"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
+              <Field label="Follower"><input type="number" value={form.tiktokFollowers} onChange={e=>u("tiktokFollowers",e.target.value)} placeholder="es. 10000"/></Field>
+            </div>
+          </div>
 
         </div>}
 
