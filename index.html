@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779030238</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779030865</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -266,13 +266,14 @@ const getScoringConfig = async () => {
 const invalidateScoringCache = () => { _scoringConfig = null; };
 
 // Normalizza una metrica rispetto ai benchmark della fascia (0-100)
+// poor = soglia1 (fine SCARSO), avg = soglia2 (fine MEDIO), good = soglia3 (fine BUONO, oltre = ECCELLENTE)
 const normalizeMetric = (value, band, metric) => {
   const b = band[metric];
   if (value <= 0) return 0;
-  if (value >= b.good)  return 100;
-  if (value >= b.avg)   return 50 + ((value - b.avg) / (b.good - b.avg)) * 50;
-  if (value >= b.poor)  return 20 + ((value - b.poor) / (b.avg - b.poor)) * 30;
-  return Math.max(0, (value / b.poor) * 20);
+  if (value >= b.good) return 75 + Math.min(((value - b.good) / Math.max(b.good, 1)) * 25, 25);
+  if (value >= b.avg)  return 50 + ((value - b.avg)  / (b.good - b.avg))  * 25;
+  if (value >= b.poor) return 25 + ((value - b.poor) / (b.avg  - b.poor)) * 25;
+  return Math.max(0, (value / Math.max(b.poor, 0.1)) * 25);
 };
 
 // Scoring sincrono (usa config passata come parametro)
@@ -310,7 +311,7 @@ const scoreCandidate = (data, config = DEFAULT_SCORING) => {
   const finalScore = Math.min(Math.round(numericScore * 0.7 + qualScore), 100);
 
   // 7. Label metriche
-  const getLabel = (score) => score >= 75 ? "Eccellente" : score >= 50 ? "Buono" : score >= 20 ? "Nella media" : "Scarso";
+  const getLabel = (score) => score >= 75 ? "Eccellente" : score >= 50 ? "Buono" : score >= 25 ? "Medio" : "Scarso";
 
   // 8. Reasons
   const reasons = [
@@ -830,10 +831,10 @@ function CandidaturePanel({role}){
                 const band = config.bands.find(b=>followers<=b.max) || config.bands[config.bands.length-1];
 
                 const getMetricColor = (value, benchmarks) => {
-                  if(value >= benchmarks.good) return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
-                  if(value >= benchmarks.avg)  return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
-                  if(value >= benchmarks.poor) return { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
-                  return                              { color:"#7a1010", bg:"#1a0808", label:"MOLTO SCARSO" };
+                  if(value >= benchmarks.good) return { color:"#1aaa5a", bg:"#061a0e", label:"ECCELLENTE" };
+                  if(value >= benchmarks.avg)  return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
+                  if(value >= benchmarks.poor) return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
+                  return                              { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
                 };
 
                 const er     = parseFloat(sel.erReach)||0;
@@ -1000,9 +1001,9 @@ function BenchmarkEditor({cfg, updateBand}){
   ];
   const cur = metrics.find(m=>m.key===metricTab);
   const levels = [
-    { key:"poor", label:"SCARSO",  color:"#c0392b", bg:"#2a1010" },
-    { key:"avg",  label:"MEDIO",   color:"#e67e22", bg:"#2a1a08" },
-    { key:"good", label:"BUONO",   color:"#27ae60", bg:"#0a2a14" }
+    { key:"poor", label:"SOGLIA 1 — SCARSO",  color:"#c0392b", bg:"#2a1010", desc:"Sotto questo valore → SCARSO" },
+    { key:"avg",  label:"SOGLIA 2 — MEDIO",   color:"#e67e22", bg:"#2a1a08", desc:"Sotto questo valore → MEDIO" },
+    { key:"good", label:"SOGLIA 3 — BUONO",   color:"#27ae60", bg:"#0a2a14", desc:"Sotto questo valore → BUONO · Sopra → ECCELLENTE" }
   ];
   return(
     <div>
@@ -1024,16 +1025,17 @@ function BenchmarkEditor({cfg, updateBand}){
       </div>
       {/* Legenda */}
       <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        {levels.map(l=>(
-          <div key={l.key} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:l.bg,border:`1px solid ${l.color}40`}}>
+        {[
+          {color:"#c0392b",bg:"#2a1010",label:"SCARSO — sotto soglia 1"},
+          {color:"#e67e22",bg:"#2a1a08",label:"MEDIO — tra soglia 1 e 2"},
+          {color:"#27ae60",bg:"#0a2a14",label:"BUONO — tra soglia 2 e 3"},
+          {color:"#1aaa5a",bg:"#061a0e",label:"ECCELLENTE — sopra soglia 3"}
+        ].map(l=>(
+          <div key={l.label} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:l.bg,border:`1px solid ${l.color}40`}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:l.color}}/>
-            <span style={{fontFamily:"var(--fu)",fontSize:10,color:l.color,letterSpacing:"0.15em",fontWeight:700}}>{l.label}</span>
+            <span style={{fontFamily:"var(--fu)",fontSize:10,color:l.color,letterSpacing:"0.12em",fontWeight:700}}>{l.label}</span>
           </div>
         ))}
-        <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:"#1a1a2a",border:"1px solid #4a4a8a40"}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:"#6a6aaa"}}/>
-          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#8a8aca",letterSpacing:"0.15em",fontWeight:700}}>ECCELLENTE = sopra BUONO</span>
-        </div>
       </div>
       {/* Fasce */}
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1053,9 +1055,7 @@ function BenchmarkEditor({cfg, updateBand}){
                       onChange={e=>updateBand(bi,metricTab,l.key,e.target.value)}/>
                     <span style={{fontFamily:"var(--fu)",fontSize:12,color:l.color,fontWeight:700}}>{cur.unit}</span>
                   </div>
-                  <div style={{fontFamily:"var(--fb)",fontSize:10,color:"var(--t4)",marginTop:6}}>
-                    {l.key==="poor"?"Sotto questa soglia = Scarso":l.key==="avg"?"Tra Scarso e Buono = Medio":"Sopra questa soglia = Buono"}
-                  </div>
+                  <div style={{fontFamily:"var(--fb)",fontSize:10,color:"var(--t4)",marginTop:6}}>{l.desc}</div>
                 </div>
               ))}
             </div>
