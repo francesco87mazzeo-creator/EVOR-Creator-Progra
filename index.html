@@ -3,10 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v9 — Application 2025</title>
+  <title>EVORΛ ATHLETES v10 — Application 2025</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap');
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
@@ -63,8 +66,6 @@
     .btn-red:hover{background:var(--red2);}
     .btn-ghost{background:transparent;border:1px solid #333;color:var(--t3);padding:15px 36px;font-size:12px;font-family:var(--fu);letter-spacing:0.3em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:all .2s;}
     .btn-ghost:hover{border-color:#666;color:var(--t1);}
-    .btn-gold{background:var(--gold);border:none;color:#000;padding:15px 36px;font-size:12px;font-family:var(--fu);letter-spacing:0.3em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:opacity .2s;}
-    .btn-gold:hover{opacity:.85;}
 
     .form-inner{max-width:700px;margin:0 auto;padding:32px 20px 80px;}
     .field-label{font-family:var(--fu);font-size:11px;letter-spacing:0.22em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;display:block;}
@@ -80,24 +81,21 @@
     .step-line{height:2px;margin-bottom:5px;transition:background .3s;}
     .step-lbl{font-family:var(--fu);font-size:8px;letter-spacing:0.1em;text-transform:uppercase;line-height:1.3;}
 
-    .upload-area{border:1px dashed #333;padding:28px 20px;text-align:center;background:#090909;cursor:pointer;transition:border-color .2s;}
-    .upload-area:hover{border-color:var(--red);}
     .choice-btn{padding:10px 16px;font-family:var(--fu);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;border:1px solid #333;transition:all .2s;}
-
     .ocr-box{margin-top:10px;padding:12px 16px;border:1px solid #2a2a2a;background:#0a0a0a;display:flex;align-items:center;gap:12px;}
     .spinner{width:16px;height:16px;border:2px solid #333;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;}
 
-    /* ADMIN TABS */
     .tab-bar{display:flex;border-bottom:1px solid var(--brd);background:var(--deep);flex-shrink:0;}
     .tab{padding:12px 20px;font-family:var(--fu);font-size:11px;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;border:none;background:transparent;color:var(--t4);border-bottom:2px solid transparent;transition:all .2s;}
     .tab.active{color:var(--t1);border-bottom-color:var(--red);}
     .tab:hover{color:var(--t2);}
 
-    /* SETTINGS */
     .settings-inner{max-width:600px;margin:0 auto;padding:32px 20px;}
     .settings-section{background:var(--surf);border:1px solid var(--brd);padding:24px;margin-bottom:16px;}
     .settings-title{font-family:var(--fd);font-size:20px;color:var(--t1);margin-bottom:4px;}
     .settings-desc{font-family:var(--fb);font-size:13px;color:var(--t3);margin-bottom:20px;line-height:1.7;}
+
+    .loading-screen{position:fixed;inset:0;background:var(--black);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:16px;}
 
     @media(max-width:640px){
       .g2,.g3{grid-template-columns:1fr;gap:16px;}
@@ -116,25 +114,52 @@
 </head>
 <body>
 <div id="root"></div>
+<script>
+  // ── FIREBASE INIT ─────────────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "AIzaSyABauyOisUza0ojws0Vp_aDmmP8oNNSeZU",
+    authDomain: "evora-athletes.firebaseapp.com",
+    projectId: "evora-athletes",
+    storageBucket: "evora-athletes.firebasestorage.app",
+    messagingSenderId: "520957090168",
+    appId: "1:520957090168:web:a19e2f727ae69adf9c108d"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+</script>
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-// ── STORAGE HELPERS ───────────────────────────────────────────────────────────
-const getApps    = () => { try{ return JSON.parse(localStorage.getItem("evora_athletes")||"[]"); }catch{ return[]; } };
-const saveApps   = a  => localStorage.setItem("evora_athletes", JSON.stringify(a));
-const getSettings= () => { try{ return JSON.parse(localStorage.getItem("evora_settings")||"{}"); }catch{ return{}; } };
-const saveSettings= s => localStorage.setItem("evora_settings", JSON.stringify(s));
-
-// Default passwords (cambiate nelle impostazioni admin)
-const DEFAULT_ADMIN_PASS   = "evora2025";
-const DEFAULT_MANAGER_PASS = "evora_smm";
+// ── FIREBASE HELPERS ──────────────────────────────────────────────────────────
+const FB = {
+  // Candidature
+  async getApps() {
+    const snap = await db.collection("candidature").orderBy("date","desc").get();
+    return snap.docs.map(d => ({id: d.id, ...d.data()}));
+  },
+  async saveApp(app) {
+    const {id, ...data} = app;
+    await db.collection("candidature").doc(String(id)).set(data);
+  },
+  async updateApp(id, patch) {
+    await db.collection("candidature").doc(String(id)).update(patch);
+  },
+  async deleteApp(id) {
+    await db.collection("candidature").doc(String(id)).delete();
+  },
+  // Impostazioni (solo admin)
+  async getSettings() {
+    const doc = await db.collection("settings").doc("config").get();
+    return doc.exists ? doc.data() : {};
+  },
+  async saveSettings(data) {
+    await db.collection("settings").doc("config").set(data, {merge: true});
+  }
+};
 
 // ── OCR ───────────────────────────────────────────────────────────────────────
-const extractInsights = async (base64Image) => {
-  const settings = getSettings();
-  const apiKey = (settings.apiKey || "").trim();
-  if (!apiKey) throw new Error("API key non configurata");
-
+const extractInsights = async (base64Image, apiKey) => {
+  if (!apiKey) throw new Error("API key non configurata — vai in Impostazioni");
   const parts = base64Image.split(",");
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
@@ -155,33 +180,23 @@ const extractInsights = async (base64Image) => {
         messages: [{
           role: "user",
           content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64Data }
-            },
-            {
-              type: "text",
-              text: "Guarda questo screenshot Instagram Insights. Estrai i numeri. Rispondi SOLO con questo JSON, niente altro: {\"views\":NUMERO,\"interactions\":NUMERO,\"newFollowers\":NUMERO}. Usa 0 se non visibile."
-            }
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
+            { type: "text", text: "Guarda questo screenshot Instagram Insights. Estrai i numeri. Rispondi SOLO con questo JSON: {\"views\":NUMERO,\"interactions\":NUMERO,\"newFollowers\":NUMERO}. Usa 0 se non visibile. SOLO JSON nient'altro." }
           ]
         }]
       })
     });
-  } catch(networkErr) {
-    throw new Error("Errore di rete — controlla la connessione");
-  }
+  } catch(e) { throw new Error("Errore di rete"); }
 
   if (!res.ok) {
-    let errMsg = "Errore API";
-    try { const e = await res.json(); errMsg = e.error?.message || errMsg; } catch(e) {}
-    throw new Error(errMsg);
+    let msg = "Errore API";
+    try { const e = await res.json(); msg = e.error?.message || msg; } catch(e) {}
+    throw new Error(msg);
   }
-
   const data = await res.json();
   const raw = data.content[0].text.trim();
-  // Estrai JSON anche se c'è testo attorno
   const match = raw.match(/\{[^}]+\}/);
-  if (!match) throw new Error("Risposta non valida dall'AI");
+  if (!match) throw new Error("Risposta non valida");
   return JSON.parse(match[0]);
 };
 
@@ -372,39 +387,45 @@ function ApplicationForm({onBack,onAdmin}){
   const [done,setDone]=useState(false);
   const [ocrStatus,setOcrStatus]=useState("idle");
   const [ocrError,setOcrError]=useState("");
+  const [saving,setSaving]=useState(false);
   const u=(k,v)=>setForm(p=>({...p,[k]:v}));
 
   const handleFile=async(e)=>{
-    const f=e.target.files[0]; if(!f)return;
+    const f=e.target.files?.[0]||e.dataTransfer?.files?.[0];
+    if(!f||!f.type.startsWith("image/"))return;
     const r=new FileReader();
     r.onload=async(ev)=>{
       const img=ev.target.result;
       u("screenshotData",img); u("screenshotName",f.name);
-      const settings=getSettings();
-      if(settings.apiKey){
-        setOcrStatus("analyzing");
-        try{
-          const d=await extractInsights(img);
-          if(d.views)u("views",String(d.views));
-          if(d.interactions)u("interactions",String(d.interactions));
-          if(d.newFollowers)u("newFollowers",String(d.newFollowers));
-          setOcrStatus("done");
-        }catch(err){
-          console.error("OCR Error:", err.message);
-          setOcrStatus("error");
-          setOcrError(err.message||"Errore sconosciuto");
-        }
-      }else{
-        setOcrStatus("manual");
+      setOcrStatus("analyzing"); setOcrError("");
+      try{
+        const settings=await FB.getSettings();
+        const d=await extractInsights(img, settings.apiKey);
+        if(d.views)u("views",String(d.views));
+        if(d.interactions)u("interactions",String(d.interactions));
+        if(d.newFollowers)u("newFollowers",String(d.newFollowers));
+        setOcrStatus("done");
+      }catch(err){
+        setOcrStatus("error");
+        setOcrError(err.message||"Errore sconosciuto");
       }
     };
     r.readAsDataURL(f);
   };
 
-  const submit=()=>{
-    const sc=scoreCandidate(form);
-    const app={id:Date.now(),date:new Date().toISOString(),...form,...sc,status:"new",notes:"",creatorCode:""};
-    const apps=getApps(); apps.unshift(app); saveApps(apps); setDone(true);
+  const submit=async()=>{
+    setSaving(true);
+    try{
+      const sc=scoreCandidate(form);
+      const app={...form,...sc,date:new Date().toISOString(),status:"new",notes:"",creatorCode:""};
+      const id=Date.now();
+      await FB.saveApp({id,...app});
+      setDone(true);
+    }catch(err){
+      alert("Errore nel salvataggio — riprova");
+    }finally{
+      setSaving(false);
+    }
   };
 
   if(done)return(
@@ -447,51 +468,34 @@ function ApplicationForm({onBack,onAdmin}){
             <Field label="Follower totali Instagram" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
           </div>
 
-          <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Trascina l'immagine qui sotto oppure clicca il pulsante per sceglierla">
-            {/* Drag & drop area */}
+          {/* UPLOAD SCREENSHOT */}
+          <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante per sceglierla">
             <div
               onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
               onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
-              onDrop={e=>{
-                e.preventDefault();
-                e.currentTarget.style.borderColor="#333";
-                const f=e.dataTransfer.files[0];
-                if(f&&f.type.startsWith("image/")){
-                  const synth={target:{files:[f]}};
-                  handleFile(synth);
-                }
-              }}
-              style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}
-            >
+              onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
+              style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
               {form.screenshotData?(
                 <>
                   <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
                   {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
                   {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti — controlla e correggi se necessario</div>}
-                  {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError||"Lettura fallita"} — inserisci i dati manualmente</div>}
-                  {(ocrStatus==="idle"||ocrStatus==="manual")&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>Trascina o clicca CAMBIA per sostituire</div>
+                  {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError} — inserisci i dati manualmente</div>}
+                  {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
                 </>
               ):(
                 <>
                   <div style={{fontSize:36}}>📊</div>
                   <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>oppure usa il pulsante qui sotto</div>
+                  <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente dall'AI</div>
                   <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>JPG · PNG · Max 10MB</div>
                 </>
               )}
             </div>
-            {/* Pulsante separato — più affidabile di un input nascosto */}
-            <label style={{
-              display:"inline-block",marginTop:8,padding:"11px 24px",
-              background:"#111",border:"1px solid #333",color:"var(--t2)",
-              fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",
-              textTransform:"uppercase",cursor:"pointer",transition:"all .2s",
-              width:"100%",textAlign:"center"
-            }}
+            <label style={{display:"block",marginTop:8,padding:"11px 24px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center",transition:"all .2s"}}
               onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
               onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
-              {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI IMMAGINE DAL DISPOSITIVO"}
+              {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
               <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
             </label>
           </Field>
@@ -590,8 +594,8 @@ function ApplicationForm({onBack,onAdmin}){
 
         <div style={{display:"flex",gap:12,marginTop:40,paddingTop:24,borderTop:"1px solid var(--brd)"}}>
           <button className="btn-ghost" onClick={()=>step>0?setStep(step-1):onBack()} style={{flex:1,padding:"13px 16px",fontSize:11}}>{step===0?"ANNULLA":"← INDIETRO"}</button>
-          <button className="btn-red" onClick={()=>step<5?setStep(step+1):submit()} style={{flex:2,padding:"13px 16px",fontSize:11}} disabled={ocrStatus==="analyzing"}>
-            {ocrStatus==="analyzing"?"⏳ ANALISI...":step<5?"CONTINUA →":"INVIA CANDIDATURA"}
+          <button className="btn-red" onClick={()=>step<5?setStep(step+1):submit()} style={{flex:2,padding:"13px 16px",fontSize:11}} disabled={ocrStatus==="analyzing"||saving}>
+            {saving?"⏳ SALVATAGGIO...":ocrStatus==="analyzing"?"⏳ ANALISI...":step<5?"CONTINUA →":"INVIA CANDIDATURA"}
           </button>
         </div>
       </div>
@@ -599,30 +603,41 @@ function ApplicationForm({onBack,onAdmin}){
   );
 }
 
-// ── CANDIDATURE PANEL (condiviso tra admin e manager) ─────────────────────────
+// ── CANDIDATURE PANEL ─────────────────────────────────────────────────────────
 function CandidaturePanel({role}){
   const [apps,setApps]=useState([]);
+  const [loading,setLoading]=useState(true);
   const [sel,setSel]=useState(null);
   const [filter,setFilter]=useState("ALL");
   const [search,setSearch]=useState("");
   const [note,setNote]=useState("");
   const [code,setCode]=useState("");
   const [showDetail,setShowDetail]=useState(false);
+  const [saving,setSaving]=useState(false);
 
-  useEffect(()=>{ setApps(getApps()); },[]);
+  useEffect(()=>{
+    FB.getApps().then(a=>{setApps(a);setLoading(false);}).catch(()=>setLoading(false));
+  },[]);
 
-  const upd=(id,patch)=>{
-    const u=apps.map(a=>a.id===id?{...a,...patch}:a);
-    setApps(u); saveApps(u);
-    if(sel?.id===id) setSel(p=>({...p,...patch}));
+  const upd=async(id,patch)=>{
+    setSaving(true);
+    try{
+      await FB.updateApp(id,patch);
+      const updated=apps.map(a=>a.id==id?{...a,...patch}:a);
+      setApps(updated);
+      if(sel?.id==id)setSel(p=>({...p,...patch}));
+    }finally{setSaving(false);}
   };
-  const del=(id)=>{
-    if(role!=="admin") return;
-    if(!window.confirm("Eliminare questa candidatura?")) return;
-    const u=apps.filter(a=>a.id!==id);
-    setApps(u); saveApps(u); setSel(null); setShowDetail(false);
+
+  const del=async(id)=>{
+    if(role!=="admin")return;
+    if(!window.confirm("Eliminare questa candidatura?"))return;
+    await FB.deleteApp(id);
+    setApps(apps.filter(a=>a.id!=id));
+    setSel(null); setShowDetail(false);
   };
-  const selectApp=a=>{ setSel(a); setNote(a.notes||""); setCode(a.creatorCode||""); setShowDetail(true); };
+
+  const selectApp=a=>{setSel(a);setNote(a.notes||"");setCode(a.creatorCode||"");setShowDetail(true);};
 
   const list=apps.filter(a=>{
     const mt=filter==="ALL"?true:filter==="NEW"?a.status==="new":a.tier===filter;
@@ -632,9 +647,15 @@ function CandidaturePanel({role}){
 
   const st={total:apps.length,nw:apps.filter(a=>a.status==="new").length,el:apps.filter(a=>a.tier==="ELITE").length,pr:apps.filter(a=>a.tier==="PRO").length,ri:apps.filter(a=>a.tier==="RISING").length,ap:apps.filter(a=>a.status==="approved").length};
 
+  if(loading)return(
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div className="spinner" style={{width:32,height:32,borderWidth:3}}/>
+      <div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t4)",letterSpacing:"0.2em"}}>CARICAMENTO CANDIDATURE...</div>
+    </div>
+  );
+
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",flexDirection:"column"}}>
-      {/* STATS */}
       <div style={{display:"flex",background:"var(--surf)",borderBottom:"1px solid var(--brd)",flexShrink:0,overflowX:"auto"}}>
         {[["TOT",st.total,"#fff"],["NUOVE",st.nw,"var(--red)"],["ELITE",st.el,"var(--red)"],["PRO",st.pr,"var(--gold)"],["RISING",st.ri,"#6a9a7a"],["OK",st.ap,"#6a9a7a"]].map(([l,v,c])=>(
           <div key={l} style={{padding:"12px 20px",borderRight:"1px solid var(--brd)",textAlign:"center",minWidth:70,flexShrink:0}}>
@@ -643,9 +664,7 @@ function CandidaturePanel({role}){
           </div>
         ))}
       </div>
-
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-        {/* LIST */}
         {!showDetail&&(
           <div style={{width:"100%",maxWidth:360,borderRight:"1px solid var(--brd)",display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
             <div style={{padding:"12px 14px",borderBottom:"1px solid var(--brd)"}}>
@@ -680,7 +699,6 @@ function CandidaturePanel({role}){
           </div>
         )}
 
-        {/* DETAIL */}
         {showDetail&&sel&&(
           <div style={{flex:1,overflow:"auto",padding:20}}>
             <button onClick={()=>setShowDetail(false)} style={{background:"transparent",border:"none",color:"var(--t3)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:20,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>← LISTA</button>
@@ -718,7 +736,10 @@ function CandidaturePanel({role}){
             <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
               <div>
                 <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>CODICE CREATOR</div>
-                <div style={{display:"flex",gap:6}}><input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/><button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>SALVA</button></div>
+                <div style={{display:"flex",gap:6}}>
+                  <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/>
+                  <button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>{saving?"...":"SALVA"}</button>
+                </div>
                 {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5}}>✓ {sel.creatorCode}</div>}
               </div>
               <div>
@@ -735,138 +756,138 @@ function CandidaturePanel({role}){
               <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>NOTE INTERNE</div>
               <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Note riservate al team..." style={{fontSize:13}}/>
               <div style={{display:"flex",justifyContent:"space-between",marginTop:9,gap:8}}>
-                <button className="btn-red" onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>SALVA NOTE</button>
+                <button className="btn-red" onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>{saving?"SALVATAGGIO...":"SALVA NOTE"}</button>
                 {role==="admin"&&<button onClick={()=>del(sel.id)} style={{background:"transparent",border:"1px solid #5a1010",color:"#cc4444",padding:"11px 18px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>ELIMINA</button>}
               </div>
             </div>
           </div>
         )}
-
-        {!showDetail&&(
-          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}>
-            <div style={{fontFamily:"var(--fd)",fontSize:40,color:"#1a1a1a"}}>EVORΛ</div>
-            <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.3em"}}>SELEZIONA UNA CANDIDATURA</div>
-          </div>
-        )}
+        {!showDetail&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}><div style={{fontFamily:"var(--fd)",fontSize:40,color:"#1a1a1a"}}>EVORΛ</div><div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.3em"}}>SELEZIONA UNA CANDIDATURA</div></div>}
       </div>
     </div>
   );
 }
 
-// ── SETTINGS PANEL (solo admin) ───────────────────────────────────────────────
+// ── SETTINGS PANEL ────────────────────────────────────────────────────────────
 function SettingsPanel(){
-  const [settings, setSettings] = useState(getSettings());
-  const [saved, setSaved] = useState(false);
-  const [showKey, setShowKey] = useState(false);
+  const [settings,setSettings]=useState({});
+  const [loading,setLoading]=useState(true);
+  const [saved,setSaved]=useState("");
+  const [showKey,setShowKey]=useState(false);
 
-  const save = (patch) => {
-    const newSettings = {...settings,...patch};
-    setSettings(newSettings);
-    saveSettings(newSettings);
-    setSaved(true);
-    setTimeout(()=>setSaved(false), 2000);
+  useEffect(()=>{
+    FB.getSettings().then(s=>{setSettings(s);setLoading(false);});
+  },[]);
+
+  const save=async(patch)=>{
+    const ns={...settings,...patch};
+    setSettings(ns);
+    await FB.saveSettings(patch);
+    setSaved(Object.keys(patch)[0]);
+    setTimeout(()=>setSaved(""),2000);
   };
+
+  if(loading)return<div style={{padding:32,textAlign:"center",fontFamily:"var(--fu)",fontSize:11,color:"var(--t4)",letterSpacing:"0.2em"}}>CARICAMENTO...</div>;
 
   return(
     <div style={{overflow:"auto",flex:1}}>
       <div className="settings-inner">
         <h2 style={{fontFamily:"var(--fd)",fontSize:32,color:"#fff",marginBottom:24}}>IMPOSTAZIONI</h2>
 
-        {/* API KEY */}
         <div className="settings-section">
           <div className="settings-title">🔑 API Key Anthropic</div>
-          <div className="settings-desc">Necessaria per la lettura automatica degli screenshot Insights. Non viene mai salvata nel codice — rimane solo su questo browser.</div>
+          <div className="settings-desc">Necessaria per la lettura automatica degli screenshot Insights. Salvata su Firebase — funziona su tutti i dispositivi.</div>
           <Field label="API Key">
             <div style={{display:"flex",gap:8}}>
-              <input
-                type={showKey?"text":"password"}
-                value={settings.apiKey||""}
-                onChange={e=>setSettings(p=>({...p,apiKey:e.target.value}))}
-                placeholder="sk-ant-api03-..."
-              />
+              <input type={showKey?"text":"password"} value={settings.apiKey||""} onChange={e=>setSettings(p=>({...p,apiKey:e.target.value}))} placeholder="sk-ant-api03-..."/>
               <button onClick={()=>setShowKey(!showKey)} style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 14px",fontFamily:"var(--fu)",fontSize:10,cursor:"pointer",whiteSpace:"nowrap"}}>{showKey?"NASCONDI":"MOSTRA"}</button>
             </div>
           </Field>
           <button className="btn-red" onClick={()=>save({apiKey:settings.apiKey})} style={{marginTop:14,padding:"11px 28px",fontSize:11}}>
-            {saved?"✓ SALVATA":"SALVA API KEY"}
+            {saved==="apiKey"?"✓ SALVATA":"SALVA API KEY"}
           </button>
-          {settings.apiKey&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:10,letterSpacing:"0.12em"}}>✓ API Key configurata — OCR attivo</div>}
+          {settings.apiKey&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:10,letterSpacing:"0.12em"}}>✓ API Key configurata — OCR attivo su tutti i dispositivi</div>}
         </div>
 
-        {/* PASSWORD ADMIN */}
         <div className="settings-section">
           <div className="settings-title">🔐 Password Admin</div>
-          <div className="settings-desc">La tua password personale con accesso completo al sistema.</div>
+          <div className="settings-desc">Accesso completo — solo per te.</div>
           <Field label="Nuova password admin">
             <input type="password" value={settings.adminPass||""} onChange={e=>setSettings(p=>({...p,adminPass:e.target.value}))} placeholder="Nuova password..."/>
           </Field>
-          <button className="btn-red" onClick={()=>save({adminPass:settings.adminPass})} style={{marginTop:14,padding:"11px 28px",fontSize:11}}>AGGIORNA PASSWORD</button>
+          <button className="btn-red" onClick={()=>save({adminPass:settings.adminPass})} style={{marginTop:14,padding:"11px 28px",fontSize:11}}>
+            {saved==="adminPass"?"✓ AGGIORNATA":"AGGIORNA PASSWORD"}
+          </button>
         </div>
 
-        {/* PASSWORD MANAGER */}
         <div className="settings-section">
           <div className="settings-title">👤 Password Manager (SMM)</div>
-          <div className="settings-desc">Password per la tua social media manager. Accesso alle candidature senza impostazioni, senza eliminazione e senza vedere la API key.</div>
+          <div className="settings-desc">Per la tua social media manager — accesso candidature senza impostazioni e senza eliminazione.</div>
           <Field label="Nuova password manager">
             <input type="password" value={settings.managerPass||""} onChange={e=>setSettings(p=>({...p,managerPass:e.target.value}))} placeholder="Nuova password..."/>
           </Field>
-          <button className="btn-red" onClick={()=>save({managerPass:settings.managerPass})} style={{marginTop:14,padding:"11px 28px",fontSize:11}}>AGGIORNA PASSWORD</button>
-          <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:14,padding:"12px 14px",background:"#0a0a0a",border:"1px solid #2a2a2a",lineHeight:1.7}}>
-            Password attuale manager: <strong style={{color:"var(--t1)",fontFamily:"var(--fu)",letterSpacing:"0.1em"}}>{settings.managerPass||DEFAULT_MANAGER_PASS}</strong><br/>
-            <span style={{fontSize:11,color:"var(--t4)"}}>Condividi questa password con la tua SMM — non darle mai quella admin.</span>
-          </div>
+          <button className="btn-red" onClick={()=>save({managerPass:settings.managerPass})} style={{marginTop:14,padding:"11px 28px",fontSize:11}}>
+            {saved==="managerPass"?"✓ AGGIORNATA":"AGGIORNA PASSWORD"}
+          </button>
+          {settings.managerPass&&(
+            <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:14,padding:"12px 14px",background:"#0a0a0a",border:"1px solid #2a2a2a",lineHeight:1.7}}>
+              Password attuale manager: <strong style={{color:"var(--t1)",fontFamily:"var(--fu)",letterSpacing:"0.1em"}}>{settings.managerPass}</strong><br/>
+              <span style={{fontSize:11,color:"var(--t4)"}}>Condividi questa con la SMM — mai quella admin.</span>
+            </div>
+          )}
         </div>
-
-        {saved&&<div style={{fontFamily:"var(--fu)",fontSize:12,color:"#6a9a7a",letterSpacing:"0.2em",textAlign:"center",padding:16}}>✓ IMPOSTAZIONI SALVATE</div>}
       </div>
     </div>
   );
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
+const DEFAULT_ADMIN="evora2025";
+const DEFAULT_MANAGER="evora_smm";
+
 function AdminPanel({onBack}){
-  const [role,setRole]=useState(null); // null | "admin" | "manager"
+  const [role,setRole]=useState(null);
   const [pw,setPw]=useState("");
   const [pwError,setPwError]=useState(false);
   const [activeTab,setActiveTab]=useState("candidature");
+  const [checking,setChecking]=useState(false);
 
-  const settings=getSettings();
-  const adminPass  = settings.adminPass  || DEFAULT_ADMIN_PASS;
-  const managerPass= settings.managerPass|| DEFAULT_MANAGER_PASS;
-
-  const login=()=>{
-    if(pw===adminPass){ setRole("admin"); setPwError(false); }
-    else if(pw===managerPass){ setRole("manager"); setPwError(false); }
-    else{ setPwError(true); }
+  const login=async()=>{
+    setChecking(true);
+    try{
+      const settings=await FB.getSettings();
+      const adminPass=settings.adminPass||DEFAULT_ADMIN;
+      const managerPass=settings.managerPass||DEFAULT_MANAGER;
+      if(pw===adminPass){setRole("admin");setPwError(false);}
+      else if(pw===managerPass){setRole("manager");setPwError(false);}
+      else{setPwError(true);}
+    }catch(e){
+      // Se Firebase non risponde, usa default
+      if(pw===DEFAULT_ADMIN)setRole("admin");
+      else if(pw===DEFAULT_MANAGER)setRole("manager");
+      else setPwError(true);
+    }finally{setChecking(false);}
   };
 
-  if(!role) return(
+  if(!role)return(
     <div style={{minHeight:"100vh",background:"var(--black)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{width:"100%",maxWidth:380,animation:"fadeUp .6s ease both"}}>
         <Logo size={22}/>
         <h2 style={{fontFamily:"var(--fd)",fontSize:38,color:"#fff",margin:"24px 0 4px"}}>AREA RISERVATA</h2>
         <p style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t3)",marginBottom:28,lineHeight:1.7}}>Accesso esclusivo team EVORΛ.<br/>Inserisci la tua password.</p>
-
         <input type="password" placeholder="Password..." style={{marginBottom:10,borderColor:pwError?"var(--red)":"#333"}}
           value={pw} onChange={e=>{setPw(e.target.value);setPwError(false);}}
           onKeyDown={e=>e.key==="Enter"&&login()}/>
-
         {pwError&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)",letterSpacing:"0.15em",marginBottom:10}}>⚠ PASSWORD ERRATA</div>}
-
-        <button className="btn-red" onClick={login} style={{width:"100%",padding:"14px"}}>ACCEDI</button>
+        <button className="btn-red" onClick={login} style={{width:"100%",padding:"14px"}} disabled={checking}>
+          {checking?"VERIFICA...":"ACCEDI"}
+        </button>
         <button className="btn-ghost" onClick={onBack} style={{width:"100%",marginTop:8,padding:"14px"}}>← TORNA AL SITO</button>
-
         <div style={{marginTop:20,padding:"16px",background:"#0a0a0a",border:"1px solid #1e1e1e"}}>
           <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.25em",marginBottom:10}}>ACCESSI DISPONIBILI</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>🔐 Admin (accesso completo)</span>
-              <Tag color="var(--red)">OWNER</Tag>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>👤 Manager (candidature only)</span>
-              <Tag color="var(--gold)">SMM</Tag>
-            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>🔐 Admin — accesso completo</span><Tag color="var(--red)">OWNER</Tag></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>👤 Manager — candidature only</span><Tag color="var(--gold)">SMM</Tag></div>
           </div>
         </div>
       </div>
@@ -875,26 +896,20 @@ function AdminPanel({onBack}){
 
   return(
     <div style={{height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      {/* HEADER */}
       <div style={{height:52,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px",borderBottom:"1px solid var(--brd)",background:"var(--deep)",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <Logo size={16}/>
           <Tag color={role==="admin"?"var(--red)":"var(--gold)"}>{role==="admin"?"ADMIN":"MANAGER"}</Tag>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.15em"}}>{role==="admin"?"Accesso completo":"Sola lettura candidature"}</span>
           <button className="btn-ghost" onClick={()=>{setRole(null);setPw("");}} style={{padding:"6px 14px",fontSize:10}}>ESCI</button>
           <button className="btn-ghost" onClick={onBack} style={{padding:"6px 14px",fontSize:10}}>← SITO</button>
         </div>
       </div>
-
-      {/* TABS */}
       <div className="tab-bar">
         <button className={`tab${activeTab==="candidature"?" active":""}`} onClick={()=>setActiveTab("candidature")}>📋 Candidature</button>
         {role==="admin"&&<button className={`tab${activeTab==="settings"?" active":""}`} onClick={()=>setActiveTab("settings")}>⚙️ Impostazioni</button>}
       </div>
-
-      {/* CONTENT */}
       {activeTab==="candidature"&&<CandidaturePanel role={role}/>}
       {activeTab==="settings"&&role==="admin"&&<SettingsPanel/>}
     </div>
