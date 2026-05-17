@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v10 — Application 2025</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779027647</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,13 +11,13 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400&family=Questrial&display=swap');
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
     :root{
-      --red:#b22222;--red2:#d42828;--gold:#c0a060;
-      --black:#080808;--deep:#0d0d0d;--surf:#111;--brd:#2a2a2a;
-      --fd:'Bebas Neue',sans-serif;--fu:'Barlow Condensed',sans-serif;--fb:'Barlow',sans-serif;
-      --t1:#ffffff;--t2:#cccccc;--t3:#999999;--t4:#666666;
+      --red:#B22222;--red2:#cc2a2a;--gold:#c0a060;
+      --black:#181818;--deep:#1c1c1c;--surf:#222222;--brd:#3a3a3a;
+      --fd:'Archivo',sans-serif;--fu:'Archivo',sans-serif;--fb:'Questrial',sans-serif;
+      --t1:#EFF0F5;--t2:#d8d9de;--t3:#aaaaaa;--t4:#777777;
       --nav-h:96px;
     }
     html,body{background:var(--black);color:var(--t2);font-family:var(--fb);overflow-x:hidden;width:100%;}
@@ -26,31 +26,31 @@
     @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
     @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 
-    .nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(8,8,8,0.98);border-bottom:1px solid var(--brd);backdrop-filter:blur(10px);}
+    .nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(24,24,24,0.98);border-bottom:1px solid var(--brd);backdrop-filter:blur(10px);}
     .nav-row1{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;}
-    .nav-row2{display:flex;align-items:center;justify-content:center;gap:24px;padding:6px 20px 10px;border-top:1px solid #1a1a1a;flex-wrap:wrap;}
-    .nav-link{color:var(--t3);font-size:11px;font-family:var(--fu);letter-spacing:0.2em;text-decoration:none;text-transform:uppercase;transition:color .2s;}
+    .nav-row2{display:flex;align-items:center;justify-content:center;gap:24px;padding:6px 20px 10px;border-top:1px solid #222;flex-wrap:wrap;}
+    .nav-link{color:var(--t3);font-size:12px;font-family:var(--fu);letter-spacing:0.15em;text-decoration:none;text-transform:uppercase;transition:color .2s;font-weight:500;}
     .nav-link:hover{color:var(--t1);}
-    .admin-btn{background:var(--red);border:none;color:white;padding:6px 18px;font-size:10px;font-family:var(--fu);letter-spacing:0.2em;text-transform:uppercase;cursor:pointer;transition:background .2s;}
+    .admin-btn{background:var(--red);border:none;color:white;padding:6px 18px;font-size:11px;font-family:var(--fu);letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;transition:background .2s;font-weight:600;}
     .admin-btn:hover{background:var(--red2);}
 
     .page{padding-top:var(--nav-h);}
     .form-page{padding-top:var(--nav-h);}
 
-    .hero{min-height:calc(100vh - var(--nav-h));display:flex;align-items:center;padding:48px 20px 60px;background:radial-gradient(ellipse at 10% 50%,#200404 0%,var(--black) 60%);position:relative;overflow:hidden;}
+    .hero{min-height:calc(100vh - var(--nav-h));display:flex;align-items:center;padding:48px 20px 60px;background:radial-gradient(ellipse at 10% 50%,#250303 0%,var(--black) 60%);position:relative;overflow:hidden;}
     .hero-inner{width:100%;max-width:860px;animation:fadeUp 1s ease both;}
-    .hero-tag{font-family:var(--fu);font-size:11px;letter-spacing:0.5em;color:var(--red);text-transform:uppercase;margin-bottom:24px;}
-    .hero-title{font-family:var(--fd);font-size:clamp(64px,14vw,140px);line-height:.88;color:var(--t1);}
-    .hero-sub{margin-top:28px;border-left:2px solid var(--red);padding-left:18px;max-width:480px;}
-    .hero-sub p{font-family:var(--fu);font-size:16px;line-height:1.85;color:var(--t2);}
-    .hero-stats{margin-top:52px;padding-top:24px;border-top:1px solid #1e1e1e;display:flex;gap:36px;flex-wrap:wrap;}
+    .hero-tag{font-family:var(--fu);font-size:11px;letter-spacing:0.4em;color:var(--red);text-transform:uppercase;margin-bottom:24px;font-weight:500;}
+    .hero-title{font-family:var(--fd);font-size:clamp(52px,10vw,110px);line-height:.92;color:var(--t1);font-weight:900;letter-spacing:-0.02em;}
+    .hero-sub{margin-top:28px;border-left:2px solid var(--red);padding-left:18px;max-width:500px;}
+    .hero-sub p{font-family:var(--fb);font-size:17px;line-height:1.85;color:var(--t2);}
+    .hero-stats{margin-top:52px;padding-top:24px;border-top:1px solid #222;display:flex;gap:36px;flex-wrap:wrap;}
 
     .section{padding:80px 20px;width:100%;}
     .inner{max-width:1080px;margin:0 auto;}
-    .sec-tag{font-family:var(--fu);font-size:10px;letter-spacing:0.4em;color:var(--red);text-transform:uppercase;background:#b2222220;border:1px solid #b2222240;padding:3px 12px;display:inline-block;}
-    .sec-title{font-family:var(--fd);line-height:.94;color:var(--t1);margin-top:16px;}
+    .sec-tag{font-family:var(--fu);font-size:10px;letter-spacing:0.35em;color:var(--red);text-transform:uppercase;background:#B2222218;border:1px solid #B2222235;padding:4px 14px;display:inline-block;font-weight:600;}
+    .sec-title{font-family:var(--fd);line-height:.95;color:var(--t1);margin-top:16px;font-weight:900;letter-spacing:-0.02em;}
     .redline{width:40px;height:2px;background:var(--red);margin:14px 0;}
-    .body-text{font-family:var(--fb);font-size:15px;line-height:1.9;color:var(--t2);}
+    .body-text{font-family:var(--fb);font-size:16px;line-height:1.9;color:var(--t2);}
 
     .g2{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;}
     .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;}
@@ -59,41 +59,41 @@
 
     .card{background:var(--surf);border:1px solid var(--brd);padding:24px;transition:border-color .3s;}
     .card:hover{border-color:var(--red);}
-    .card-title{font-family:var(--fd);font-size:15px;color:var(--red);margin-bottom:8px;letter-spacing:0.08em;}
-    .card-body{font-family:var(--fb);font-size:13px;color:var(--t3);line-height:1.75;}
+    .card-title{font-family:var(--fd);font-size:14px;color:var(--red);margin-bottom:8px;letter-spacing:0.1em;font-weight:700;text-transform:uppercase;}
+    .card-body{font-family:var(--fb);font-size:14px;color:var(--t3);line-height:1.75;}
 
-    .btn-red{background:var(--red);border:none;color:white;padding:15px 36px;font-size:12px;font-family:var(--fu);letter-spacing:0.3em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:background .2s;}
+    .btn-red{background:var(--red);border:none;color:white;padding:15px 36px;font-size:12px;font-family:var(--fu);letter-spacing:0.2em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:background .2s;}
     .btn-red:hover{background:var(--red2);}
-    .btn-ghost{background:transparent;border:1px solid #333;color:var(--t3);padding:15px 36px;font-size:12px;font-family:var(--fu);letter-spacing:0.3em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:all .2s;}
-    .btn-ghost:hover{border-color:#666;color:var(--t1);}
+    .btn-ghost{background:transparent;border:1px solid #333;color:var(--t3);padding:15px 36px;font-size:12px;font-family:var(--fu);letter-spacing:0.2em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:all .2s;}
+    .btn-ghost:hover{border-color:#555;color:var(--t1);}
 
     .form-inner{max-width:700px;margin:0 auto;padding:32px 20px 80px;}
-    .field-label{font-family:var(--fu);font-size:11px;letter-spacing:0.22em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;display:block;}
-    .field-hint{font-family:var(--fu);font-size:10px;color:var(--t4);margin-top:5px;letter-spacing:0.1em;}
-    input,textarea,select{background:#0d0d0d;border:1px solid #333;color:var(--t1);padding:13px 15px;font-size:14px;font-family:var(--fb);outline:none;transition:border-color .2s;width:100%;}
+    .field-label{font-family:var(--fu);font-size:11px;letter-spacing:0.2em;color:var(--t3);text-transform:uppercase;margin-bottom:7px;display:block;font-weight:600;}
+    .field-hint{font-family:var(--fb);font-size:12px;color:var(--t4);margin-top:5px;}
+    input,textarea,select{background:#141414;border:1px solid #333;color:var(--t1);padding:13px 15px;font-size:15px;font-family:var(--fb);outline:none;transition:border-color .2s;width:100%;}
     input:focus,textarea:focus,select:focus{border-color:var(--red);}
     input::placeholder,textarea::placeholder{color:var(--t4);}
-    select{appearance:none;cursor:pointer;}select option{background:#111;}
+    select{appearance:none;cursor:pointer;}select option{background:#1e1e1e;}
     textarea{resize:vertical;}button{cursor:pointer;font-family:var(--fu);}
 
     .steps-bar{display:flex;gap:3px;margin-bottom:32px;}
     .step-item{flex:1;}
-    .step-line{height:2px;margin-bottom:5px;transition:background .3s;}
-    .step-lbl{font-family:var(--fu);font-size:8px;letter-spacing:0.1em;text-transform:uppercase;line-height:1.3;}
+    .step-line{height:2px;margin-bottom:6px;transition:background .3s;}
+    .step-lbl{font-family:var(--fu);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;line-height:1.3;font-weight:600;}
 
-    .choice-btn{padding:10px 16px;font-family:var(--fu);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;border:1px solid #333;transition:all .2s;}
-    .ocr-box{margin-top:10px;padding:12px 16px;border:1px solid #2a2a2a;background:#0a0a0a;display:flex;align-items:center;gap:12px;}
+    .choice-btn{padding:11px 18px;font-family:var(--fu);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;border:1px solid #333;transition:all .2s;font-weight:600;}
+    .ocr-box{margin-top:10px;padding:14px 18px;border:1px solid #2a2a2a;background:#141414;display:flex;align-items:center;gap:12px;}
     .spinner{width:16px;height:16px;border:2px solid #333;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;}
 
     .tab-bar{display:flex;border-bottom:1px solid var(--brd);background:var(--deep);flex-shrink:0;}
-    .tab{padding:12px 20px;font-family:var(--fu);font-size:11px;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer;border:none;background:transparent;color:var(--t4);border-bottom:2px solid transparent;transition:all .2s;}
+    .tab{padding:12px 20px;font-family:var(--fu);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border:none;background:transparent;color:var(--t4);border-bottom:2px solid transparent;transition:all .2s;font-weight:600;}
     .tab.active{color:var(--t1);border-bottom-color:var(--red);}
     .tab:hover{color:var(--t2);}
 
     .settings-inner{max-width:600px;margin:0 auto;padding:32px 20px;}
     .settings-section{background:var(--surf);border:1px solid var(--brd);padding:24px;margin-bottom:16px;}
-    .settings-title{font-family:var(--fd);font-size:20px;color:var(--t1);margin-bottom:4px;}
-    .settings-desc{font-family:var(--fb);font-size:13px;color:var(--t3);margin-bottom:20px;line-height:1.7;}
+    .settings-title{font-family:var(--fd);font-size:20px;color:var(--t1);margin-bottom:4px;font-weight:700;}
+    .settings-desc{font-family:var(--fb);font-size:14px;color:var(--t3);margin-bottom:20px;line-height:1.7;}
 
     .loading-screen{position:fixed;inset:0;background:var(--black);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:16px;}
 
@@ -164,18 +164,19 @@ const extractInsights = async (base64Image, apiKey) => {
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
 
+  const PROXY = "https://throbbing-feather-957f.francesco87-mazzeo.workers.dev";
+
   let res;
   try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
+    res = await fetch(PROXY, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 200,
         messages: [{
           role: "user",
@@ -186,7 +187,7 @@ const extractInsights = async (base64Image, apiKey) => {
         }]
       })
     });
-  } catch(e) { throw new Error("Errore di rete"); }
+  } catch(e) { throw new Error("Errore di rete: " + e.message); }
 
   if (!res.ok) {
     let msg = "Errore API";
@@ -200,56 +201,153 @@ const extractInsights = async (base64Image, apiKey) => {
   return JSON.parse(match[0]);
 };
 
-// ── SCORING ───────────────────────────────────────────────────────────────────
-const scoreCandidate = (data) => {
-  let score=0; const reasons=[];
-  const followers=parseInt(data.followers)||0, views=parseInt(data.views)||0,
-        interactions=parseInt(data.interactions)||0, newFollowers=parseInt(data.newFollowers)||0;
+// ── DEFAULT SCORING CONFIG (modificabile dall'admin) ─────────────────────────
+const DEFAULT_SCORING = {
+  // Pesi metriche (devono sommare 100)
+  weights: { er: 40, reach: 35, growth: 25 },
 
-  if(followers>=100000){score+=20;reasons.push("100K+ follower");}
-  else if(followers>=50000){score+=17;reasons.push("50K+ follower");}
-  else if(followers>=30000){score+=14;reasons.push("30K+ follower");}
-  else if(followers>=10000){score+=10;reasons.push("10K+ follower");}
-  else if(followers>=5000){score+=6;reasons.push("5K+ follower");}
-  else if(followers>=1000){score+=3;reasons.push("1K+ follower");}
+  // Tier label
+  tiers: [
+    { name:"ELITE",   min:75, color:"#B22222", label:"Priorità Assoluta" },
+    { name:"PRO",     min:55, color:"#c0a060", label:"Alta Priorità" },
+    { name:"RISING",  min:35, color:"#6a9a7a", label:"Da Monitorare" },
+    { name:"PENDING", min:0,  color:"#666666", label:"In Attesa" }
+  ],
 
-  const rr=followers>0?views/followers:0;
-  if(followers<10000){if(rr>=1.5){score+=15;reasons.push("Reach virale");}else if(rr>=1){score+=12;reasons.push("Reach ottima");}else if(rr>=0.5){score+=8;reasons.push("Reach buona");}else if(rr>=0.2)score+=4;}
-  else if(followers<50000){if(rr>=1.2){score+=15;reasons.push("Reach virale");}else if(rr>=0.8){score+=12;reasons.push("Reach ottima");}else if(rr>=0.4){score+=8;reasons.push("Reach buona");}else if(rr>=0.2)score+=4;}
-  else{if(rr>=0.8){score+=15;reasons.push("Reach eccellente");}else if(rr>=0.5){score+=12;reasons.push("Reach ottima");}else if(rr>=0.3){score+=8;reasons.push("Reach buona");}else if(rr>=0.1)score+=4;}
+  // Benchmark per fascia follower
+  // Ogni fascia ha: label, maxFollowers, er{poor,avg,good,great}, reach{...}, growth{...}
+  bands: [
+    {
+      label:"0–1K", max:1000,
+      er:    { poor:3,   avg:6,   good:10  },
+      reach: { poor:50,  avg:100, good:200 },
+      growth:{ poor:1,   avg:3,   good:8   }
+    },
+    {
+      label:"1K–5K", max:5000,
+      er:    { poor:2.5, avg:5,   good:8   },
+      reach: { poor:40,  avg:80,  good:150 },
+      growth:{ poor:0.8, avg:2,   good:5   }
+    },
+    {
+      label:"5K–20K", max:20000,
+      er:    { poor:2,   avg:4,   good:7   },
+      reach: { poor:30,  avg:60,  good:120 },
+      growth:{ poor:0.5, avg:1.5, good:4   }
+    },
+    {
+      label:"20K–100K", max:100000,
+      er:    { poor:1.5, avg:3,   good:5   },
+      reach: { poor:20,  avg:40,  good:80  },
+      growth:{ poor:0.3, avg:1,   good:2.5 }
+    },
+    {
+      label:"100K+", max:Infinity,
+      er:    { poor:1,   avg:2,   good:4   },
+      reach: { poor:15,  avg:30,  good:60  },
+      growth:{ poor:0.2, avg:0.5, good:1.5 }
+    }
+  ]
+};
 
-  const er=views>0?(interactions/views)*100:0;
-  if(er>=5){score+=25;reasons.push("ER eccezionale");}else if(er>=3){score+=20;reasons.push("ER ottimo");}else if(er>=2){score+=15;reasons.push("ER buono");}else if(er>=1){score+=10;reasons.push("ER nella media");}else if(er>=0.5)score+=5;
+// Carica config da Firebase (con fallback a default)
+let _scoringConfig = null;
+const getScoringConfig = async () => {
+  if (_scoringConfig) return _scoringConfig;
+  try {
+    const doc = await db.collection("settings").doc("scoring").get();
+    _scoringConfig = doc.exists ? doc.data() : DEFAULT_SCORING;
+  } catch(e) {
+    _scoringConfig = DEFAULT_SCORING;
+  }
+  return _scoringConfig;
+};
+const invalidateScoringCache = () => { _scoringConfig = null; };
 
-  const gr=followers>0?(newFollowers/followers)*100:0;
-  if(followers<10000){if(gr>=2){score+=15;reasons.push("Crescita forte");}else if(gr>=1){score+=10;reasons.push("Crescita buona");}else if(gr>=0.5)score+=6;}
-  else if(followers<50000){if(gr>=1){score+=15;reasons.push("Crescita forte");}else if(gr>=0.5){score+=10;reasons.push("Crescita buona");}else if(gr>=0.2)score+=6;}
-  else{if(gr>=0.5){score+=15;reasons.push("Crescita forte");}else if(gr>=0.2){score+=10;reasons.push("Crescita buona");}else if(gr>=0.1)score+=6;}
+// Normalizza una metrica rispetto ai benchmark della fascia (0-100)
+const normalizeMetric = (value, band, metric) => {
+  const b = band[metric];
+  if (value <= 0) return 0;
+  if (value >= b.good)  return 100;
+  if (value >= b.avg)   return 50 + ((value - b.avg) / (b.good - b.avg)) * 50;
+  if (value >= b.poor)  return 20 + ((value - b.poor) / (b.avg - b.poor)) * 30;
+  return Math.max(0, (value / b.poor) * 20);
+};
 
-  const kf=[data.motivation,data.contentIntegration,data.brandMeaning,data.qualityVsSell];
-  let qs=0;
-  kf.forEach(f=>{const l=(f||"").length;if(l>300)qs+=5;else if(l>150)qs+=3;else if(l>50)qs+=1;});
-  ["identità","rappresentare","costruire","disciplina","autenticità","valori","reale","genuino","evoluz"].forEach(k=>{if(kf.join(" ").toLowerCase().includes(k))qs++;});
-  qs=Math.min(qs,25);
-  if(qs>=20)reasons.push("Risposte eccellenti");else if(qs>=12)reasons.push("Risposte solide");
-  score+=qs;
-  if(data.hasBrandCollabs==="yes"){score+=5;reasons.push("Exp. brand collabs");}
+// Scoring sincrono (usa config passata come parametro)
+const scoreCandidate = (data, config = DEFAULT_SCORING) => {
+  const followers    = parseInt(data.followers)    || 0;
+  const views        = parseInt(data.views)        || 0;
+  const interactions = parseInt(data.interactions) || 0;
+  const newFollowers = parseInt(data.newFollowers) || 0;
 
-  const fs=Math.min(score,100);
-  let tier,tierColor,tierLabel;
-  if(fs>=75){tier="ELITE";tierColor="#b22222";tierLabel="Priorità Assoluta";}
-  else if(fs>=55){tier="PRO";tierColor="#c0a060";tierLabel="Alta Priorità";}
-  else if(fs>=35){tier="RISING";tierColor="#6a9a7a";tierLabel="Da Monitorare";}
-  else{tier="PENDING";tierColor="#666";tierLabel="In Attesa";}
-  return{score:fs,tier,tierColor,tierLabel,reasons,erReach:er.toFixed(2),reachRate:(rr*100).toFixed(1),growthRate:gr.toFixed(2)};
+  // 1. Trova la fascia follower
+  const band = config.bands.find(b => followers <= b.max) || config.bands[config.bands.length - 1];
+
+  // 2. Calcola le metriche
+  const er     = views > 0        ? (interactions / views)       * 100 : 0;
+  const reach  = followers > 0    ? (views / followers)          * 100 : 0;
+  const growth = followers > 0    ? (newFollowers / followers)   * 100 : 0;
+
+  // 3. Normalizza 0-100 per fascia
+  const erScore     = normalizeMetric(er,     band, "er");
+  const reachScore  = normalizeMetric(reach,  band, "reach");
+  const growthScore = normalizeMetric(growth, band, "growth");
+
+  // 4. Score numerico pesato (metriche)
+  const w = config.weights;
+  const numericScore = (erScore * w.er + reachScore * w.reach + growthScore * w.growth) / 100;
+
+  // 5. Score qualitativo risposte (max 30 punti — peso separato)
+  const kf = [data.motivation, data.contentIntegration, data.brandMeaning, data.qualityVsSell];
+  let qs = 0;
+  kf.forEach(f => { const l=(f||"").length; if(l>300)qs+=6; else if(l>150)qs+=4; else if(l>50)qs+=1; });
+  ["identità","rappresentare","costruire","disciplina","autenticità","valori","reale","genuino","evoluz","brand"].forEach(k => { if(kf.join(" ").toLowerCase().includes(k)) qs++; });
+  const qualScore = Math.min(qs, 30);
+
+  // 6. Score finale: 70% metriche + 30% qualità risposte
+  const finalScore = Math.min(Math.round(numericScore * 0.7 + qualScore), 100);
+
+  // 7. Label metriche
+  const getLabel = (score) => score >= 75 ? "Eccellente" : score >= 50 ? "Buono" : score >= 20 ? "Nella media" : "Scarso";
+
+  // 8. Reasons
+  const reasons = [
+    `Fascia: ${band.label}`,
+    `ER ${er.toFixed(1)}% — ${getLabel(erScore)}`,
+    `Reach ${reach.toFixed(0)}% — ${getLabel(reachScore)}`,
+    `Growth ${growth.toFixed(2)}% — ${getLabel(growthScore)}`,
+  ];
+  if (data.hasBrandCollabs === "yes") reasons.push("Exp. brand collabs");
+  if (qualScore >= 22) reasons.push("Risposte eccellenti");
+  else if (qualScore >= 14) reasons.push("Risposte solide");
+
+  // 9. Tier
+  const tierDef = [...config.tiers].sort((a,b) => b.min - a.min).find(t => finalScore >= t.min) || config.tiers[config.tiers.length - 1];
+
+  return {
+    score: finalScore,
+    tier: tierDef.name,
+    tierColor: tierDef.color,
+    tierLabel: tierDef.label,
+    reasons,
+    erScore: Math.round(erScore),
+    reachScore: Math.round(reachScore),
+    growthScore: Math.round(growthScore),
+    qualScore,
+    bandLabel: band.label,
+    erReach: er.toFixed(2),
+    reachRate: reach.toFixed(1),
+    growthRate: growth.toFixed(2)
+  };
 };
 
 // ── SHARED COMPONENTS ─────────────────────────────────────────────────────────
 function Logo({size=24}){
   return(
-    <div style={{display:"flex",alignItems:"baseline",gap:7,flexShrink:0}}>
-      <span style={{fontFamily:"var(--fd)",fontSize:size,letterSpacing:"0.12em",color:"#fff",lineHeight:1}}>EVORΛ</span>
-      <span style={{fontFamily:"var(--fu)",fontSize:size*.44,letterSpacing:"0.35em",color:"var(--red)",textTransform:"uppercase"}}>ATHLETES</span>
+    <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+      <span style={{fontFamily:"'Archivo',sans-serif",fontSize:size,letterSpacing:"-0.02em",color:"#EFF0F5",lineHeight:1,fontWeight:900}}>EVORΛ</span>
+      <span style={{fontFamily:"'Archivo',sans-serif",fontSize:size*.42,letterSpacing:"0.25em",color:"var(--red)",textTransform:"uppercase",fontWeight:600}}>ATHLETES</span>
     </div>
   );
 }
@@ -299,7 +397,7 @@ function Landing({onApply,onAdmin}){
           </div>
           <div className="hero-stats">
             {[["<5%","Tasso di accettazione"],["3","Livelli di partnership"],["0 DM","Solo candidature formali"]].map(([n,l])=>(
-              <div key={n}><div style={{fontFamily:"var(--fd)",fontSize:38,color:"var(--red)",lineHeight:1}}>{n}</div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",letterSpacing:"0.15em",textTransform:"uppercase",marginTop:4}}>{l}</div></div>
+              <div key={n}><div style={{fontFamily:"'Archivo',sans-serif",fontSize:38,color:"var(--red)",lineHeight:1,fontWeight:900}}>{n}</div><div style={{fontFamily:"'Questrial',sans-serif",fontSize:12,color:"var(--t3)",letterSpacing:"0.1em",textTransform:"uppercase",marginTop:4}}>{l}</div></div>
             ))}
           </div>
         </div>
@@ -379,7 +477,7 @@ function Landing({onApply,onAdmin}){
 
 // ── FORM ──────────────────────────────────────────────────────────────────────
 const STEPS=["CHI SEI","SOCIAL & NUMERI","POSIZIONAMENTO","FIT CON EVORΛ","MENTALITÀ","IMPEGNO & EXTRA"];
-const emptyForm={fullName:"",age:"",city:"",email:"",instagram:"",followers:"",screenshotData:null,screenshotName:"",views:"",interactions:"",newFollowers:"",tiktok:"",hasBrandCollabs:"",brandCollabDetails:"",threeWords:"",contentType:"",whatToTransmit:"",motivation:"",brandLike:"",contentIntegration:"",athleteImage:"",qualityVsSell:"",buildWithoutEarnings:"",badContentReaction:"",brandMeaning:"",contentPerMonth:"",hasRoutine:"",followsGuidelines:"",boughtProducts:"",improvements:"",extra:""};
+const emptyForm={fullName:"",age:"",city:"",email:"",instagram:"",followers:"",tiktokFollowers:"",screenshotData:null,screenshotName:"",views:"",interactions:"",newFollowers:"",tiktok:"",hasBrandCollabs:"",brandCollabDetails:"",threeWords:"",contentType:"",whatToTransmit:"",motivation:"",brandLike:"",contentIntegration:"",athleteImage:"",qualityVsSell:"",buildWithoutEarnings:"",badContentReaction:"",brandMeaning:"",contentPerMonth:"",hasRoutine:"",followsGuidelines:"",boughtProducts:"",improvements:"",extra:""};
 
 function ApplicationForm({onBack,onAdmin}){
   const [step,setStep]=useState(0);
@@ -461,72 +559,83 @@ function ApplicationForm({onBack,onAdmin}){
           <Field label="Email" required><input type="email" value={form.email} onChange={e=>u("email",e.target.value)} placeholder="nome@email.com"/></Field>
         </div>}
 
-        {step===1&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+        {step===1&&<div style={{display:"flex",flexDirection:"column",gap:24,animation:"fadeUp .4s ease both"}}>
           <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>SOCIAL & NUMERI</h3>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Field label="Instagram (@handle o link)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
-            <Field label="Follower totali Instagram" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
-          </div>
 
-          {/* UPLOAD SCREENSHOT */}
-          <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante per sceglierla">
-            <div
-              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
-              onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
-              onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
-              style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-              {form.screenshotData?(
-                <>
-                  <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
-                  {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
-                  {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti — controlla e correggi se necessario</div>}
-                  {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError} — inserisci i dati manualmente</div>}
-                  {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
-                </>
-              ):(
-                <>
-                  <div style={{fontSize:36}}>📊</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente dall'AI</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>JPG · PNG · Max 10MB</div>
-                </>
+          {/* ── INSTAGRAM ── */}
+          <div>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--red)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>
+              ▸ INSTAGRAM
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                <Field label="Handle (@username)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
+                <Field label="Follower" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
+              </div>
+
+              <Field label="Screenshot Insights — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante — i dati vengono letti automaticamente">
+                <div
+                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
+                  onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
+                  onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
+                  style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                  {form.screenshotData?(
+                    <>
+                      <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
+                      {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
+                      {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
+                      {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
+                      {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
+                    </>
+                  ):(
+                    <>
+                      <div style={{fontSize:36}}>📊</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente dall'AI</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>JPG · PNG · Max 10MB</div>
+                    </>
+                  )}
+                </div>
+                <label style={{display:"block",marginTop:8,padding:"11px 24px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center",transition:"all .2s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
+                  {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
+                </label>
+              </Field>
+
+              {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Lettura automatica dello screenshot...</div></div></div>}
+
+              {ocrStatus==="done"&&(
+                <div className="ocr-box" style={{borderColor:"#6a9a7a50"}}>
+                  <div style={{fontSize:18}}>✅</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",marginBottom:10}}>DATI ESTRATTI AUTOMATICAMENTE</div>
+                    <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+                      {[["Visualizzazioni",form.views],["Interazioni",form.interactions],["Nuovi follower",form.newFollowers]].filter(([,v])=>v).map(([l,v])=>(
+                        <div key={l}>
+                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:2}}>{l}</div>
+                          <div style={{fontFamily:"var(--fd)",fontSize:24,color:"var(--t1)"}}>{parseInt(v).toLocaleString()}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-            <label style={{display:"block",marginTop:8,padding:"11px 24px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center",transition:"all .2s"}}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
-              {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
-              <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
-            </label>
-          </Field>
-
-          {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Claude sta leggendo i dati dallo screenshot...</div></div></div>}
-          {ocrStatus==="done"&&<div className="ocr-box" style={{borderColor:"#6a9a7a50"}}><div style={{fontSize:18}}>✅</div><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em"}}>DATI ESTRATTI</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Controlla e correggi se necessario</div></div></div>}
-
-          <div style={{background:"#0c0c0c",border:`1px solid ${ocrStatus==="done"?"#6a9a7a30":"#2a2a2a"}`,padding:16}}>
-            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:14,display:"flex",justifyContent:"space-between"}}>
-              <span>DATI INSIGHTS</span>
-              {ocrStatus==="done"&&<span style={{color:"#6a9a7a"}}>✓ AUTO</span>}
-            </div>
-            <div className="g33">
-              <Field label="Visualizzazioni (30gg)" required><input type="number" value={form.views} onChange={e=>u("views",e.target.value)} placeholder="3540" style={{borderColor:ocrStatus==="done"&&form.views?"#6a9a7a30":"#333"}}/></Field>
-              <Field label="Interazioni (30gg)" required hint="Like+commenti+salvataggi"><input type="number" value={form.interactions} onChange={e=>u("interactions",e.target.value)} placeholder="109" style={{borderColor:ocrStatus==="done"&&form.interactions?"#6a9a7a30":"#333"}}/></Field>
-              <Field label="Nuovi follower (30gg)" required><input type="number" value={form.newFollowers} onChange={e=>u("newFollowers",e.target.value)} placeholder="18" style={{borderColor:ocrStatus==="done"&&form.newFollowers?"#6a9a7a30":"#333"}}/></Field>
-            </div>
-            {form.views>0&&form.interactions>0&&(
-              <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid #222",display:"flex",gap:24,flexWrap:"wrap"}}>
-                <div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.2em",marginBottom:3}}>ENGAGEMENT RATE</div><div style={{fontFamily:"var(--fd)",fontSize:26,color:"var(--red)"}}>{((form.interactions/form.views)*100).toFixed(2)}%</div></div>
-                {form.followers>0&&<div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.2em",marginBottom:3}}>REACH RATE</div><div style={{fontFamily:"var(--fd)",fontSize:26,color:"var(--gold)"}}>{((form.views/form.followers)*100).toFixed(1)}%</div></div>}
-                {form.newFollowers>0&&form.followers>0&&<div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.2em",marginBottom:3}}>GROWTH</div><div style={{fontFamily:"var(--fd)",fontSize:26,color:"#6a9a7a"}}>{((form.newFollowers/form.followers)*100).toFixed(2)}%</div></div>}
-              </div>
-            )}
           </div>
 
-          <Field label="TikTok (@handle o link)" hint="Opzionale"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
-          <Field label="Hai già collaborato con brand fitness?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>)}</div>
-          </Field>
-          {form.hasBrandCollabs==="yes"&&<Field label="Quali brand? Hai collaborazioni in corso?"><textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..."/></Field>}
+          {/* ── TIKTOK ── */}
+          <div>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--t3)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>
+              ▸ TIKTOK <span style={{fontSize:9,color:"var(--t4)",letterSpacing:"0.2em"}}>(OPZIONALE)</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <Field label="Handle (@username)"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
+              <Field label="Follower"><input type="number" value={form.tiktokFollowers} onChange={e=>u("tiktokFollowers",e.target.value)} placeholder="es. 10000"/></Field>
+            </div>
+          </div>
+
         </div>}
 
         {step===2&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
@@ -535,6 +644,10 @@ function ApplicationForm({onBack,onAdmin}){
           <Field label="Come ti descriveresti in 3 parole come creator?" required><input value={form.threeWords} onChange={e=>u("threeWords",e.target.value)} placeholder="es. Autentico, Diretto, Consistente"/></Field>
           <Field label="Che tipo di contenuti pubblichi principalmente?" required><textarea value={form.contentType} onChange={e=>u("contentType",e.target.value)} rows={4} placeholder="Formato, temi, approccio, frequenza..."/></Field>
           <Field label="Cosa vuoi trasmettere alle persone che ti seguono?" required><textarea value={form.whatToTransmit} onChange={e=>u("whatToTransmit",e.target.value)} rows={4} placeholder="Qual è il messaggio centrale che porti avanti?"/></Field>
+          <Field label="Hai già collaborato con brand fitness?" required>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>)}</div>
+          </Field>
+          {form.hasBrandCollabs==="yes"&&<Field label="Quali brand? Hai collaborazioni in corso?"><textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..."/></Field>}
         </div>}
 
         {step===3&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
@@ -577,19 +690,6 @@ function ApplicationForm({onBack,onAdmin}){
               <Field label="Vuoi aggiungere qualcosa per distinguerti?"><textarea value={form.extra} onChange={e=>u("extra",e.target.value)} rows={4} placeholder="Ultima opportunità..."/></Field>
             </div>
           </div>
-          {sc&&<div style={{background:"#0a0a0a",border:`1px solid ${sc.tierColor}40`,padding:20}}>
-            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.3em",marginBottom:12}}>ANTEPRIMA PROFILO</div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
-              <div><Tag color={sc.tierColor}>{sc.tier}</Tag><div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)",marginTop:6}}>{sc.tierLabel}</div></div>
-              <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fd)",fontSize:48,color:sc.tierColor,lineHeight:1}}>{sc.score}</div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>/ 100</div></div>
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{sc.reasons.map(r=><Tag key={r} color="#555">{r}</Tag>)}</div>
-            <div style={{display:"flex",gap:20,paddingTop:12,borderTop:"1px solid #222",flexWrap:"wrap"}}>
-              {[["ER REACH",`${sc.erReach}%`,"var(--red)"],["REACH RATE",`${sc.reachRate}%`,"var(--gold)"],["GROWTH",`${sc.growthRate}%`,"#6a9a7a"]].map(([l,v,c])=>(
-                <div key={l}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.15em"}}>{l}</div><div style={{fontFamily:"var(--fd)",fontSize:20,color:c}}>{v}</div></div>
-              ))}
-            </div>
-          </div>}
         </div>}
 
         <div style={{display:"flex",gap:12,marginTop:40,paddingTop:24,borderTop:"1px solid var(--brd)"}}>
@@ -712,13 +812,29 @@ function CandidaturePanel({role}){
             </div>
 
             <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:16}}>
-              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:8}}>ANALISI</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>{sel.reasons?.map(r=><Tag key={r} color="#555">{r}</Tag>)}</div>
-              <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-                {[["ER",`${sel.erReach}%`,"var(--red)"],["REACH",`${sel.reachRate}%`,"var(--gold)"],["GROWTH",`${sel.growthRate}%`,"#6a9a7a"]].map(([l,v,c])=>(
-                  <div key={l}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)"}}>{l}</div><div style={{fontFamily:"var(--fd)",fontSize:20,color:c}}>{v}</div></div>
+              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:12}}>ANALISI SCORE</div>
+              {/* Fascia */}
+              {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",marginBottom:12}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
+              {/* Breakdown metriche */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+                {[
+                  ["ENGAGEMENT RATE",sel.erReach+"%",sel.erScore,"var(--red)"],
+                  ["REACH RATE",sel.reachRate+"%",sel.reachScore,"var(--gold)"],
+                  ["GROWTH RATE",sel.growthRate+"%",sel.growthScore,"#6a9a7a"]
+                ].map(([l,v,s,c])=>(
+                  <div key={l} style={{background:"#141414",border:"1px solid #333",padding:12}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:6}}>{l}</div>
+                    <div style={{fontFamily:"var(--fd)",fontSize:20,color:c,fontWeight:700}}>{v}</div>
+                    {/* Barra progresso */}
+                    <div style={{height:3,background:"#2a2a2a",marginTop:8,borderRadius:2}}>
+                      <div style={{height:"100%",background:c,width:`${s||0}%`,borderRadius:2,transition:"width .5s"}}/>
+                    </div>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",marginTop:4}}>{s||0}/100</div>
+                  </div>
                 ))}
               </div>
+              {/* Reasons */}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sel.reasons?.map(r=><Tag key={r} color="#444">{r}</Tag>)}</div>
             </div>
 
             {sel.screenshotData&&<div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div><img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:280,objectFit:"contain"}}/></div>}
@@ -841,11 +957,158 @@ function SettingsPanel(){
   );
 }
 
-// ── ADMIN PANEL ───────────────────────────────────────────────────────────────
-const DEFAULT_ADMIN="evora2025";
-const DEFAULT_MANAGER="evora_smm";
+// ── SCORING PANEL ─────────────────────────────────────────────────────────────
+function ScoringPanel(){
+  const [cfg, setCfg] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
 
-function AdminPanel({onBack}){
+  useEffect(()=>{
+    db.collection("settings").doc("scoring").get().then(doc=>{
+      setCfg(doc.exists ? doc.data() : JSON.parse(JSON.stringify(DEFAULT_SCORING)));
+      setLoading(false);
+    }).catch(()=>{ setCfg(JSON.parse(JSON.stringify(DEFAULT_SCORING))); setLoading(false); });
+  },[]);
+
+  const save = async () => {
+    await db.collection("settings").doc("scoring").set(cfg);
+    invalidateScoringCache();
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2000);
+  };
+
+  const resetDefault = () => { setCfg(JSON.parse(JSON.stringify(DEFAULT_SCORING))); };
+
+  const updateWeight = (key, val) => {
+    setCfg(p=>({...p, weights:{...p.weights, [key]: parseFloat(val)||0}}));
+  };
+
+  const updateBand = (bi, metric, level, val) => {
+    const bands = JSON.parse(JSON.stringify(cfg.bands));
+    bands[bi][metric][level] = parseFloat(val)||0;
+    setCfg(p=>({...p, bands}));
+  };
+
+  const updateTier = (ti, field, val) => {
+    const tiers = JSON.parse(JSON.stringify(cfg.tiers));
+    tiers[ti][field] = field==="min" ? parseInt(val)||0 : val;
+    setCfg(p=>({...p, tiers}));
+  };
+
+  if(loading) return <div style={{padding:32,textAlign:"center",fontFamily:"var(--fu)",fontSize:11,color:"var(--t4)"}}>CARICAMENTO...</div>;
+
+  const iStyle = {background:"#141414",border:"1px solid #3a3a3a",color:"var(--t1)",padding:"8px 10px",fontSize:13,fontFamily:"var(--fb)",outline:"none",width:"100%"};
+  const totalW = (cfg.weights.er||0)+(cfg.weights.reach||0)+(cfg.weights.growth||0);
+
+  return(
+    <div style={{overflow:"auto",flex:1}}>
+      <div style={{maxWidth:900,margin:"0 auto",padding:"32px 20px 80px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28,flexWrap:"wrap",gap:12}}>
+          <h2 style={{fontFamily:"var(--fd)",fontSize:32,color:"var(--t1)",fontWeight:900}}>SCORING ENGINE</h2>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={resetDefault} className="btn-ghost" style={{padding:"9px 20px",fontSize:11}}>RESET DEFAULT</button>
+            <button onClick={save} className="btn-red" style={{padding:"9px 24px",fontSize:11}}>
+              {saved?"✓ SALVATO":"SALVA CONFIGURAZIONE"}
+            </button>
+          </div>
+        </div>
+
+        {/* PESI METRICHE */}
+        <div style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:24,marginBottom:16}}>
+          <div style={{fontFamily:"var(--fd)",fontSize:18,color:"var(--t1)",marginBottom:4,fontWeight:700}}>⚖️ Pesi delle Metriche</div>
+          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t3)",marginBottom:20,lineHeight:1.7}}>La somma deve essere 100. Attualmente: <strong style={{color:totalW===100?"#6a9a7a":"var(--red)"}}>{totalW}</strong></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+            {[["er","Engagement Rate","40% consigliato"],["reach","Reach Rate","35% consigliato"],["growth","Growth Rate","25% consigliato"]].map(([k,l,hint])=>(
+              <div key={k}>
+                <label style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:6,display:"block",fontWeight:600}}>{l}</label>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <input type="number" min="0" max="100" style={iStyle} value={cfg.weights[k]} onChange={e=>updateWeight(k,e.target.value)}/>
+                  <span style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--red)",fontWeight:700}}>%</span>
+                </div>
+                <div style={{fontFamily:"var(--fb)",fontSize:11,color:"var(--t4)",marginTop:4}}>{hint}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* TIER SOGLIE */}
+        <div style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:24,marginBottom:16}}>
+          <div style={{fontFamily:"var(--fd)",fontSize:18,color:"var(--t1)",marginBottom:4,fontWeight:700}}>🏆 Soglie Tier</div>
+          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t3)",marginBottom:20}}>Punteggio minimo per accedere a ogni tier.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+            {cfg.tiers.map((t,i)=>(
+              <div key={t.name} style={{background:"#141414",border:`1px solid ${t.color}40`,padding:16}}>
+                <div style={{fontFamily:"var(--fu)",fontSize:11,color:t.color,letterSpacing:"0.2em",fontWeight:700,marginBottom:10}}>{t.name}</div>
+                <label style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",display:"block",marginBottom:4}}>PUNTEGGIO MIN</label>
+                <input type="number" min="0" max="100" style={iStyle} value={t.min} onChange={e=>updateTier(i,"min",e.target.value)}/>
+                <label style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",display:"block",margin:"10px 0 4px"}}>LABEL</label>
+                <input type="text" style={iStyle} value={t.label} onChange={e=>updateTier(i,"label",e.target.value)}/>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* BENCHMARK PER FASCIA */}
+        <div style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:24}}>
+          <div style={{fontFamily:"var(--fd)",fontSize:18,color:"var(--t1)",marginBottom:4,fontWeight:700}}>📊 Benchmark per Fascia Follower</div>
+          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t3)",marginBottom:8,lineHeight:1.7}}>
+            Per ogni fascia definisci le soglie <strong style={{color:"var(--t2)"}}>Scarso / Medio / Buono</strong> per ER%, Reach% e Growth%.
+            Il sistema interpola automaticamente i valori intermedi.
+          </div>
+          <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t4)",marginBottom:20,padding:"10px 14px",background:"#141414",border:"1px solid #333"}}>
+            💡 ER = interazioni/visualizzazioni×100 · Reach = visualizzazioni/follower×100 · Growth = nuovi follower/follower×100
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {/* Header */}
+            <div style={{display:"grid",gridTemplateColumns:"120px repeat(3,1fr) repeat(3,1fr) repeat(3,1fr)",gap:4,padding:"8px 12px"}}>
+              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em"}}>FASCIA</div>
+              {["ER — Scarso","ER — Medio","ER — Buono","Reach — Scarso","Reach — Medio","Reach — Buono","Growth — Scarso","Growth — Medio","Growth — Buono"].map(h=>(
+                <div key={h} style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t4)",letterSpacing:"0.1em",textAlign:"center"}}>{h}</div>
+              ))}
+            </div>
+
+            {cfg.bands.map((band,bi)=>(
+              <div key={bi} style={{display:"grid",gridTemplateColumns:"120px repeat(3,1fr) repeat(3,1fr) repeat(3,1fr)",gap:4,padding:"10px 12px",background:"#141414",border:"1px solid #2a2a2a"}}>
+                <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t1)",fontWeight:700,display:"flex",alignItems:"center"}}>{band.label}</div>
+                {/* ER */}
+                {["poor","avg","good"].map(l=>(
+                  <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
+                    <input type="number" step="0.1" min="0" style={{...iStyle,fontSize:12,padding:"6px 8px"}} value={band.er[l]} onChange={e=>updateBand(bi,"er",l,e.target.value)}/>
+                    <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)"}}>%</span>
+                  </div>
+                ))}
+                {/* Reach */}
+                {["poor","avg","good"].map(l=>(
+                  <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
+                    <input type="number" step="1" min="0" style={{...iStyle,fontSize:12,padding:"6px 8px"}} value={band.reach[l]} onChange={e=>updateBand(bi,"reach",l,e.target.value)}/>
+                    <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)"}}>%</span>
+                  </div>
+                ))}
+                {/* Growth */}
+                {["poor","avg","good"].map(l=>(
+                  <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
+                    <input type="number" step="0.1" min="0" style={{...iStyle,fontSize:12,padding:"6px 8px"}} value={band.growth[l]} onChange={e=>updateBand(bi,"growth",l,e.target.value)}/>
+                    <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)"}}>%</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{marginTop:20,display:"flex",justifyContent:"flex-end",gap:8}}>
+          <button onClick={resetDefault} className="btn-ghost" style={{padding:"12px 24px",fontSize:11}}>RESET DEFAULT</button>
+          <button onClick={save} className="btn-red" style={{padding:"12px 32px",fontSize:12}}>
+            {saved?"✓ CONFIGURAZIONE SALVATA":"SALVA CONFIGURAZIONE"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
   const [role,setRole]=useState(null);
   const [pw,setPw]=useState("");
   const [pwError,setPwError]=useState(false);
@@ -908,9 +1171,11 @@ function AdminPanel({onBack}){
       </div>
       <div className="tab-bar">
         <button className={`tab${activeTab==="candidature"?" active":""}`} onClick={()=>setActiveTab("candidature")}>📋 Candidature</button>
+        {role==="admin"&&<button className={`tab${activeTab==="scoring"?" active":""}`} onClick={()=>setActiveTab("scoring")}>🎯 Scoring</button>}
         {role==="admin"&&<button className={`tab${activeTab==="settings"?" active":""}`} onClick={()=>setActiveTab("settings")}>⚙️ Impostazioni</button>}
       </div>
       {activeTab==="candidature"&&<CandidaturePanel role={role}/>}
+      {activeTab==="scoring"&&role==="admin"&&<ScoringPanel/>}
       {activeTab==="settings"&&role==="admin"&&<SettingsPanel/>}
     </div>
   );
