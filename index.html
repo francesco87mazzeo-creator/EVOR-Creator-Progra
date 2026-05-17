@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779032007</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779032612</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -832,7 +832,7 @@ function CandidaturePanel({role}){
                 const band = config.bands.find(b=>followers<=b.max) || config.bands[config.bands.length-1];
 
                 const getMetricColor = (value, benchmarks) => {
-                  if(value >= benchmarks.excellent) return { color:"#1aaa5a", bg:"#061a0e", label:"ECCELLENTE" };
+                  if(value >= benchmarks.excellent) return { color:"#3a7bd5", bg:"#0a1428", label:"ECCELLENTE" };
                   if(value >= benchmarks.good)      return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
                   if(value >= benchmarks.avg)       return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
                   return                                   { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
@@ -1002,9 +1002,9 @@ function BenchmarkEditor({cfg, updateBand}){
   ];
   const cur = metrics.find(m=>m.key===metricTab);
   const levels = [
-    { key:"avg",       label:"MEDIO DA",       color:"#e67e22", bg:"#2a1a08", desc:"Sotto questo valore → SCARSO" },
-    { key:"good",      label:"BUONO DA",       color:"#27ae60", bg:"#0a2a14", desc:"Sotto questo valore → MEDIO" },
-    { key:"excellent", label:"ECCELLENTE DA",  color:"#1aaa5a", bg:"#061a0e", desc:"Sotto questo valore → BUONO · Sopra → ECCELLENTE" }
+    { key:"avg",       label:"MEDIO DA",      color:"#e67e22", bg:"#2a1a08", desc:(b)=>`Sotto ${b.avg}% → SCARSO` },
+    { key:"good",      label:"BUONO DA",      color:"#27ae60", bg:"#0a2a14", desc:(b)=>`Da ${b.avg}% a ${b.good-0.01}% → MEDIO` },
+    { key:"excellent", label:"ECCELLENTE DA", color:"#3a7bd5", bg:"#0a1428", desc:(b)=>`Da ${b.good}% a ${b.excellent-0.01}% → BUONO · Da ${b.excellent}% in su → ECCELLENTE` }
   ];
   return(
     <div>
@@ -1027,10 +1027,10 @@ function BenchmarkEditor({cfg, updateBand}){
       {/* Legenda */}
       <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
         {[
-          {color:"#c0392b",bg:"#2a1010",label:"SCARSO — sotto soglia Medio"},
-          {color:"#e67e22",bg:"#2a1a08",label:"MEDIO — da soglia Medio a Buono"},
-          {color:"#27ae60",bg:"#0a2a14",label:"BUONO — da soglia Buono a Eccellente"},
-          {color:"#1aaa5a",bg:"#061a0e",label:"ECCELLENTE — sopra soglia Eccellente"}
+          {color:"#c0392b",bg:"#2a1010",label:"SCARSO"},
+          {color:"#e67e22",bg:"#2a1a08",label:"MEDIO"},
+          {color:"#27ae60",bg:"#0a2a14",label:"BUONO"},
+          {color:"#3a7bd5",bg:"#0a1428",label:"ECCELLENTE"}
         ].map(l=>(
           <div key={l.label} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:l.bg,border:`1px solid ${l.color}40`}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:l.color}}/>
@@ -1047,7 +1047,7 @@ function BenchmarkEditor({cfg, updateBand}){
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
               {levels.map(l=>(
-                <div key={l.key} style={{background:l.bg,border:`1px solid ${l.color}40`,padding:12}}>
+                <div key={l.key} style={{background:l.bg,border:`1px solid ${l.color}50`,padding:14}}>
                   <div style={{fontFamily:"var(--fu)",fontSize:9,color:l.color,letterSpacing:"0.2em",fontWeight:700,marginBottom:8}}>{l.label}</div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <input type="number" step={cur.step} min="0"
@@ -1056,7 +1056,9 @@ function BenchmarkEditor({cfg, updateBand}){
                       onChange={e=>updateBand(bi,metricTab,l.key,e.target.value)}/>
                     <span style={{fontFamily:"var(--fu)",fontSize:12,color:l.color,fontWeight:700}}>{cur.unit}</span>
                   </div>
-                  <div style={{fontFamily:"var(--fb)",fontSize:10,color:"var(--t4)",marginTop:6}}>{l.desc}</div>
+                  <div style={{fontFamily:"var(--fb)",fontSize:11,color:l.color,marginTop:8,opacity:.85,lineHeight:1.6}}>
+                    {l.desc(band[metricTab])}
+                  </div>
                 </div>
               ))}
             </div>
