@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v12 — Application 2025</title>
+  <title>EVORΛ ATHLETES v13 — Application 2025</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -380,7 +380,7 @@ function Landing({onApply,onAdmin}){
 
 // ── FORM ──────────────────────────────────────────────────────────────────────
 const STEPS=["CHI SEI","SOCIAL & NUMERI","POSIZIONAMENTO","FIT CON EVORΛ","MENTALITÀ","IMPEGNO & EXTRA"];
-const emptyForm={fullName:"",age:"",city:"",email:"",instagram:"",followers:"",screenshotData:null,screenshotName:"",views:"",interactions:"",newFollowers:"",tiktok:"",hasBrandCollabs:"",brandCollabDetails:"",threeWords:"",contentType:"",whatToTransmit:"",motivation:"",brandLike:"",contentIntegration:"",athleteImage:"",qualityVsSell:"",buildWithoutEarnings:"",badContentReaction:"",brandMeaning:"",contentPerMonth:"",hasRoutine:"",followsGuidelines:"",boughtProducts:"",improvements:"",extra:""};
+const emptyForm={fullName:"",age:"",city:"",email:"",instagram:"",followers:"",tiktokFollowers:"",screenshotData:null,screenshotName:"",views:"",interactions:"",newFollowers:"",tiktok:"",hasBrandCollabs:"",brandCollabDetails:"",threeWords:"",contentType:"",whatToTransmit:"",motivation:"",brandLike:"",contentIntegration:"",athleteImage:"",qualityVsSell:"",buildWithoutEarnings:"",badContentReaction:"",brandMeaning:"",contentPerMonth:"",hasRoutine:"",followsGuidelines:"",boughtProducts:"",improvements:"",extra:""};
 
 function ApplicationForm({onBack,onAdmin}){
   const [step,setStep]=useState(0);
@@ -464,13 +464,21 @@ function ApplicationForm({onBack,onAdmin}){
 
         {step===1&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
           <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>SOCIAL & NUMERI</h3>
+
+          {/* INSTAGRAM */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Field label="Instagram (@handle o link)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
-            <Field label="Follower totali Instagram" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
+            <Field label="Instagram (@handle)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
+            <Field label="Follower Instagram" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
+          </div>
+
+          {/* TIKTOK */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <Field label="TikTok (@handle)" hint="Opzionale"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
+            <Field label="Follower TikTok" hint="Opzionale"><input type="number" value={form.tiktokFollowers} onChange={e=>u("tiktokFollowers",e.target.value)} placeholder="es. 10000"/></Field>
           </div>
 
           {/* UPLOAD SCREENSHOT */}
-          <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante per sceglierla">
+          <Field label="Screenshot Insights Instagram — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante — i dati vengono letti automaticamente">
             <div
               onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
               onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
@@ -480,8 +488,8 @@ function ApplicationForm({onBack,onAdmin}){
                 <>
                   <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
                   {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
-                  {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti — controlla e correggi se necessario</div>}
-                  {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError} — inserisci i dati manualmente</div>}
+                  {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
+                  {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
                   {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
                 </>
               ):(
@@ -501,33 +509,23 @@ function ApplicationForm({onBack,onAdmin}){
             </label>
           </Field>
 
-          {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Claude sta leggendo i dati dallo screenshot...</div></div></div>}
-          {ocrStatus==="done"&&<div className="ocr-box" style={{borderColor:"#6a9a7a50"}}><div style={{fontSize:18}}>✅</div><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em"}}>DATI ESTRATTI</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Controlla e correggi se necessario</div></div></div>}
-
-          <div style={{background:"#0c0c0c",border:`1px solid ${ocrStatus==="done"?"#6a9a7a30":"#2a2a2a"}`,padding:16}}>
-            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:14,display:"flex",justifyContent:"space-between"}}>
-              <span>DATI INSIGHTS</span>
-              {ocrStatus==="done"&&<span style={{color:"#6a9a7a"}}>✓ AUTO</span>}
-            </div>
-            <div className="g33">
-              <Field label="Visualizzazioni (30gg)" required><input type="number" value={form.views} onChange={e=>u("views",e.target.value)} placeholder="3540" style={{borderColor:ocrStatus==="done"&&form.views?"#6a9a7a30":"#333"}}/></Field>
-              <Field label="Interazioni (30gg)" required hint="Like+commenti+salvataggi"><input type="number" value={form.interactions} onChange={e=>u("interactions",e.target.value)} placeholder="109" style={{borderColor:ocrStatus==="done"&&form.interactions?"#6a9a7a30":"#333"}}/></Field>
-              <Field label="Nuovi follower (30gg)" required><input type="number" value={form.newFollowers} onChange={e=>u("newFollowers",e.target.value)} placeholder="18" style={{borderColor:ocrStatus==="done"&&form.newFollowers?"#6a9a7a30":"#333"}}/></Field>
-            </div>
-            {form.views>0&&form.interactions>0&&(
-              <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid #222",display:"flex",gap:24,flexWrap:"wrap"}}>
-                <div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.2em",marginBottom:3}}>ENGAGEMENT RATE</div><div style={{fontFamily:"var(--fd)",fontSize:26,color:"var(--red)"}}>{((form.interactions/form.views)*100).toFixed(2)}%</div></div>
-                {form.followers>0&&<div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.2em",marginBottom:3}}>REACH RATE</div><div style={{fontFamily:"var(--fd)",fontSize:26,color:"var(--gold)"}}>{((form.views/form.followers)*100).toFixed(1)}%</div></div>}
-                {form.newFollowers>0&&form.followers>0&&<div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.2em",marginBottom:3}}>GROWTH</div><div style={{fontFamily:"var(--fd)",fontSize:26,color:"#6a9a7a"}}>{((form.newFollowers/form.followers)*100).toFixed(2)}%</div></div>}
+          {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Lettura automatica dello screenshot...</div></div></div>}
+          {ocrStatus==="done"&&<div className="ocr-box" style={{borderColor:"#6a9a7a50"}}>
+            <div style={{fontSize:18}}>✅</div>
+            <div>
+              <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em"}}>DATI ESTRATTI AUTOMATICAMENTE</div>
+              {/* Mostra dati in sola lettura */}
+              <div style={{display:"flex",gap:20,marginTop:10,flexWrap:"wrap"}}>
+                {[["Visualizzazioni",form.views],["Interazioni",form.interactions],["Nuovi follower",form.newFollowers]].filter(([,v])=>v).map(([l,v])=>(
+                  <div key={l}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em"}}>{l}</div>
+                    <div style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--t2)"}}>{parseInt(v).toLocaleString()}</div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
+            </div>
+          </div>}
 
-          <Field label="TikTok (@handle o link)" hint="Opzionale"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
-          <Field label="Hai già collaborato con brand fitness?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>)}</div>
-          </Field>
-          {form.hasBrandCollabs==="yes"&&<Field label="Quali brand? Hai collaborazioni in corso?"><textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..."/></Field>}
         </div>}
 
         {step===2&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
@@ -536,6 +534,10 @@ function ApplicationForm({onBack,onAdmin}){
           <Field label="Come ti descriveresti in 3 parole come creator?" required><input value={form.threeWords} onChange={e=>u("threeWords",e.target.value)} placeholder="es. Autentico, Diretto, Consistente"/></Field>
           <Field label="Che tipo di contenuti pubblichi principalmente?" required><textarea value={form.contentType} onChange={e=>u("contentType",e.target.value)} rows={4} placeholder="Formato, temi, approccio, frequenza..."/></Field>
           <Field label="Cosa vuoi trasmettere alle persone che ti seguono?" required><textarea value={form.whatToTransmit} onChange={e=>u("whatToTransmit",e.target.value)} rows={4} placeholder="Qual è il messaggio centrale che porti avanti?"/></Field>
+          <Field label="Hai già collaborato con brand fitness?" required>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>)}</div>
+          </Field>
+          {form.hasBrandCollabs==="yes"&&<Field label="Quali brand? Hai collaborazioni in corso?"><textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..."/></Field>}
         </div>}
 
         {step===3&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
@@ -578,19 +580,6 @@ function ApplicationForm({onBack,onAdmin}){
               <Field label="Vuoi aggiungere qualcosa per distinguerti?"><textarea value={form.extra} onChange={e=>u("extra",e.target.value)} rows={4} placeholder="Ultima opportunità..."/></Field>
             </div>
           </div>
-          {sc&&<div style={{background:"#0a0a0a",border:`1px solid ${sc.tierColor}40`,padding:20}}>
-            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.3em",marginBottom:12}}>ANTEPRIMA PROFILO</div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
-              <div><Tag color={sc.tierColor}>{sc.tier}</Tag><div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)",marginTop:6}}>{sc.tierLabel}</div></div>
-              <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fd)",fontSize:48,color:sc.tierColor,lineHeight:1}}>{sc.score}</div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>/ 100</div></div>
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{sc.reasons.map(r=><Tag key={r} color="#555">{r}</Tag>)}</div>
-            <div style={{display:"flex",gap:20,paddingTop:12,borderTop:"1px solid #222",flexWrap:"wrap"}}>
-              {[["ER REACH",`${sc.erReach}%`,"var(--red)"],["REACH RATE",`${sc.reachRate}%`,"var(--gold)"],["GROWTH",`${sc.growthRate}%`,"#6a9a7a"]].map(([l,v,c])=>(
-                <div key={l}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.15em"}}>{l}</div><div style={{fontFamily:"var(--fd)",fontSize:20,color:c}}>{v}</div></div>
-              ))}
-            </div>
-          </div>}
         </div>}
 
         <div style={{display:"flex",gap:12,marginTop:40,paddingTop:24,borderTop:"1px solid var(--brd)"}}>
