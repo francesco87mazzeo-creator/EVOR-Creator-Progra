@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779028793</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779029023</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -961,6 +961,81 @@ function SettingsPanel(){
 }
 
 // ── SCORING PANEL ─────────────────────────────────────────────────────────────
+function BenchmarkEditor({cfg, updateBand}){
+  const [metricTab, setMetricTab] = useState("er");
+  const metrics = [
+    { key:"er",     label:"Engagement Rate", unit:"%", step:"0.1", desc:"ER = interazioni / visualizzazioni × 100" },
+    { key:"reach",  label:"Reach Rate",       unit:"%", step:"1",   desc:"Reach = visualizzazioni / follower × 100" },
+    { key:"growth", label:"Growth Rate",      unit:"%", step:"0.1", desc:"Growth = nuovi follower / follower × 100" }
+  ];
+  const cur = metrics.find(m=>m.key===metricTab);
+  const levels = [
+    { key:"poor", label:"SCARSO",  color:"#c0392b", bg:"#2a1010" },
+    { key:"avg",  label:"MEDIO",   color:"#e67e22", bg:"#2a1a08" },
+    { key:"good", label:"BUONO",   color:"#27ae60", bg:"#0a2a14" }
+  ];
+  return(
+    <div>
+      {/* Metric tabs */}
+      <div style={{display:"flex",gap:2,marginBottom:20}}>
+        {metrics.map(m=>(
+          <button key={m.key} onClick={()=>setMetricTab(m.key)}
+            style={{flex:1,padding:"10px 8px",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:700,cursor:"pointer",transition:"all .2s",
+              background:metricTab===m.key?"var(--red)":"#141414",
+              border:`1px solid ${metricTab===m.key?"var(--red)":"#333"}`,
+              color:metricTab===m.key?"#fff":"var(--t3)"}}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {/* Formula */}
+      <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t4)",marginBottom:20,padding:"10px 14px",background:"#141414",border:"1px solid #333"}}>
+        💡 {cur.desc}
+      </div>
+      {/* Legenda */}
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {levels.map(l=>(
+          <div key={l.key} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:l.bg,border:`1px solid ${l.color}40`}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:l.color}}/>
+            <span style={{fontFamily:"var(--fu)",fontSize:10,color:l.color,letterSpacing:"0.15em",fontWeight:700}}>{l.label}</span>
+          </div>
+        ))}
+        <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:"#1a1a2a",border:"1px solid #4a4a8a40"}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"#6a6aaa"}}/>
+          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#8a8aca",letterSpacing:"0.15em",fontWeight:700}}>ECCELLENTE = sopra BUONO</span>
+        </div>
+      </div>
+      {/* Fasce */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {cfg.bands.map((band,bi)=>(
+          <div key={bi} style={{background:"#141414",border:"1px solid #2a2a2a",padding:16}}>
+            <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t1)",fontWeight:700,marginBottom:14,letterSpacing:"0.1em"}}>
+              Fascia {band.label}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+              {levels.map(l=>(
+                <div key={l.key} style={{background:l.bg,border:`1px solid ${l.color}40`,padding:12}}>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:l.color,letterSpacing:"0.2em",fontWeight:700,marginBottom:8}}>{l.label}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="number" step={cur.step} min="0"
+                      style={{background:"#0a0a0a",border:`1px solid ${l.color}60`,color:"#fff",padding:"8px 10px",fontSize:14,fontFamily:"var(--fb)",outline:"none",width:"100%",fontWeight:600}}
+                      value={band[metricTab][l.key]}
+                      onChange={e=>updateBand(bi,metricTab,l.key,e.target.value)}/>
+                    <span style={{fontFamily:"var(--fu)",fontSize:12,color:l.color,fontWeight:700}}>{cur.unit}</span>
+                  </div>
+                  <div style={{fontFamily:"var(--fb)",fontSize:10,color:"var(--t4)",marginTop:6}}>
+                    {l.key==="poor"?"Sotto questa soglia = Scarso":l.key==="avg"?"Tra Scarso e Buono = Medio":"Sopra questa soglia = Buono"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ScoringPanel(){
   const [cfg, setCfg] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1057,85 +1132,8 @@ function ScoringPanel(){
           <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t3)",marginBottom:20,lineHeight:1.7}}>
             Definisci le soglie per ogni fascia. Il sistema interpola automaticamente i valori intermedi.
           </div>
-
-          {/* Tab selector per metrica */}
-          {(()=>{
-            const [metricTab, setMetricTab] = React.useState("er");
-            const metrics = [
-              { key:"er",     label:"Engagement Rate", unit:"%", step:"0.1", desc:"ER = interazioni / visualizzazioni × 100" },
-              { key:"reach",  label:"Reach Rate",       unit:"%", step:"1",   desc:"Reach = visualizzazioni / follower × 100" },
-              { key:"growth", label:"Growth Rate",      unit:"%", step:"0.1", desc:"Growth = nuovi follower / follower × 100" }
-            ];
-            const cur = metrics.find(m=>m.key===metricTab);
-            const levels = [
-              { key:"poor", label:"SCARSO",  color:"#c0392b", bg:"#2a1010" },
-              { key:"avg",  label:"MEDIO",   color:"#e67e22", bg:"#2a1a08" },
-              { key:"good", label:"BUONO",   color:"#27ae60", bg:"#0a2a14" }
-            ];
-            return(
-              <div>
-                {/* Metric tabs */}
-                <div style={{display:"flex",gap:2,marginBottom:20}}>
-                  {metrics.map(m=>(
-                    <button key={m.key} onClick={()=>setMetricTab(m.key)}
-                      style={{flex:1,padding:"10px 8px",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:700,cursor:"pointer",transition:"all .2s",
-                        background:metricTab===m.key?"var(--red)":"#141414",
-                        border:`1px solid ${metricTab===m.key?"var(--red)":"#333"}`,
-                        color:metricTab===m.key?"#fff":"var(--t3)"}}>
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Formula hint */}
-                <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t4)",marginBottom:20,padding:"10px 14px",background:"#141414",border:"1px solid #333"}}>
-                  💡 {cur.desc}
-                </div>
-
-                {/* Legenda colori */}
-                <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-                  {levels.map(l=>(
-                    <div key={l.key} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:l.bg,border:`1px solid ${l.color}40`,borderRadius:2}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:l.color}}/>
-                      <span style={{fontFamily:"var(--fu)",fontSize:10,color:l.color,letterSpacing:"0.15em",fontWeight:700}}>{l.label}</span>
-                    </div>
-                  ))}
-                  <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:"#1a1a2a",border:"1px solid #4a4a8a40",borderRadius:2}}>
-                    <div style={{width:8,height:8,borderRadius:"50%",background:"#6a6aaa"}}/>
-                    <span style={{fontFamily:"var(--fu)",fontSize:10,color:"#8a8aca",letterSpacing:"0.15em",fontWeight:700}}>ECCELLENTE = sopra BUONO</span>
-                  </div>
-                </div>
-
-                {/* Tabella per fascia */}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {cfg.bands.map((band,bi)=>(
-                    <div key={bi} style={{background:"#141414",border:"1px solid #2a2a2a",padding:16}}>
-                      <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t1)",fontWeight:700,marginBottom:14,letterSpacing:"0.1em"}}>
-                        📊 Fascia {band.label}
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-                        {levels.map(l=>(
-                          <div key={l.key} style={{background:l.bg,border:`1px solid ${l.color}40`,padding:12,borderRadius:2}}>
-                            <div style={{fontFamily:"var(--fu)",fontSize:9,color:l.color,letterSpacing:"0.2em",fontWeight:700,marginBottom:8}}>{l.label}</div>
-                            <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              <input type="number" step={cur.step} min="0"
-                                style={{background:"#0a0a0a",border:`1px solid ${l.color}60`,color:"#fff",padding:"8px 10px",fontSize:14,fontFamily:"var(--fb)",outline:"none",width:"100%",fontWeight:600}}
-                                value={band[metricTab][l.key]}
-                                onChange={e=>updateBand(bi,metricTab,l.key,e.target.value)}/>
-                              <span style={{fontFamily:"var(--fu)",fontSize:12,color:l.color,fontWeight:700}}>{cur.unit}</span>
-                            </div>
-                            <div style={{fontFamily:"var(--fb)",fontSize:10,color:"var(--t4)",marginTop:6}}>
-                              {l.key==="poor"?"Sotto questa soglia = Scarso":l.key==="avg"?"Tra Scarso e Buono = Medio":"Sopra questa soglia = Buono"}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          <BenchmarkEditor cfg={cfg} updateBand={updateBand}/>
+        </div>
 
         <div style={{marginTop:20,display:"flex",justifyContent:"flex-end",gap:8}}>
           <button onClick={resetDefault} className="btn-ghost" style={{padding:"12px 24px",fontSize:11}}>RESET DEFAULT</button>
