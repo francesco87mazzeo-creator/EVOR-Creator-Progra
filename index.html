@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779030865</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779032007</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -216,37 +216,38 @@ const DEFAULT_SCORING = {
   ],
 
   // Benchmark per fascia follower
-  // Ogni fascia ha: label, maxFollowers, er{poor,avg,good,great}, reach{...}, growth{...}
+  // avg = min per MEDIO, good = min per BUONO, excellent = min per ECCELLENTE
+  // Sotto avg = SCARSO · avg→good = MEDIO · good→excellent = BUONO · sopra excellent = ECCELLENTE
   bands: [
     {
       label:"0–1K", max:1000,
-      er:    { poor:3,   avg:6,   good:10  },
-      reach: { poor:50,  avg:100, good:200 },
-      growth:{ poor:1,   avg:3,   good:8   }
+      er:    { avg:3,   good:6,   excellent:10  },
+      reach: { avg:50,  good:100, excellent:200 },
+      growth:{ avg:1,   good:3,   excellent:8   }
     },
     {
       label:"1K–5K", max:5000,
-      er:    { poor:2.5, avg:5,   good:8   },
-      reach: { poor:40,  avg:80,  good:150 },
-      growth:{ poor:0.8, avg:2,   good:5   }
+      er:    { avg:2.5, good:5,   excellent:8   },
+      reach: { avg:40,  good:80,  excellent:150 },
+      growth:{ avg:0.8, good:2,   excellent:5   }
     },
     {
       label:"5K–20K", max:20000,
-      er:    { poor:2,   avg:4,   good:7   },
-      reach: { poor:30,  avg:60,  good:120 },
-      growth:{ poor:0.5, avg:1.5, good:4   }
+      er:    { avg:2,   good:4,   excellent:7   },
+      reach: { avg:30,  good:60,  excellent:120 },
+      growth:{ avg:0.5, good:1.5, excellent:4   }
     },
     {
       label:"20K–100K", max:100000,
-      er:    { poor:1.5, avg:3,   good:5   },
-      reach: { poor:20,  avg:40,  good:80  },
-      growth:{ poor:0.3, avg:1,   good:2.5 }
+      er:    { avg:1.5, good:3,   excellent:5   },
+      reach: { avg:20,  good:40,  excellent:80  },
+      growth:{ avg:0.3, good:1,   excellent:2.5 }
     },
     {
       label:"100K+", max:Infinity,
-      er:    { poor:1,   avg:2,   good:4   },
-      reach: { poor:15,  avg:30,  good:60  },
-      growth:{ poor:0.2, avg:0.5, good:1.5 }
+      er:    { avg:1,   good:2,   excellent:4   },
+      reach: { avg:15,  good:30,  excellent:60  },
+      growth:{ avg:0.2, good:0.5, excellent:1.5 }
     }
   ]
 };
@@ -265,15 +266,15 @@ const getScoringConfig = async () => {
 };
 const invalidateScoringCache = () => { _scoringConfig = null; };
 
-// Normalizza una metrica rispetto ai benchmark della fascia (0-100)
-// poor = soglia1 (fine SCARSO), avg = soglia2 (fine MEDIO), good = soglia3 (fine BUONO, oltre = ECCELLENTE)
+// Normalizza metrica 0-100
+// < avg=Scarso(0-25) · avg→good=Medio(25-50) · good→excellent=Buono(50-75) · >excellent=Eccellente(75-100)
 const normalizeMetric = (value, band, metric) => {
   const b = band[metric];
   if (value <= 0) return 0;
-  if (value >= b.good) return 75 + Math.min(((value - b.good) / Math.max(b.good, 1)) * 25, 25);
-  if (value >= b.avg)  return 50 + ((value - b.avg)  / (b.good - b.avg))  * 25;
-  if (value >= b.poor) return 25 + ((value - b.poor) / (b.avg  - b.poor)) * 25;
-  return Math.max(0, (value / Math.max(b.poor, 0.1)) * 25);
+  if (value >= b.excellent) return 75 + Math.min(((value - b.excellent) / Math.max(b.excellent, 1)) * 25, 25);
+  if (value >= b.good)      return 50 + ((value - b.good)      / (b.excellent - b.good))      * 25;
+  if (value >= b.avg)       return 25 + ((value - b.avg)       / (b.good      - b.avg))       * 25;
+  return Math.max(0, (value / Math.max(b.avg, 0.01)) * 25);
 };
 
 // Scoring sincrono (usa config passata come parametro)
@@ -831,10 +832,10 @@ function CandidaturePanel({role}){
                 const band = config.bands.find(b=>followers<=b.max) || config.bands[config.bands.length-1];
 
                 const getMetricColor = (value, benchmarks) => {
-                  if(value >= benchmarks.good) return { color:"#1aaa5a", bg:"#061a0e", label:"ECCELLENTE" };
-                  if(value >= benchmarks.avg)  return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
-                  if(value >= benchmarks.poor) return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
-                  return                              { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
+                  if(value >= benchmarks.excellent) return { color:"#1aaa5a", bg:"#061a0e", label:"ECCELLENTE" };
+                  if(value >= benchmarks.good)      return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
+                  if(value >= benchmarks.avg)       return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
+                  return                                   { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
                 };
 
                 const er     = parseFloat(sel.erReach)||0;
@@ -1001,9 +1002,9 @@ function BenchmarkEditor({cfg, updateBand}){
   ];
   const cur = metrics.find(m=>m.key===metricTab);
   const levels = [
-    { key:"poor", label:"SOGLIA 1 — SCARSO",  color:"#c0392b", bg:"#2a1010", desc:"Sotto questo valore → SCARSO" },
-    { key:"avg",  label:"SOGLIA 2 — MEDIO",   color:"#e67e22", bg:"#2a1a08", desc:"Sotto questo valore → MEDIO" },
-    { key:"good", label:"SOGLIA 3 — BUONO",   color:"#27ae60", bg:"#0a2a14", desc:"Sotto questo valore → BUONO · Sopra → ECCELLENTE" }
+    { key:"avg",       label:"MEDIO DA",       color:"#e67e22", bg:"#2a1a08", desc:"Sotto questo valore → SCARSO" },
+    { key:"good",      label:"BUONO DA",       color:"#27ae60", bg:"#0a2a14", desc:"Sotto questo valore → MEDIO" },
+    { key:"excellent", label:"ECCELLENTE DA",  color:"#1aaa5a", bg:"#061a0e", desc:"Sotto questo valore → BUONO · Sopra → ECCELLENTE" }
   ];
   return(
     <div>
@@ -1026,10 +1027,10 @@ function BenchmarkEditor({cfg, updateBand}){
       {/* Legenda */}
       <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
         {[
-          {color:"#c0392b",bg:"#2a1010",label:"SCARSO — sotto soglia 1"},
-          {color:"#e67e22",bg:"#2a1a08",label:"MEDIO — tra soglia 1 e 2"},
-          {color:"#27ae60",bg:"#0a2a14",label:"BUONO — tra soglia 2 e 3"},
-          {color:"#1aaa5a",bg:"#061a0e",label:"ECCELLENTE — sopra soglia 3"}
+          {color:"#c0392b",bg:"#2a1010",label:"SCARSO — sotto soglia Medio"},
+          {color:"#e67e22",bg:"#2a1a08",label:"MEDIO — da soglia Medio a Buono"},
+          {color:"#27ae60",bg:"#0a2a14",label:"BUONO — da soglia Buono a Eccellente"},
+          {color:"#1aaa5a",bg:"#061a0e",label:"ECCELLENTE — sopra soglia Eccellente"}
         ].map(l=>(
           <div key={l.label} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",background:l.bg,border:`1px solid ${l.color}40`}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:l.color}}/>
