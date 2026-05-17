@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779029023</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779030238</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -717,9 +717,13 @@ function CandidaturePanel({role}){
   const [code,setCode]=useState("");
   const [showDetail,setShowDetail]=useState(false);
   const [saving,setSaving]=useState(false);
+  const [scoringCfg,setScoringCfg]=useState(DEFAULT_SCORING);
 
   useEffect(()=>{
     FB.getApps().then(a=>{setApps(a);setLoading(false);}).catch(()=>setLoading(false));
+    db.collection("settings").doc("scoring").get()
+      .then(doc=>{ if(doc.exists) setScoringCfg(doc.data()); })
+      .catch(()=>{});
   },[]);
 
   const upd=async(id,patch)=>{
@@ -816,28 +820,54 @@ function CandidaturePanel({role}){
 
             <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:16}}>
               <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:12}}>ANALISI SCORE</div>
-              {/* Fascia */}
-              {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",marginBottom:12}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
-              {/* Breakdown metriche */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
-                {[
-                  ["ENGAGEMENT RATE",sel.erReach+"%",sel.erScore,"var(--red)"],
-                  ["REACH RATE",sel.reachRate+"%",sel.reachScore,"var(--gold)"],
-                  ["GROWTH RATE",sel.growthRate+"%",sel.growthScore,"#6a9a7a"]
-                ].map(([l,v,s,c])=>(
-                  <div key={l} style={{background:"#141414",border:"1px solid #333",padding:12}}>
-                    <div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:6}}>{l}</div>
-                    <div style={{fontFamily:"var(--fd)",fontSize:20,color:c,fontWeight:700}}>{v}</div>
-                    {/* Barra progresso */}
-                    <div style={{height:3,background:"#2a2a2a",marginTop:8,borderRadius:2}}>
-                      <div style={{height:"100%",background:c,width:`${s||0}%`,borderRadius:2,transition:"width .5s"}}/>
-                    </div>
-                    <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",marginTop:4}}>{s||0}/100</div>
+              {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",marginBottom:14}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
+
+              {/* Breakdown metriche con colori da benchmark */}
+              {(()=>{
+                // Recupera benchmark dalla config (già caricata nel sistema)
+                const config = scoringCfg;
+                const followers = parseInt(sel.followers)||0;
+                const band = config.bands.find(b=>followers<=b.max) || config.bands[config.bands.length-1];
+
+                const getMetricColor = (value, benchmarks) => {
+                  if(value >= benchmarks.good) return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
+                  if(value >= benchmarks.avg)  return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
+                  if(value >= benchmarks.poor) return { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
+                  return                              { color:"#7a1010", bg:"#1a0808", label:"MOLTO SCARSO" };
+                };
+
+                const er     = parseFloat(sel.erReach)||0;
+                const reach  = parseFloat(sel.reachRate)||0;
+                const growth = parseFloat(sel.growthRate)||0;
+
+                const erMeta     = getMetricColor(er,     band.er);
+                const reachMeta  = getMetricColor(reach,  band.reach);
+                const growthMeta = getMetricColor(growth, band.growth);
+
+                return(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+                    {[
+                      ["ENGAGEMENT RATE", er+"%",    erMeta,     sel.erScore],
+                      ["REACH RATE",      reach+"%",  reachMeta,  sel.reachScore],
+                      ["GROWTH RATE",     growth+"%", growthMeta, sel.growthScore]
+                    ].map(([l,v,meta,score])=>(
+                      <div key={l} style={{background:meta.bg, border:`1px solid ${meta.color}50`, padding:14}}>
+                        <div style={{fontFamily:"var(--fu)",fontSize:8,color:meta.color,letterSpacing:"0.15em",marginBottom:4,fontWeight:700,opacity:.85}}>{l}</div>
+                        <div style={{fontFamily:"var(--fd)",fontSize:24,color:meta.color,fontWeight:900,lineHeight:1}}>{v}</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,fontWeight:700,letterSpacing:"0.1em"}}>{meta.label}</div>
+                        <div style={{height:3,background:"#1a1a1a",marginTop:10,borderRadius:2}}>
+                          <div style={{height:"100%",background:meta.color,width:`${score||0}%`,borderRadius:2,transition:"width .6s"}}/>
+                        </div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,opacity:.6}}>{score||0}/100</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                );
+              })()}
+
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {sel.reasons?.map(r=><Tag key={r} color="#555">{r}</Tag>)}
               </div>
-              {/* Reasons */}
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sel.reasons?.map(r=><Tag key={r} color="#444">{r}</Tag>)}</div>
             </div>
 
             {sel.screenshotData&&<div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div><img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:280,objectFit:"contain"}}/></div>}
