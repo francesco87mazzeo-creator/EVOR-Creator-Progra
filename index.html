@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779027647</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779027954</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -1108,7 +1108,11 @@ function ScoringPanel(){
   );
 }
 
+// ── ADMIN PANEL ───────────────────────────────────────────────────────────────
+const DEFAULT_ADMIN="evora2025";
+const DEFAULT_MANAGER="evora_smm";
 
+function AdminPanel({onBack}){
   const [role,setRole]=useState(null);
   const [pw,setPw]=useState("");
   const [pwError,setPwError]=useState(false);
