@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779137534</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779138744</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -589,6 +589,12 @@ function ApplicationForm({onBack,onAdmin}){
       const app={...form,...sc,id,date:new Date().toISOString(),status:"new",notes:"",creatorCode:""};
       await FB.saveApp(app);
       setSavedId(id);
+      // Notifica WhatsApp
+      const settings=await FB.getSettings();
+      if(settings.waPhone&&settings.waApiKey){
+        const msg=`🔔 EVORΛ ATHLETES\nNuova candidatura!\n👤 ${form.fullName}\n📱 ${form.instagram}\n👥 ${parseInt(form.followers||0).toLocaleString()} follower\n🏆 Tier: ${sc.tier} (${sc.score}/100)\nControlla il pannello admin.`;
+        sendWhatsApp(settings.waPhone, settings.waApiKey, msg);
+      }
       setDone(true);
     }catch(err){
       setSaveError(true);
@@ -622,7 +628,7 @@ function ApplicationForm({onBack,onAdmin}){
         <h2 style={{fontFamily:"var(--fd)",fontSize:40,color:"#fff",marginBottom:16,fontWeight:900}}>CANDIDATURA RICEVUTA.</h2>
         <p style={{fontFamily:"var(--fb)",fontSize:15,color:"var(--t2)",lineHeight:1.9,marginBottom:36}}>
           I tuoi dati sono stati registrati correttamente.<br/>
-          Il team EVORΛ analizzerà il tuo profilo e ti contatterà entro <strong style={{color:"#fff"}}>7 giorni lavorativi</strong> se sei in linea con i nostri standard.<br/>
+          Il team EVORΛ analizzerà il tuo profilo e ti contatterà se sei in linea con i nostri standard.<br/>
           <br/>
           <span style={{fontSize:13,color:"var(--t3)"}}>Non mandare DM — rispettiamo chi rispetta il processo.</span>
         </p>
@@ -924,6 +930,57 @@ function ScoreCircle({score,color,size=52}){
   );
 }
 
+// ── EXCEL EXPORT ─────────────────────────────────────────────────────────────
+const exportToExcel = (apps) => {
+  const headers = [
+    "Data","Nome","Età","Città","Email","Instagram","Follower IG","TikTok","Follower TK",
+    "Visualizzazioni","Interazioni","Nuovi Follower","ER%","Reach%","Growth%",
+    "Score","Tier","Stato","Codice Creator",
+    "3 Parole","Tipo Contenuti","Cosa Trasmette","Perché EVORΛ",
+    "Cosa Gli Piace","Come Integrerebbe","Immagine Atleta",
+    "Qualità vs Vendere","Lavoro Senza Guadagno","Reazione Bad Content",
+    "Rappresentare Brand","Contenuti/Mese","Routine","Linee Guida",
+    "Brand Collabs","Dettagli Collabs","Prodotti Acquistati","Miglioramenti","Extra","Note"
+  ];
+  const rows = apps.map(a => [
+    a.date ? new Date(a.date).toLocaleDateString("it-IT") : "",
+    a.fullName||"", a.age||"", a.city||"", a.email||"",
+    a.instagram||"", a.followers||"", a.tiktok||"", a.tiktokFollowers||"",
+    a.views||"", a.interactions||"", a.newFollowers||"",
+    a.erReach||"", a.reachRate||"", a.growthRate||"",
+    a.score||"", a.tier||"", a.status||"", a.creatorCode||"",
+    a.threeWords||"", a.contentType||"", a.whatToTransmit||"", a.motivation||"",
+    a.brandLike||"", a.contentIntegration||"", a.athleteImage||"",
+    a.qualityVsSell||"", a.buildWithoutEarnings||"", a.badContentReaction||"",
+    a.brandMeaning||"", a.contentPerMonth||"", a.hasRoutine||"", a.followsGuidelines||"",
+    a.hasBrandCollabs||"", a.brandCollabDetails||"", a.boughtProducts||"",
+    a.improvements||"", a.extra||"", a.notes||""
+  ]);
+
+  // Crea CSV con BOM per Excel italiano
+  const escape = v => `"${String(v).replace(/"/g,'""')}"`;
+  const csv = "\uFEFF" + [headers, ...rows].map(r => r.map(escape).join(";")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `evora_candidature_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ── WHATSAPP (CallMeBot) ──────────────────────────────────────────────────────
+const sendWhatsApp = async (phone, apiKey, message) => {
+  const encoded = encodeURIComponent(message);
+  const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encoded}&apikey=${apiKey}`;
+  try {
+    await fetch(url, {mode:"no-cors"});
+    return true;
+  } catch(e) {
+    return false;
+  }
+};
+
 // ── CANDIDATURE PANEL ─────────────────────────────────────────────────────────
 function CandidaturePanel({role}){
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -1021,6 +1078,27 @@ function CandidaturePanel({role}){
 
   const totalPages=Math.max(1,Math.ceil(sorted.length/perPage));
   const paginated=sorted.slice((page-1)*perPage,page*perPage);
+
+  // Alert 7 giorni — candidature NEW in attesa da più di 7 giorni
+  const now=Date.now();
+  const overdue=apps.filter(a=>{
+    if(a.status!=="new") return false;
+    const days=(now-new Date(a.date||0).getTime())/(1000*60*60*24);
+    return days>7;
+  });
+
+  const fmtDate=d=>{
+    if(!d) return "—";
+    const dt=new Date(d);
+    return dt.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"2-digit"});
+  };
+  const daysAgo=d=>{
+    if(!d) return "";
+    const days=Math.floor((now-new Date(d).getTime())/(1000*60*60*24));
+    if(days===0) return "oggi";
+    if(days===1) return "ieri";
+    return `${days}g fa`;
+  };
 
   const st={
     total:apps.length,
@@ -1235,7 +1313,28 @@ function CandidaturePanel({role}){
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",flexDirection:"column"}}>
 
-      {/* STATS HEADER */}
+      {/* ALERT 7 GIORNI */}
+      {overdue.length>0&&(
+        <div style={{background:"#1a0e00",borderBottom:"1px solid #e67e2260",padding:"10px 16px",flexShrink:0}}>
+          <div style={{maxWidth:900,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>⚠️</span>
+              <div>
+                <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#e67e22",fontWeight:700,letterSpacing:"0.1em"}}>
+                  {overdue.length} {overdue.length===1?"CANDIDATURA IN ATTESA":"CANDIDATURE IN ATTESA"} DA OLTRE 7 GIORNI
+                </div>
+                <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>
+                  {overdue.map(a=>a.fullName||a.instagram).join(", ")}
+                </div>
+              </div>
+            </div>
+            <button onClick={()=>{setFilter("NEW");setSortBy("date");setPage(1);}}
+              style={{background:"#e67e22",border:"none",color:"#000",padding:"6px 16px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",fontWeight:700,cursor:"pointer"}}>
+              VEDI ORA
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{background:"var(--deep)",borderBottom:"1px solid var(--brd)",flexShrink:0}}>
         <DW>
           <div style={{display:"flex",flexWrap:"wrap"}}>
@@ -1293,6 +1392,10 @@ function CandidaturePanel({role}){
                 <option value="reach">Reach ↓</option>
                 <option value="growth">Growth ↓</option>
               </select>
+              <button onClick={()=>exportToExcel(sorted)}
+                style={{background:"#141414",border:"1px solid #333",color:"var(--t2)",padding:"8px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:"pointer",flexShrink:0}}>
+                📥
+              </button>
             </div>
           ) : (
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -1313,6 +1416,12 @@ function CandidaturePanel({role}){
                   <option value="reach">Reach ↓</option>
                   <option value="growth">Growth ↓</option>
                 </select>
+                <button onClick={()=>exportToExcel(sorted)}
+                  style={{background:"#141414",border:"1px solid #333",color:"var(--t2)",padding:"6px 12px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",fontWeight:700}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
+                  📥 EXCEL
+                </button>
               </div>
             </div>
           )}
@@ -1356,6 +1465,7 @@ function CandidaturePanel({role}){
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontFamily:"'Archivo',sans-serif",fontSize:13,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.fullName||"—"}</div>
                         <div style={{fontFamily:"var(--fb)",fontSize:11,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.instagram}{a.city?` · ${a.city}`:""}</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:a.status==="new"&&overdue.find(o=>o.id===a.id)?"#e67e22":"var(--t4)",marginTop:1}}>{fmtDate(a.date)} · {daysAgo(a.date)}</div>
                       </div>
                       <ScoreCircle score={a.score} color={a.tierColor} size={42}/>
                     </div>
@@ -1384,6 +1494,7 @@ function CandidaturePanel({role}){
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontFamily:"'Archivo',sans-serif",fontSize:13,color:"#fff",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.fullName||"—"}</div>
                       <div style={{fontFamily:"var(--fb)",fontSize:11,color:"var(--t3)"}}>{a.instagram}{a.city?` · ${a.city}`:""}</div>
+                      <div style={{fontFamily:"var(--fu)",fontSize:9,color:a.status==="new"&&overdue.find(o=>o.id===a.id)?"#e67e22":"var(--t4)",marginTop:1}}>{fmtDate(a.date)} · {daysAgo(a.date)}</div>
                     </div>
                     {[["FOLLOWER",fmtNum(followers),"var(--t2)"],["ER",er.toFixed(1)+"%",erColor],["REACH",reach.toFixed(1)+"%",reachColor],["GROWTH",growth.toFixed(2)+"%",growthColor]].map(([l,v,c])=>(
                       <div key={l} style={{textAlign:"center",minWidth:64,flexShrink:0}}>
@@ -1477,7 +1588,43 @@ function SettingsPanel(){
         </div>
 
         <div className="settings-section">
-          <div className="settings-title">🔐 Password Admin</div>
+          <div className="settings-title">📱 Notifiche WhatsApp</div>
+          <div className="settings-desc">
+            Ricevi un messaggio WhatsApp ogni volta che arriva una nuova candidatura. Usa <strong style={{color:"var(--t1)"}}>CallMeBot</strong> — gratuito, zero abbonamenti.<br/><br/>
+            <strong style={{color:"var(--t1)"}}>Setup (2 minuti):</strong><br/>
+            1. Salva il numero <strong style={{color:"var(--t1)"}}>+34 644 71 07 14</strong> in rubrica come "CallMeBot"<br/>
+            2. Mandagli su WhatsApp: <strong style={{color:"var(--t1)"}}>I allow callmebot to send me messages</strong><br/>
+            3. Ricevi la tua API key via WhatsApp<br/>
+            4. Inserisci numero e API key qui sotto
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            <div>
+              <Field label="Tuo numero WhatsApp">
+                <input type="text" value={settings.waPhone||""} onChange={e=>setSettings(p=>({...p,waPhone:e.target.value}))} placeholder="39XXXXXXXXXX (con prefisso, senza +)"/>
+              </Field>
+            </div>
+            <div>
+              <Field label="API Key CallMeBot">
+                <input type="text" value={settings.waApiKey||""} onChange={e=>setSettings(p=>({...p,waApiKey:e.target.value}))} placeholder="123456"/>
+              </Field>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button className="btn-red" onClick={()=>save({waPhone:settings.waPhone,waApiKey:settings.waApiKey})} style={{padding:"11px 28px",fontSize:11}}>
+              {saved==="waPhone"?"✓ SALVATO":"SALVA WHATSAPP"}
+            </button>
+            <button onClick={async()=>{
+              if(!settings.waPhone||!settings.waApiKey){alert("Inserisci numero e API key prima");return;}
+              await sendWhatsApp(settings.waPhone,settings.waApiKey,"✅ EVORΛ Athletes — Notifiche WhatsApp configurate correttamente!");
+              alert("Messaggio di test inviato! Controlla WhatsApp.");
+            }} style={{background:"transparent",border:"1px solid #333",color:"var(--t2)",padding:"11px 20px",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.1em",cursor:"pointer"}}>
+              📤 TEST
+            </button>
+          </div>
+          {settings.waPhone&&settings.waApiKey&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:10,letterSpacing:"0.12em"}}>✓ Notifiche WhatsApp attive</div>}
+        </div>
+
+        <div className="settings-section">
           <div className="settings-desc">Accesso completo — solo per te.</div>
           <Field label="Nuova password admin">
             <input type="password" value={settings.adminPass||""} onChange={e=>setSettings(p=>({...p,adminPass:e.target.value}))} placeholder="Nuova password..."/>
