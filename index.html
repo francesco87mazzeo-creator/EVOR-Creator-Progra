@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779136175</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779136700</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -574,10 +574,13 @@ function ApplicationForm({onBack,onAdmin}){
     window.scrollTo(0,0);
   };
 
+  const [saveError,setSaveError]=useState(false);
+
   const submit=async()=>{
     const errs=validateStep(5);
     if(Object.keys(errs).length>0){ setErrors(errs); return; }
     setSaving(true);
+    setSaveError(false);
     try{
       const sc=scoreCandidate(form);
       const id=Date.now();
@@ -586,28 +589,38 @@ function ApplicationForm({onBack,onAdmin}){
       setSavedId(id);
       setDone(true);
     }catch(err){
-      alert("Errore nel salvataggio — riprova tra qualche secondo.");
+      setSaveError(true);
     }finally{
       setSaving(false);
     }
   };
 
+  // Pagina errore salvataggio
+  if(saveError) return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--black)",textAlign:"center",padding:24}}>
+      <div style={{animation:"fadeUp .6s ease both",maxWidth:460}}>
+        <div style={{fontFamily:"var(--fd)",fontSize:72,color:"var(--red)",lineHeight:1,marginBottom:12}}>✗</div>
+        <h2 style={{fontFamily:"var(--fd)",fontSize:36,color:"#fff",marginBottom:16,fontWeight:900}}>ERRORE DI INVIO</h2>
+        <p style={{fontFamily:"var(--fb)",fontSize:15,color:"var(--t2)",lineHeight:1.9,marginBottom:32}}>
+          Non è stato possibile salvare la candidatura.<br/>
+          Controlla la connessione e riprova.
+        </p>
+        <button className="btn-red" onClick={()=>setSaveError(false)} style={{padding:"14px 36px",fontSize:12,marginBottom:12}}>RIPROVA</button>
+        <br/>
+        <button className="btn-ghost" onClick={onBack} style={{padding:"12px 28px",fontSize:11}}>← TORNA AL SITO</button>
+      </div>
+    </div>
+  );
+
   // Schermata conferma
   if(done) return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--black)",textAlign:"center",padding:24}}>
-      <div style={{animation:"fadeUp .8s ease both",maxWidth:500}}>
-        {/* Conferma ricezione */}
-        <div style={{background:"#0a1a0a",border:"1px solid #27ae6050",padding:"16px 24px",marginBottom:28,display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:"#27ae60",flexShrink:0}}/>
-          <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",textAlign:"left"}}>
-            CANDIDATURA SALVATA · ID #{savedId}
-          </div>
-        </div>
+      <div style={{animation:"fadeUp .8s ease both",maxWidth:480}}>
         <div style={{fontFamily:"var(--fd)",fontSize:72,color:"var(--red)",lineHeight:1,marginBottom:12}}>✓</div>
         <h2 style={{fontFamily:"var(--fd)",fontSize:40,color:"#fff",marginBottom:16,fontWeight:900}}>CANDIDATURA RICEVUTA.</h2>
         <p style={{fontFamily:"var(--fb)",fontSize:15,color:"var(--t2)",lineHeight:1.9,marginBottom:36}}>
-          I tuoi dati sono stati registrati correttamente nel sistema EVORΛ.<br/>
-          Il team analizzerà il tuo profilo e ti contatterà entro <strong style={{color:"#fff"}}>7 giorni lavorativi</strong> se sei in linea con i nostri standard.<br/>
+          I tuoi dati sono stati registrati correttamente.<br/>
+          Il team EVORΛ analizzerà il tuo profilo e ti contatterà entro <strong style={{color:"#fff"}}>7 giorni lavorativi</strong> se sei in linea con i nostri standard.<br/>
           <br/>
           <span style={{fontSize:13,color:"var(--t3)"}}>Non mandare DM — rispettiamo chi rispetta il processo.</span>
         </p>
@@ -632,12 +645,7 @@ function ApplicationForm({onBack,onAdmin}){
           </div>)}
         </div>
 
-        {/* Errori globali */}
-        {Object.keys(errors).length>0&&(
-          <div style={{background:"#1a0808",border:"1px solid var(--red)",padding:"12px 16px",marginBottom:20}}>
-            <div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)",letterSpacing:"0.15em"}}>⚠ COMPLETA I CAMPI OBBLIGATORI PER CONTINUARE</div>
-          </div>
-        )}
+        {/* Nessun banner in alto — errori solo sui singoli campi */}
 
         {/* ── STEP 0: CHI SEI ── */}
         {step===0&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
@@ -691,7 +699,7 @@ function ApplicationForm({onBack,onAdmin}){
                         <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
                         {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
                         {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
-                        {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
+                        {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError} — i dati verranno inseriti manualmente</div>}
                       </>
                     ):(
                       <>
@@ -711,32 +719,21 @@ function ApplicationForm({onBack,onAdmin}){
                 <ErrMsg k="screenshotData"/>
               </div>
 
-              {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div></div></div>}
-              {ocrStatus==="done"&&(
-                <div className="ocr-box" style={{borderColor:"#6a9a7a50"}}>
-                  <div style={{fontSize:16}}>✅</div>
-                  <div style={{flex:1}}>
-                    <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",marginBottom:8}}>DATI ESTRATTI</div>
-                    <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-                      {[["Visualizzazioni",form.views],["Interazioni",form.interactions],["Nuovi follower",form.newFollowers]].filter(([,v])=>v).map(([l,v])=>(
-                        <div key={l}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",marginBottom:2}}>{l}</div><div style={{fontFamily:"var(--fd)",fontSize:20,color:"var(--t1)",fontWeight:900}}>{parseInt(v).toLocaleString()}</div></div>
-                      ))}
-                    </div>
-                  </div>
+              {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO...</div></div></div>}
+
+              {/* Dati OCR — nascosti, salvati in background */}
+              <div style={{display:"none"}}>
+                <input type="number" value={form.views} readOnly/>
+                <input type="number" value={form.interactions} readOnly/>
+                <input type="number" value={form.newFollowers} readOnly/>
+              </div>
+
+              {/* Messaggio errore validazione dati insights */}
+              {(errors.views||errors.interactions||errors.newFollowers)&&(
+                <div style={{padding:"10px 14px",background:"#1a0808",border:"1px solid var(--red)"}}>
+                  <div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)",letterSpacing:"0.1em"}}>⚠ Lo screenshot non è stato letto correttamente — ricarica l'immagine o contatta il supporto</div>
                 </div>
               )}
-
-              {/* Campi nascosti per i valori OCR — validati ma non editabili */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-                {[["views","Visualizzazioni"],["interactions","Interazioni"],["newFollowers","Nuovi follower"]].map(([k,l])=>(
-                  <div key={k}>
-                    <Field label={l} required>
-                      <input type="number" value={form[k]} onChange={e=>u(k,e.target.value)} placeholder="0" style={{borderColor:errors[k]?"var(--red)":"#333"}}/>
-                    </Field>
-                    <ErrMsg k={k}/>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
 
