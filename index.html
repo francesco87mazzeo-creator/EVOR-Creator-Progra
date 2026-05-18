@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779098851</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779136175</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -488,10 +488,12 @@ function ApplicationForm({onBack,onAdmin}){
   const [step,setStep]=useState(0);
   const [form,setForm]=useState(emptyForm);
   const [done,setDone]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [savedId,setSavedId]=useState(null);
   const [ocrStatus,setOcrStatus]=useState("idle");
   const [ocrError,setOcrError]=useState("");
-  const [saving,setSaving]=useState(false);
-  const u=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const [errors,setErrors]=useState({});
+  const u=(k,v)=>{ setForm(p=>({...p,[k]:v})); setErrors(p=>({...p,[k]:undefined})); };
 
   const handleFile=async(e)=>{
     const f=e.target.files?.[0]||e.dataTransfer?.files?.[0];
@@ -516,177 +518,345 @@ function ApplicationForm({onBack,onAdmin}){
     r.readAsDataURL(f);
   };
 
+  // Validazione per step
+  const validateStep=(s)=>{
+    const errs={};
+    const req=(k,label)=>{ if(!(form[k]||"").trim()) errs[k]=`${label} è obbligatorio`; };
+    const emailOk=(v)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+
+    if(s===0){
+      req("fullName","Nome e cognome");
+      req("age","Età");
+      req("city","Città");
+      if(!form.email.trim()) errs.email="Email è obbligatoria";
+      else if(!emailOk(form.email)) errs.email="Inserisci un indirizzo email valido";
+    }
+    if(s===1){
+      req("instagram","Handle Instagram");
+      req("followers","Follower Instagram");
+      if(!form.screenshotData) errs.screenshotData="Carica lo screenshot Insights";
+      req("views","Visualizzazioni");
+      req("interactions","Interazioni");
+      req("newFollowers","Nuovi follower");
+    }
+    if(s===2){
+      req("threeWords","3 parole");
+      req("contentType","Tipo di contenuti");
+      req("whatToTransmit","Cosa trasmetti");
+      req("hasBrandCollabs","Collaborazioni brand");
+      if(form.hasBrandCollabs==="yes") req("brandCollabDetails","Dettagli collaborazioni");
+    }
+    if(s===3){
+      req("motivation","Perché EVORΛ");
+      req("brandLike","Cosa ti piace del brand");
+      req("contentIntegration","Come integreresti EVORΛ");
+      req("athleteImage","Immagine atleta EVORΛ");
+    }
+    if(s===4){
+      req("qualityVsSell","Qualità vs vendere");
+      req("buildWithoutEarnings","Lavoro senza guadagno immediato");
+      req("badContentReaction","Reazione a contenuto che non performa");
+      req("brandMeaning","Cosa significa rappresentare un brand");
+    }
+    if(s===5){
+      req("contentPerMonth","Contenuti al mese");
+      req("hasRoutine","Routine di pubblicazione");
+      req("followsGuidelines","Linee guida creative");
+    }
+    return errs;
+  };
+
+  const goNext=()=>{
+    const errs=validateStep(step);
+    if(Object.keys(errs).length>0){ setErrors(errs); window.scrollTo(0,0); return; }
+    setErrors({});
+    setStep(step+1);
+    window.scrollTo(0,0);
+  };
+
   const submit=async()=>{
+    const errs=validateStep(5);
+    if(Object.keys(errs).length>0){ setErrors(errs); return; }
     setSaving(true);
     try{
       const sc=scoreCandidate(form);
-      const app={...form,...sc,date:new Date().toISOString(),status:"new",notes:"",creatorCode:""};
       const id=Date.now();
-      await FB.saveApp({id,...app});
+      const app={...form,...sc,id,date:new Date().toISOString(),status:"new",notes:"",creatorCode:""};
+      await FB.saveApp(app);
+      setSavedId(id);
       setDone(true);
     }catch(err){
-      alert("Errore nel salvataggio — riprova");
+      alert("Errore nel salvataggio — riprova tra qualche secondo.");
     }finally{
       setSaving(false);
     }
   };
 
-  if(done)return(
+  // Schermata conferma
+  if(done) return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--black)",textAlign:"center",padding:24}}>
-      <div style={{animation:"fadeUp .8s ease both",maxWidth:460}}>
-        <div style={{fontFamily:"var(--fd)",fontSize:80,color:"var(--red)",lineHeight:1,marginBottom:10}}>✓</div>
-        <h2 style={{fontFamily:"var(--fd)",fontSize:44,color:"#fff",marginBottom:16}}>CANDIDATURA RICEVUTA.</h2>
-        <p style={{fontFamily:"var(--fb)",fontSize:15,color:"var(--t2)",lineHeight:1.9,marginBottom:36}}>Il team EVORΛ analizzerà il tuo profilo.<br/>Se sei in linea con gli standard, ti contatteremo entro <strong style={{color:"#fff"}}>7 giorni lavorativi</strong>.<br/><br/><span style={{fontSize:13,color:"var(--t3)"}}>Non mandare DM — rispettiamo chi rispetta il processo.</span></p>
+      <div style={{animation:"fadeUp .8s ease both",maxWidth:500}}>
+        {/* Conferma ricezione */}
+        <div style={{background:"#0a1a0a",border:"1px solid #27ae6050",padding:"16px 24px",marginBottom:28,display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:"#27ae60",flexShrink:0}}/>
+          <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",textAlign:"left"}}>
+            CANDIDATURA SALVATA · ID #{savedId}
+          </div>
+        </div>
+        <div style={{fontFamily:"var(--fd)",fontSize:72,color:"var(--red)",lineHeight:1,marginBottom:12}}>✓</div>
+        <h2 style={{fontFamily:"var(--fd)",fontSize:40,color:"#fff",marginBottom:16,fontWeight:900}}>CANDIDATURA RICEVUTA.</h2>
+        <p style={{fontFamily:"var(--fb)",fontSize:15,color:"var(--t2)",lineHeight:1.9,marginBottom:36}}>
+          I tuoi dati sono stati registrati correttamente nel sistema EVORΛ.<br/>
+          Il team analizzerà il tuo profilo e ti contatterà entro <strong style={{color:"#fff"}}>7 giorni lavorativi</strong> se sei in linea con i nostri standard.<br/>
+          <br/>
+          <span style={{fontSize:13,color:"var(--t3)"}}>Non mandare DM — rispettiamo chi rispetta il processo.</span>
+        </p>
         <button className="btn-ghost" onClick={onBack}>← TORNA AL SITO</button>
       </div>
     </div>
   );
 
-  const sc=form.followers&&form.views?scoreCandidate(form):null;
+  const ErrMsg=({k})=>errors[k]?<span style={{fontFamily:"var(--fb)",fontSize:11,color:"var(--red)",marginTop:4,display:"block"}}>⚠ {errors[k]}</span>:null;
 
   return(
     <div className="form-page">
       <Nav onAdmin={onAdmin} links={false} onBack={onBack}/>
       <div className="form-inner">
-        <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(26px,5vw,44px)",color:"#fff",lineHeight:1,marginBottom:8}}>ATHLETES APPLICATION <span style={{color:"var(--red)"}}>2025</span></h1>
-        <p style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t3)",lineHeight:1.8,marginBottom:28}}>Compila ogni campo con precisione. Risposte superficiali portano automaticamente alla non selezione.</p>
-        <div className="steps-bar">
-          {STEPS.map((s,i)=><div key={s} className="step-item"><div className="step-line" style={{background:i<=step?"var(--red)":"#222"}}/><div className="step-lbl" style={{color:i===step?"#fff":"#444"}}>{s}</div></div>)}
+        <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(26px,5vw,44px)",color:"#fff",lineHeight:1,marginBottom:8,fontWeight:900}}>
+          ATHLETES APPLICATION
+        </h1>
+        <div className="steps-bar" style={{marginBottom:32}}>
+          {STEPS.map((s,i)=><div key={s} className="step-item">
+            <div className="step-line" style={{background:i<=step?"var(--red)":"#222"}}/>
+            <div className="step-lbl" style={{color:i===step?"#fff":"#444"}}>{s}</div>
+          </div>)}
         </div>
 
-        {step===0&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
-          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>CHI SEI</h3>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-            <Field label="Nome e cognome" required><input value={form.fullName} onChange={e=>u("fullName",e.target.value)} placeholder="Mario Rossi"/></Field>
-            <Field label="Età" required><input type="number" value={form.age} onChange={e=>u("age",e.target.value)} placeholder="24"/></Field>
+        {/* Errori globali */}
+        {Object.keys(errors).length>0&&(
+          <div style={{background:"#1a0808",border:"1px solid var(--red)",padding:"12px 16px",marginBottom:20}}>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)",letterSpacing:"0.15em"}}>⚠ COMPLETA I CAMPI OBBLIGATORI PER CONTINUARE</div>
           </div>
-          <Field label="Città / Paese" required><input value={form.city} onChange={e=>u("city",e.target.value)} placeholder="Milano, Italia"/></Field>
-          <Field label="Email" required><input type="email" value={form.email} onChange={e=>u("email",e.target.value)} placeholder="nome@email.com"/></Field>
+        )}
+
+        {/* ── STEP 0: CHI SEI ── */}
+        {step===0&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff",fontWeight:900}}>CHI SEI</h3>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div>
+              <Field label="Nome e cognome" required><input value={form.fullName} onChange={e=>u("fullName",e.target.value)} placeholder="Mario Rossi" style={{borderColor:errors.fullName?"var(--red)":"#333"}}/></Field>
+              <ErrMsg k="fullName"/>
+            </div>
+            <div>
+              <Field label="Età" required><input type="number" value={form.age} onChange={e=>u("age",e.target.value)} placeholder="24" style={{borderColor:errors.age?"var(--red)":"#333"}}/></Field>
+              <ErrMsg k="age"/>
+            </div>
+          </div>
+          <div>
+            <Field label="Città / Paese" required><input value={form.city} onChange={e=>u("city",e.target.value)} placeholder="Milano, Italia" style={{borderColor:errors.city?"var(--red)":"#333"}}/></Field>
+            <ErrMsg k="city"/>
+          </div>
+          <div>
+            <Field label="Email" required><input type="email" value={form.email} onChange={e=>u("email",e.target.value)} placeholder="nome@email.com" style={{borderColor:errors.email?"var(--red)":"#333"}}/></Field>
+            <ErrMsg k="email"/>
+          </div>
         </div>}
 
+        {/* ── STEP 1: SOCIAL & NUMERI ── */}
         {step===1&&<div style={{display:"flex",flexDirection:"column",gap:24,animation:"fadeUp .4s ease both"}}>
-          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>SOCIAL & NUMERI</h3>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff",fontWeight:900}}>SOCIAL & NUMERI</h3>
 
-          {/* ── INSTAGRAM ── */}
           <div>
-            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--red)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>
-              ▸ INSTAGRAM
-            </div>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--red)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>▸ INSTAGRAM</div>
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                <Field label="Handle (@username)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username"/></Field>
-                <Field label="Follower" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000"/></Field>
+                <div>
+                  <Field label="Handle (@username)" required><input value={form.instagram} onChange={e=>u("instagram",e.target.value)} placeholder="@username" style={{borderColor:errors.instagram?"var(--red)":"#333"}}/></Field>
+                  <ErrMsg k="instagram"/>
+                </div>
+                <div>
+                  <Field label="Follower" required><input type="number" value={form.followers} onChange={e=>u("followers",e.target.value)} placeholder="es. 25000" style={{borderColor:errors.followers?"var(--red)":"#333"}}/></Field>
+                  <ErrMsg k="followers"/>
+                </div>
               </div>
 
-              <Field label="Screenshot Insights — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante — i dati vengono letti automaticamente">
-                <div
-                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
-                  onDragLeave={e=>{e.currentTarget.style.borderColor="#333";}}
-                  onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
-                  style={{border:"2px dashed #333",padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-                  {form.screenshotData?(
-                    <>
-                      <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
-                      {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
-                      {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
-                      {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
-                      {ocrStatus==="idle"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)"}}>✓ {form.screenshotName}</div>}
-                    </>
-                  ):(
-                    <>
-                      <div style={{fontSize:36}}>📊</div>
-                      <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
-                      <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente dall'AI</div>
-                      <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)"}}>JPG · PNG · Max 10MB</div>
-                    </>
-                  )}
-                </div>
-                <label style={{display:"block",marginTop:8,padding:"11px 24px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center",transition:"all .2s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";e.currentTarget.style.color="#fff";}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";e.currentTarget.style.color="var(--t2)";}}>
-                  {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
-                  <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
-                </label>
-              </Field>
+              <div>
+                <Field label="Screenshot Insights — ultimi 30 giorni" required hint="Trascina l'immagine oppure clicca il pulsante">
+                  <div onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--red)";}}
+                    onDragLeave={e=>{e.currentTarget.style.borderColor=errors.screenshotData?"var(--red)":"#333";}}
+                    onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#333";handleFile(e);}}
+                    style={{border:`2px dashed ${errors.screenshotData?"var(--red)":"#333"}`,padding:"24px 20px",textAlign:"center",background:"#090909",transition:"border-color .2s",minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                    {form.screenshotData?(
+                      <>
+                        <img src={form.screenshotData} alt="Insights" style={{maxHeight:160,maxWidth:"100%",objectFit:"contain"}}/>
+                        {ocrStatus==="analyzing"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)"}}>⏳ Lettura automatica in corso...</div>}
+                        {ocrStatus==="done"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a"}}>✓ Dati estratti automaticamente</div>}
+                        {ocrStatus==="error"&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--red)"}}>⚠ {ocrError}</div>}
+                      </>
+                    ):(
+                      <>
+                        <div style={{fontSize:32}}>📊</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:12,color:"var(--t2)",letterSpacing:"0.15em"}}>TRASCINA LO SCREENSHOT QUI</div>
+                        <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>I numeri verranno letti automaticamente</div>
+                      </>
+                    )}
+                  </div>
+                  <label style={{display:"block",marginTop:8,padding:"11px",background:"#111",border:"1px solid #333",color:"var(--t2)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",textAlign:"center"}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#555";}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor="#333";}}>
+                    {form.screenshotData?"📁 CAMBIA IMMAGINE":"📁 SCEGLI DAL DISPOSITIVO"}
+                    <input type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
+                  </label>
+                </Field>
+                <ErrMsg k="screenshotData"/>
+              </div>
 
-              {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div><div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)",marginTop:2}}>Lettura automatica dello screenshot...</div></div></div>}
-
+              {ocrStatus==="analyzing"&&<div className="ocr-box"><div className="spinner"/><div><div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--gold)",letterSpacing:"0.15em"}}>ANALISI IN CORSO</div></div></div>}
               {ocrStatus==="done"&&(
                 <div className="ocr-box" style={{borderColor:"#6a9a7a50"}}>
-                  <div style={{fontSize:18}}>✅</div>
+                  <div style={{fontSize:16}}>✅</div>
                   <div style={{flex:1}}>
-                    <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",marginBottom:10}}>DATI ESTRATTI AUTOMATICAMENTE</div>
-                    <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",letterSpacing:"0.15em",marginBottom:8}}>DATI ESTRATTI</div>
+                    <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
                       {[["Visualizzazioni",form.views],["Interazioni",form.interactions],["Nuovi follower",form.newFollowers]].filter(([,v])=>v).map(([l,v])=>(
-                        <div key={l}>
-                          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:2}}>{l}</div>
-                          <div style={{fontFamily:"var(--fd)",fontSize:24,color:"var(--t1)"}}>{parseInt(v).toLocaleString()}</div>
-                        </div>
+                        <div key={l}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",marginBottom:2}}>{l}</div><div style={{fontFamily:"var(--fd)",fontSize:20,color:"var(--t1)",fontWeight:900}}>{parseInt(v).toLocaleString()}</div></div>
                       ))}
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* Campi nascosti per i valori OCR — validati ma non editabili */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                {[["views","Visualizzazioni"],["interactions","Interazioni"],["newFollowers","Nuovi follower"]].map(([k,l])=>(
+                  <div key={k}>
+                    <Field label={l} required>
+                      <input type="number" value={form[k]} onChange={e=>u(k,e.target.value)} placeholder="0" style={{borderColor:errors[k]?"var(--red)":"#333"}}/>
+                    </Field>
+                    <ErrMsg k={k}/>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* ── TIKTOK ── */}
           <div>
-            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--t3)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>
-              ▸ TIKTOK <span style={{fontSize:9,color:"var(--t4)",letterSpacing:"0.2em"}}>(OPZIONALE)</span>
-            </div>
+            <div style={{fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.4em",color:"var(--t3)",textTransform:"uppercase",marginBottom:14,paddingBottom:10,borderBottom:"1px solid #1e1e1e"}}>▸ TIKTOK <span style={{fontSize:9,color:"var(--t4)"}}>(OPZIONALE)</span></div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
               <Field label="Handle (@username)"><input value={form.tiktok} onChange={e=>u("tiktok",e.target.value)} placeholder="@username"/></Field>
               <Field label="Follower"><input type="number" value={form.tiktokFollowers} onChange={e=>u("tiktokFollowers",e.target.value)} placeholder="es. 10000"/></Field>
             </div>
           </div>
-
         </div>}
 
+        {/* ── STEP 2: POSIZIONAMENTO ── */}
         {step===2&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
-          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>POSIZIONAMENTO</h3>
-          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.8,padding:"12px 16px",border:"1px solid #2a2a2a"}}>Questa sezione serve a capire chi sei come creator, al di là dei numeri.</div>
-          <Field label="Come ti descriveresti in 3 parole come creator?" required><input value={form.threeWords} onChange={e=>u("threeWords",e.target.value)} placeholder="es. Autentico, Diretto, Consistente"/></Field>
-          <Field label="Che tipo di contenuti pubblichi principalmente?" required><textarea value={form.contentType} onChange={e=>u("contentType",e.target.value)} rows={4} placeholder="Formato, temi, approccio, frequenza..."/></Field>
-          <Field label="Cosa vuoi trasmettere alle persone che ti seguono?" required><textarea value={form.whatToTransmit} onChange={e=>u("whatToTransmit",e.target.value)} rows={4} placeholder="Qual è il messaggio centrale che porti avanti?"/></Field>
-          <Field label="Hai già collaborato con brand fitness?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>)}</div>
-          </Field>
-          {form.hasBrandCollabs==="yes"&&<Field label="Quali brand? Hai collaborazioni in corso?"><textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..."/></Field>}
+          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff",fontWeight:900}}>POSIZIONAMENTO</h3>
+          <div>
+            <Field label="Come ti descriveresti in 3 parole come creator?" required>
+              <input value={form.threeWords} onChange={e=>u("threeWords",e.target.value)} placeholder="es. Autentico, Diretto, Consistente" style={{borderColor:errors.threeWords?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="threeWords"/>
+          </div>
+          <div>
+            <Field label="Che tipo di contenuti pubblichi principalmente?" required>
+              <textarea value={form.contentType} onChange={e=>u("contentType",e.target.value)} rows={4} placeholder="Formato, temi, approccio, frequenza..." style={{borderColor:errors.contentType?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="contentType"/>
+          </div>
+          <div>
+            <Field label="Cosa vuoi trasmettere alle persone che ti seguono?" required>
+              <textarea value={form.whatToTransmit} onChange={e=>u("whatToTransmit",e.target.value)} rows={4} placeholder="Qual è il messaggio centrale che porti avanti?" style={{borderColor:errors.whatToTransmit?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="whatToTransmit"/>
+          </div>
+          <div>
+            <Field label="Hai già collaborato con brand fitness?" required>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[["yes","Sì, ho esperienza"],["no","No, prima volta"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasBrandCollabs===v} onClick={v=>u("hasBrandCollabs",v)}/>)}
+              </div>
+            </Field><ErrMsg k="hasBrandCollabs"/>
+          </div>
+          {form.hasBrandCollabs==="yes"&&<div>
+            <Field label="Con quali brand? Descrivi le collaborazioni." required>
+              <textarea value={form.brandCollabDetails} onChange={e=>u("brandCollabDetails",e.target.value)} rows={3} placeholder="Elenca i brand e descrivi il tipo di collaborazione..." style={{borderColor:errors.brandCollabDetails?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="brandCollabDetails"/>
+          </div>}
         </div>}
 
+        {/* ── STEP 3: FIT CON EVORΛ ── */}
         {step===3&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
-          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>FIT CON EVORΛ</h3>
-          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.8,padding:"12px 16px",borderLeft:"3px solid var(--red)",background:"#100303"}}>La sezione più importante. Qui capiamo se hai davvero capito cosa è EVORΛ.</div>
-          <Field label="Perché vuoi entrare in EVORΛ?" required hint="Sii specifico. Risposte generiche vengono scartate."><textarea value={form.motivation} onChange={e=>u("motivation",e.target.value)} rows={5} placeholder="Non dirci cosa vuoi ottenere. Dicci perché EVORΛ e non un altro brand..."/></Field>
-          <div style={{fontFamily:"var(--fu)",fontSize:10,color:form.motivation.length>200?"#6a9a7a":form.motivation.length>100?"var(--gold)":"var(--t4)",marginTop:-12}}>{form.motivation.length} car. {form.motivation.length<150?"— scrivi almeno 150":form.motivation.length<300?"— buono":"— ottimo"}</div>
-          <Field label="Cosa ti piace del brand EVORΛ?" required><textarea value={form.brandLike} onChange={e=>u("brandLike",e.target.value)} rows={4} placeholder="Cosa ti ha colpito?"/></Field>
-          <Field label="Come integreresti EVORΛ nei tuoi contenuti senza renderlo una pubblicità?" required><textarea value={form.contentIntegration} onChange={e=>u("contentIntegration",e.target.value)} rows={5} placeholder="Spiega concretamente come mostreresti EVORΛ nel tuo contesto..."/></Field>
-          <Field label="Che tipo di immagine deve trasmettere un atleta EVORΛ?" required><textarea value={form.athleteImage} onChange={e=>u("athleteImage",e.target.value)} rows={4} placeholder="Come vedi l'atleta EVORΛ ideale?"/></Field>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff",fontWeight:900}}>FIT CON EVORΛ</h3>
+          <div>
+            <Field label="Perché vuoi entrare in EVORΛ?" required>
+              <textarea value={form.motivation} onChange={e=>u("motivation",e.target.value)} rows={5} placeholder="Non dirci cosa vuoi ottenere. Dicci perché EVORΛ e non un altro brand..." style={{borderColor:errors.motivation?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="motivation"/>
+          </div>
+          <div>
+            <Field label="Cosa ti piace del brand EVORΛ?" required>
+              <textarea value={form.brandLike} onChange={e=>u("brandLike",e.target.value)} rows={4} placeholder="Cosa ti ha colpito?" style={{borderColor:errors.brandLike?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="brandLike"/>
+          </div>
+          <div>
+            <Field label="Come integreresti EVORΛ nei tuoi contenuti senza renderlo una pubblicità?" required>
+              <textarea value={form.contentIntegration} onChange={e=>u("contentIntegration",e.target.value)} rows={5} placeholder="Spiega concretamente come mostreresti EVORΛ nel tuo contesto..." style={{borderColor:errors.contentIntegration?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="contentIntegration"/>
+          </div>
+          <div>
+            <Field label="Che tipo di immagine deve trasmettere un atleta EVORΛ?" required>
+              <textarea value={form.athleteImage} onChange={e=>u("athleteImage",e.target.value)} rows={4} placeholder="Come vedi l'atleta EVORΛ ideale?" style={{borderColor:errors.athleteImage?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="athleteImage"/>
+          </div>
         </div>}
 
+        {/* ── STEP 4: MENTALITÀ ── */}
         {step===4&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
-          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>MENTALITÀ</h3>
-          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.8,padding:"12px 16px",borderLeft:"3px solid var(--red)",background:"#100303"}}>Questa sezione filtra il 90% delle candidature. Non esistono risposte giuste o sbagliate.</div>
-          <Field label="Preferisci creare contenuti di qualità o puntare subito a vendere? Perché?" required><textarea value={form.qualityVsSell} onChange={e=>u("qualityVsSell",e.target.value)} rows={5} placeholder="Sii onesto/a..."/></Field>
-          <Field label="Sei disposto/a a lavorare senza aspettarti risultati economici immediati?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì"],["no","No"],["depends","Dipende"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.buildWithoutEarnings===v} onClick={v=>u("buildWithoutEarnings",v)}/>)}</div>
-          </Field>
-          <Field label="Come reagisci se un contenuto non performa?" required><textarea value={form.badContentReaction} onChange={e=>u("badContentReaction",e.target.value)} rows={4} placeholder="Descrivi il tuo processo mentale..."/></Field>
-          <Field label="Cosa significa per te rappresentare un brand?" required><textarea value={form.brandMeaning} onChange={e=>u("brandMeaning",e.target.value)} rows={5} placeholder="Cosa cambia nel tuo modo di creare contenuti quando sei ambassador?"/></Field>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff",fontWeight:900}}>MENTALITÀ</h3>
+          <div>
+            <Field label="Preferisci creare contenuti di qualità o puntare subito a vendere? Perché?" required>
+              <textarea value={form.qualityVsSell} onChange={e=>u("qualityVsSell",e.target.value)} rows={5} placeholder="Sii onesto/a..." style={{borderColor:errors.qualityVsSell?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="qualityVsSell"/>
+          </div>
+          <div>
+            <Field label="Sei disposto/a a lavorare senza aspettarti risultati economici immediati?" required>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[["yes","Sì"],["no","No"],["depends","Dipende"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.buildWithoutEarnings===v} onClick={v=>u("buildWithoutEarnings",v)}/>)}
+              </div>
+            </Field><ErrMsg k="buildWithoutEarnings"/>
+          </div>
+          <div>
+            <Field label="Come reagisci se un contenuto non performa?" required>
+              <textarea value={form.badContentReaction} onChange={e=>u("badContentReaction",e.target.value)} rows={4} placeholder="Descrivi il tuo processo mentale..." style={{borderColor:errors.badContentReaction?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="badContentReaction"/>
+          </div>
+          <div>
+            <Field label="Cosa significa per te rappresentare un brand?" required>
+              <textarea value={form.brandMeaning} onChange={e=>u("brandMeaning",e.target.value)} rows={5} placeholder="Cosa cambia nel tuo modo di creare contenuti quando sei ambassador?" style={{borderColor:errors.brandMeaning?"var(--red)":"#333"}}/>
+            </Field><ErrMsg k="brandMeaning"/>
+          </div>
         </div>}
 
+        {/* ── STEP 5: IMPEGNO & EXTRA ── */}
         {step===5&&<div style={{display:"flex",flexDirection:"column",gap:20,animation:"fadeUp .4s ease both"}}>
-          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff"}}>IMPEGNO & EXTRA</h3>
-          <Field label="Quanti contenuti al mese per EVORΛ?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["1-2","1-2/mese"],["3-5","3-5/mese"],["6-10","6-10/mese"],["10+","10+/mese"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.contentPerMonth===v} onClick={v=>u("contentPerMonth",v)}/>)}</div>
-          </Field>
-          <Field label="Hai una routine di pubblicazione costante?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì, sono consistente"],["no","No, sono irregolare"],["building","La sto costruendo"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasRoutine===v} onClick={v=>u("hasRoutine",v)}/>)}</div>
-          </Field>
-          <Field label="Sei disponibile a seguire linee guida creative?" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["yes","Sì"],["mostly","Con flessibilità"],["no","No"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.followsGuidelines===v} onClick={v=>u("followsGuidelines",v)}/>)}</div>
-          </Field>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:28,color:"#fff",fontWeight:900}}>IMPEGNO & EXTRA</h3>
+          <div>
+            <Field label="Quanti contenuti al mese per EVORΛ?" required>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[["1-2","1-2/mese"],["3-5","3-5/mese"],["6-10","6-10/mese"],["10+","10+/mese"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.contentPerMonth===v} onClick={v=>u("contentPerMonth",v)}/>)}
+              </div>
+            </Field><ErrMsg k="contentPerMonth"/>
+          </div>
+          <div>
+            <Field label="Hai una routine di pubblicazione costante?" required>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[["yes","Sì, sono consistente"],["no","No, sono irregolare"],["building","La sto costruendo"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.hasRoutine===v} onClick={v=>u("hasRoutine",v)}/>)}
+              </div>
+            </Field><ErrMsg k="hasRoutine"/>
+          </div>
+          <div>
+            <Field label="Sei disponibile a seguire linee guida creative?" required>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[["yes","Sì"],["mostly","Con flessibilità"],["no","No"]].map(([v,l])=><Choice key={v} label={l} value={v} selected={form.followsGuidelines===v} onClick={v=>u("followsGuidelines",v)}/>)}
+              </div>
+            </Field><ErrMsg k="followsGuidelines"/>
+          </div>
           <div style={{borderTop:"1px solid var(--brd)",paddingTop:20}}>
             <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.3em",marginBottom:16}}>CAMPI OPZIONALI</div>
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -697,15 +867,42 @@ function ApplicationForm({onBack,onAdmin}){
           </div>
         </div>}
 
+        {/* NAVIGAZIONE */}
         <div style={{display:"flex",gap:12,marginTop:40,paddingTop:24,borderTop:"1px solid var(--brd)"}}>
-          <button className="btn-ghost" onClick={()=>step>0?setStep(step-1):onBack()} style={{flex:1,padding:"13px 16px",fontSize:11}}>{step===0?"ANNULLA":"← INDIETRO"}</button>
-          <button className="btn-red" onClick={()=>step<5?setStep(step+1):submit()} style={{flex:2,padding:"13px 16px",fontSize:11}} disabled={ocrStatus==="analyzing"||saving}>
-            {saving?"⏳ SALVATAGGIO...":ocrStatus==="analyzing"?"⏳ ANALISI...":step<5?"CONTINUA →":"INVIA CANDIDATURA"}
+          <button className="btn-ghost" onClick={()=>step>0?setStep(step-1):onBack()} style={{flex:1,padding:"13px 16px",fontSize:11}}>
+            {step===0?"ANNULLA":"← INDIETRO"}
+          </button>
+          <button className="btn-red" onClick={step<5?goNext:submit}
+            style={{flex:2,padding:"13px 16px",fontSize:11}}
+            disabled={ocrStatus==="analyzing"||saving}>
+            {saving?"⏳ INVIO IN CORSO...":step<5?"CONTINUA →":"INVIA CANDIDATURA"}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+  const handleFile=async(e)=>{
+    const f=e.target.files?.[0]||e.dataTransfer?.files?.[0];
+    if(!f||!f.type.startsWith("image/"))return;
+    const r=new FileReader();
+    r.onload=async(ev)=>{
+      const img=ev.target.result;
+      u("screenshotData",img); u("screenshotName",f.name);
+      setOcrStatus("analyzing"); setOcrError("");
+      try{
+        const settings=await FB.getSettings();
+        const d=await extractInsights(img, settings.apiKey);
+        if(d.views)u("views",String(d.views));
+        if(d.interactions)u("interactions",String(d.interactions));
+        if(d.newFollowers)u("newFollowers",String(d.newFollowers));
+        setOcrStatus("done");
+      }catch(err){
+        setOcrStatus("error");
+        setOcrError(err.message||"Errore sconosciuto");
+      }
+    };
 }
 
 
