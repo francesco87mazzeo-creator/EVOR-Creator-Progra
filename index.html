@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779094987</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779095829</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -970,44 +970,48 @@ function CandidaturePanel({role}){
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",flexDirection:"column"}}>
 
-      {/* STATS HEADER */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:"var(--deep)",borderBottom:"1px solid var(--brd)",flexShrink:0}}>
-        {statItems.map(s=>(
+      {/* STATS HEADER — wrap su mobile */}
+      <div style={{display:"flex",flexWrap:"wrap",background:"var(--deep)",borderBottom:"1px solid var(--brd)",flexShrink:0}}>
+        {statItems.map((s,i)=>(
           <div key={s.key} onClick={()=>{setFilter(s.key==="OK"?"ALL":s.key);setPage(1);}}
-            style={{padding:"16px 12px",borderRight:"1px solid var(--brd)",textAlign:"center",cursor:"pointer",transition:"background .2s",
-              background:filter===(s.key==="OK"?"ALL":s.key)&&s.key!=="OK"?"#1e1e1e":"transparent"}}
-            onMouseEnter={e=>e.currentTarget.style.background="#1e1e1e"}
-            onMouseLeave={e=>e.currentTarget.style.background=filter===(s.key==="OK"?"ALL":s.key)&&s.key!=="OK"?"#1e1e1e":"transparent"}>
-            <div style={{fontSize:20,marginBottom:4}}>{s.icon}</div>
-            <div style={{fontFamily:"'Archivo',sans-serif",fontSize:28,color:s.color,lineHeight:1,fontWeight:900}}>{s.val}</div>
-            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.12em",marginTop:4,lineHeight:1.3}}>{s.label}</div>
+            style={{flex:"1 1 calc(14.28% - 1px)",minWidth:90,padding:"12px 8px",
+              borderRight:"1px solid var(--brd)",borderBottom:"1px solid var(--brd)",
+              textAlign:"center",cursor:"pointer",transition:"background .2s",
+              background:filter===(s.key==="OK"?"ALL":s.key)&&s.key!=="OK"?"#252525":"transparent"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#252525"}
+            onMouseLeave={e=>e.currentTarget.style.background=filter===(s.key==="OK"?"ALL":s.key)&&s.key!=="OK"?"#252525":"transparent"}>
+            <div style={{fontFamily:"'Archivo',sans-serif",fontSize:22,color:s.color,lineHeight:1,fontWeight:900}}>{s.val}</div>
+            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.1em",marginTop:3,lineHeight:1.3}}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* SEARCH + FILTERS + SORT */}
-      <div style={{padding:"12px 16px",borderBottom:"1px solid var(--brd)",background:"var(--black)",flexShrink:0,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-        {/* Search */}
-        <div style={{display:"flex",alignItems:"center",gap:8,background:"#141414",border:"1px solid #333",padding:"8px 14px",flex:1,minWidth:200}}>
-          <span style={{color:"var(--t4)",fontSize:14}}>🔍</span>
-          <input placeholder="Cerca nome, @handle, città..." value={search}
-            onChange={e=>{setSearch(e.target.value);setPage(1);}}
-            style={{background:"transparent",border:"none",color:"var(--t1)",fontSize:13,fontFamily:"var(--fb)",outline:"none",width:"100%",padding:0}}/>
+      {/* SEARCH + FILTERS + SORT — tutto wrappato */}
+      <div style={{padding:"10px 12px",borderBottom:"1px solid var(--brd)",background:"var(--black)",flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+        {/* Riga 1: search + risultati */}
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:"#141414",border:"1px solid #333",padding:"8px 12px",flex:1}}>
+            <span style={{color:"var(--t4)",fontSize:13}}>🔍</span>
+            <input placeholder="Cerca nome, @handle, città..." value={search}
+              onChange={e=>{setSearch(e.target.value);setPage(1);}}
+              style={{background:"transparent",border:"none",color:"var(--t1)",fontSize:13,fontFamily:"var(--fb)",outline:"none",width:"100%",padding:0}}/>
+          </div>
+          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.08em",whiteSpace:"nowrap",flexShrink:0}}>{sorted.length} RIS.</span>
         </div>
-        {/* Filter tabs */}
-        <div style={{display:"flex",gap:3}}>
+        {/* Riga 2: filtri tier */}
+        <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
           {["ALL","NEW","ELITE","PRO","RISING","PENDING"].map(f=>(
             <button key={f} onClick={()=>{setFilter(f);setPage(1);}}
-              style={{padding:"8px 14px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,cursor:"pointer",
+              style={{padding:"6px 11px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:700,cursor:"pointer",flex:"1 1 auto",
                 background:filter===f?"var(--red)":"#141414",border:`1px solid ${filter===f?"var(--red)":"#333"}`,
                 color:filter===f?"#fff":"var(--t3)",transition:"all .2s"}}>{f}</button>
           ))}
         </div>
-        {/* Sort */}
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.15em",whiteSpace:"nowrap"}}>ORDINA PER</span>
+        {/* Riga 3: ordina + per pagina */}
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.12em"}}>ORDINA</span>
           <select value={sortBy} onChange={e=>{setSortBy(e.target.value);setPage(1);}}
-            style={{background:"#141414",border:"1px solid #333",color:"var(--t1)",padding:"8px 12px",fontSize:12,fontFamily:"var(--fu)",outline:"none",cursor:"pointer",letterSpacing:"0.08em"}}>
+            style={{flex:1,background:"#141414",border:"1px solid #333",color:"var(--t1)",padding:"7px 10px",fontSize:12,fontFamily:"var(--fu)",outline:"none",cursor:"pointer"}}>
             <option value="date">Più recenti</option>
             <option value="score">Score ↓</option>
             <option value="followers">Follower ↓</option>
@@ -1015,17 +1019,11 @@ function CandidaturePanel({role}){
             <option value="reach">Reach ↓</option>
             <option value="growth">Growth ↓</option>
           </select>
-        </div>
-        {/* Per page */}
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.15em",whiteSpace:"nowrap"}}>PER PAGINA</span>
+          <span style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.12em"}}>PER PAG.</span>
           <select value={perPage} onChange={e=>{setPerPage(parseInt(e.target.value));setPage(1);}}
-            style={{background:"#141414",border:"1px solid #333",color:"var(--t1)",padding:"8px 12px",fontSize:12,fontFamily:"var(--fu)",outline:"none",cursor:"pointer"}}>
+            style={{background:"#141414",border:"1px solid #333",color:"var(--t1)",padding:"7px 10px",fontSize:12,fontFamily:"var(--fu)",outline:"none",cursor:"pointer"}}>
             {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
           </select>
-        </div>
-        <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>
-          {sorted.length} RISULTATI
         </div>
       </div>
 
@@ -1033,7 +1031,7 @@ function CandidaturePanel({role}){
       <div style={{overflow:"auto",flex:1}}>
         {paginated.length===0&&<div style={{padding:40,textAlign:"center",fontFamily:"var(--fu)",fontSize:12,color:"var(--t4)",letterSpacing:"0.2em"}}>NESSUNA CANDIDATURA</div>}
 
-        {paginated.map((a,i)=>{
+        {paginated.map((a)=>{
           const followers=parseInt(a.followers)||0;
           const band=getBand(followers);
           const er=parseFloat(a.erReach)||0;
@@ -1042,66 +1040,51 @@ function CandidaturePanel({role}){
           const erColor=getMetricColor(er,band.er);
           const reachColor=getMetricColor(reach,band.reach);
           const growthColor=getMetricColor(growth,band.growth);
+          const fmtNum=n=>n>=1000?(n/1000).toFixed(1)+"K":String(n);
           return(
             <div key={a.id} onClick={()=>selectApp(a)}
-              style={{display:"grid",gridTemplateColumns:"auto 1fr auto auto auto auto auto",gap:0,
-                padding:"14px 20px",borderBottom:"1px solid var(--brd)",cursor:"pointer",
-                background:"transparent",borderLeft:`3px solid ${a.tierColor}`,
-                transition:"background .15s",alignItems:"center"}}
+              style={{borderBottom:"1px solid var(--brd)",cursor:"pointer",
+                borderLeft:`3px solid ${a.tierColor}`,transition:"background .15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="#111"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
 
-              {/* Tier + Status */}
-              <div style={{display:"flex",flexDirection:"column",gap:4,marginRight:16,minWidth:70}}>
-                <Tag color={a.tierColor}>{a.tier}</Tag>
-                {a.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
-                {a.status==="approved"&&<Tag color="#27ae60">OK</Tag>}
-                {a.status==="review"&&<Tag color="var(--gold)">REV</Tag>}
-                {a.status==="rejected"&&<Tag color="#c0392b">NO</Tag>}
-              </div>
-
-              {/* Nome + Handle + Città */}
-              <div style={{minWidth:0}}>
-                <div style={{fontFamily:"'Archivo',sans-serif",fontSize:14,color:"#fff",fontWeight:700,marginBottom:2}}>{a.fullName||"—"}</div>
-                <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)"}}>{a.instagram}{a.city?` · ${a.city}`:""}</div>
-              </div>
-
-              {/* Follower */}
-              <div style={{textAlign:"center",padding:"0 16px",minWidth:80}}>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>FOLLOWER</div>
-                <div style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:"var(--t1)",fontWeight:700}}>{followers>=1000?(followers/1000).toFixed(1)+"K":followers}</div>
-              </div>
-
-              {/* ER */}
-              <div style={{textAlign:"center",padding:"0 12px",minWidth:70}}>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>ER</div>
-                <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
-                  <div style={{width:6,height:6,borderRadius:"50%",background:erColor,flexShrink:0}}/>
-                  <span style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:erColor,fontWeight:700}}>{er.toFixed(1)}%</span>
+              {/* Riga principale */}
+              <div style={{display:"flex",alignItems:"center",padding:"10px 12px",gap:10}}>
+                {/* Badges */}
+                <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0,width:64}}>
+                  <Tag color={a.tierColor}>{a.tier}</Tag>
+                  {a.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
+                  {a.status==="approved"&&<Tag color="#27ae60">OK</Tag>}
+                  {a.status==="review"&&<Tag color="var(--gold)">REV</Tag>}
+                  {a.status==="rejected"&&<Tag color="#c0392b">NO</Tag>}
+                </div>
+                {/* Nome */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Archivo',sans-serif",fontSize:13,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.fullName||"—"}</div>
+                  <div style={{fontFamily:"var(--fb)",fontSize:11,color:"var(--t3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.instagram}{a.city?` · ${a.city}`:""}</div>
+                </div>
+                {/* Score circle */}
+                <div style={{flexShrink:0}}>
+                  <ScoreCircle score={a.score} color={a.tierColor} size={44}/>
                 </div>
               </div>
 
-              {/* REACH */}
-              <div style={{textAlign:"center",padding:"0 12px",minWidth:80}}>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>REACH</div>
-                <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
-                  <div style={{width:6,height:6,borderRadius:"50%",background:reachColor,flexShrink:0}}/>
-                  <span style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:reachColor,fontWeight:700}}>{reach.toFixed(1)}%</span>
-                </div>
-              </div>
-
-              {/* GROWTH */}
-              <div style={{textAlign:"center",padding:"0 12px",minWidth:80}}>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>GROWTH</div>
-                <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
-                  <div style={{width:6,height:6,borderRadius:"50%",background:growthColor,flexShrink:0}}/>
-                  <span style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:growthColor,fontWeight:700}}>{growth.toFixed(2)}%</span>
-                </div>
-              </div>
-
-              {/* SCORE */}
-              <div style={{paddingLeft:16}}>
-                <ScoreCircle score={a.score} color={a.tierColor} size={52}/>
+              {/* Riga metriche */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",borderTop:"1px solid #1a1a1a",margin:"0 12px 10px"}}>
+                {[
+                  ["FOLLOWER", fmtNum(followers), "var(--t2)"],
+                  ["ER",       er.toFixed(1)+"%",  erColor],
+                  ["REACH",    reach.toFixed(1)+"%", reachColor],
+                  ["GROWTH",   growth.toFixed(2)+"%", growthColor]
+                ].map(([l,v,c])=>(
+                  <div key={l} style={{padding:"6px 8px",textAlign:"center"}}>
+                    <div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t4)",letterSpacing:"0.12em",marginBottom:2}}>{l}</div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                      {l!=="FOLLOWER"&&<div style={{width:5,height:5,borderRadius:"50%",background:c,flexShrink:0}}/>}
+                      <span style={{fontFamily:"'Archivo',sans-serif",fontSize:13,color:c,fontWeight:700}}>{v}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           );
@@ -1109,33 +1092,31 @@ function CandidaturePanel({role}){
       </div>
 
       {/* PAGINAZIONE */}
-      {totalPages>1&&(
-        <div style={{padding:"12px 20px",borderTop:"1px solid var(--brd)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:10}}>
-          <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.1em"}}>
-            Pagina {page} di {totalPages} · {sorted.length} risultati
-          </div>
-          <div style={{display:"flex",gap:3,alignItems:"center"}}>
-            <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
-              style={{background:"#141414",border:"1px solid #333",color:page===1?"var(--t4)":"var(--t1)",padding:"7px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:page===1?"default":"pointer"}}>‹</button>
-            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
-              let p; const half=2;
-              if(totalPages<=5) p=i+1;
-              else if(page<=half+1) p=i+1;
-              else if(page>=totalPages-half) p=totalPages-4+i;
-              else p=page-half+i;
-              return(
-                <button key={p} onClick={()=>setPage(p)}
-                  style={{background:page===p?"var(--red)":"#141414",border:`1px solid ${page===p?"var(--red)":"#333"}`,
-                    color:page===p?"#fff":"var(--t2)",padding:"7px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:"pointer",minWidth:34,fontWeight:page===p?700:400}}>
-                  {p}
-                </button>
-              );
-            })}
-            <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
-              style={{background:"#141414",border:"1px solid #333",color:page===totalPages?"var(--t4)":"var(--t1)",padding:"7px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:page===totalPages?"default":"pointer"}}>›</button>
-          </div>
+      <div style={{padding:"10px 12px",borderTop:"1px solid var(--brd)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:8}}>
+        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.08em"}}>
+          Pag. {page}/{totalPages} · {sorted.length} risultati
         </div>
-      )}
+        <div style={{display:"flex",gap:3,alignItems:"center"}}>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
+            style={{background:"#141414",border:"1px solid #333",color:page===1?"var(--t4)":"var(--t1)",padding:"6px 12px",fontFamily:"var(--fu)",fontSize:12,cursor:page===1?"default":"pointer"}}>‹</button>
+          {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+            let p;
+            if(totalPages<=5) p=i+1;
+            else if(page<=3) p=i+1;
+            else if(page>=totalPages-2) p=totalPages-4+i;
+            else p=page-2+i;
+            return(
+              <button key={p} onClick={()=>setPage(p)}
+                style={{background:page===p?"var(--red)":"#141414",border:`1px solid ${page===p?"var(--red)":"#333"}`,
+                  color:page===p?"#fff":"var(--t2)",padding:"6px 10px",fontFamily:"var(--fu)",fontSize:11,cursor:"pointer",minWidth:32,fontWeight:page===p?700:400}}>
+                {p}
+              </button>
+            );
+          })}
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
+            style={{background:"#141414",border:"1px solid #333",color:page===totalPages?"var(--t4)":"var(--t1)",padding:"6px 12px",fontFamily:"var(--fu)",fontSize:12,cursor:page===totalPages?"default":"pointer"}}>›</button>
+        </div>
+      </div>
     </div>
   );
 }
