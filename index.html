@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779139303</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779141037</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -486,7 +486,32 @@ function Landing({onApply,onAdmin}){
 const STEPS=["CHI SEI","SOCIAL & NUMERI","POSIZIONAMENTO","FIT CON EVORΛ","MENTALITÀ","IMPEGNO & EXTRA"];
 const emptyForm={fullName:"",age:"",city:"",email:"",instagram:"",followers:"",tiktokFollowers:"",screenshotData:null,screenshotName:"",views:"",interactions:"",newFollowers:"",tiktok:"",hasBrandCollabs:"",brandCollabDetails:"",threeWords:"",contentType:"",whatToTransmit:"",motivation:"",brandLike:"",contentIntegration:"",athleteImage:"",qualityVsSell:"",buildWithoutEarnings:"",badContentReaction:"",brandMeaning:"",contentPerMonth:"",hasRoutine:"",followsGuidelines:"",boughtProducts:"",improvements:"",extra:""};
 
-function ApplicationForm({onBack,onAdmin}){
+const testForm={
+  fullName:"Test Creator",age:"24",city:"Milano",email:"test@evora.com",
+  instagram:"@test_creator",followers:"8500",tiktokFollowers:"3200",
+  screenshotData:null,screenshotName:"",
+  views:"12400",interactions:"380",newFollowers:"95",
+  tiktok:"@test_tiktok",hasBrandCollabs:"yes",brandCollabDetails:"Collaborato con GymShark e MyProtein per campagne Instagram.",
+  threeWords:"Autentico, Diretto, Consistente",
+  contentType:"Reels di allenamento, contenuti motivazionali e lifestyle fitness. Pubblico 4-5 volte a settimana.",
+  whatToTransmit:"Voglio trasmettere che il fitness è uno stile di vita accessibile a tutti, non solo agli atleti professionisti.",
+  motivation:"EVORΛ rappresenta esattamente la mentalità che voglio incarnare. Non è un brand che vende, è un brand che costruisce identità. Ho visto come altri ambassador raccontano il brand in modo naturale e autentico — è quello che voglio fare.",
+  brandLike:"Il posizionamento premium senza essere elitario. L'estetica è forte ma il messaggio è genuino. Si vede che dietro c'è una visione, non solo un prodotto.",
+  contentIntegration:"Lo integrerei nel mio daily routine — allenamenti, pre-workout, recupero. Mai post 'pubblicitari', sempre contesto reale. La mia audience si fida di me perché parlo solo di cose che uso davvero.",
+  athleteImage:"Disciplinato, autentico, che non si vende al miglior offerente. Qualcuno che rappresenta il brand anche fuori dal telefono.",
+  qualityVsSell:"Qualità sempre. Un contenuto mediocre con 100 vendite fa meno danno di zero vendite ma zero credibilità. Preferisco costruire lentamente.",
+  buildWithoutEarnings:"yes",
+  badContentReaction:"Analizzo cosa non ha funzionato — hook, formato, timing. Non mi abbatto, mi adatto. Ogni flop è un dato.",
+  brandMeaning:"Cambia tutto. Rappresentare un brand significa che ogni contenuto che pubblico riflette anche su di loro. È una responsabilità che prendo sul serio.",
+  contentPerMonth:"3-5",hasRoutine:"yes",followsGuidelines:"mostly",
+  boughtProducts:"Pre-workout e t-shirt della collezione autumn",
+  improvements:"Più contenuti UGC dai creator — funzionano meglio degli shooting professionali.",
+  extra:"Sono disponibile per call conoscitiva quando volete."
+};
+
+const demoForm={fullName:"Marco Rossi",age:"26",city:"Milano",email:"marco.rossi@gmail.com",instagram:"@marco.fitness",followers:"12500",tiktokFollowers:"4200",screenshotData:null,screenshotName:"",views:"28000",interactions:"840",newFollowers:"380",tiktok:"@marco.fitness.tk",hasBrandCollabs:"yes",brandCollabDetails:"Ho collaborato con GymShark e MyProtein per 3 mesi, post sponsorizzati e stories.",threeWords:"Autentico, Costante, Motivante",contentType:"Pubblico principalmente workout in palestra, consigli di nutrizione e lifestyle fitness. Formato mix: Reels 3x settimana, stories daily, caroselli 1x settimana.",whatToTransmit:"Voglio trasmettere che il fitness è uno stile di vita accessibile a tutti, non solo agli atleti professionisti. Disciplina quotidiana e progressi reali.",motivation:"Ho scelto EVORΛ perché è un brand che non urla 'compra questo prodotto' ma costruisce un'identità. Ho visto i vostri contenuti e si vede che c'è una visione dietro, non solo marketing. Voglio essere parte di qualcosa con significato, non solo un canale pubblicitario.",brandLike:"Mi piace l'estetica minimal e premium, il fatto che non esageriate con le promozioni e che selezioniate le persone con cui lavorate. Si vede che ci tenete alla qualità.",contentIntegration:"Integrerei EVORΛ nel mio contesto reale: lo userei durante i miei allenamenti veri, lo mostrerei nelle mie routine mattutine senza costruire scene finte. Il pubblico sente quando qualcosa è forzato.",athleteImage:"Un atleta EVORΛ deve trasmettere disciplina vera, non estetica finta. Qualcuno che si allena perché ama farlo, non per fare bella figura sui social.",qualityVsSell:"Preferisco sempre la qualità. Vendere subito brucia la fiducia del pubblico. Ho rifiutato collaborazioni perché il prodotto non mi convinceva — preferisco guadagnare meno ma mantenere l'autenticità.",buildWithoutEarnings:"yes",badContentReaction:"Analizzo cosa non ha funzionato — formato, orario, topic — e mi segno le conclusioni. Non mi demoralizza, fa parte del processo.",brandMeaning:"Rappresentare un brand significa condividerne i valori davvero. Cambia tutto nel modo in cui creo: ogni contenuto deve essere coerente con l'identità del brand, non solo un tag.",contentPerMonth:"3-5",hasRoutine:"yes",followsGuidelines:"mostly",boughtProducts:"Ho acquistato il pre-workout e una felpa — qualità ottima.",improvements:"Forse più contenuto educativo sul sito, tipo approfondimenti sugli ingredienti.",extra:""};
+
+function ApplicationForm({onBack,onAdmin,testMode=false}){
   const [step,setStep]=useState(0);
   const [form,setForm]=useState(emptyForm);
   const [done,setDone]=useState(false);
@@ -589,11 +614,14 @@ function ApplicationForm({onBack,onAdmin}){
       const app={...form,...sc,id,date:new Date().toISOString(),status:"new",notes:"",creatorCode:""};
       await FB.saveApp(app);
       setSavedId(id);
-      // Notifica Telegram
-      if(settings.tgToken&&settings.tgChatId){
-        const msg=`🔔 <b>EVORΛ ATHLETES</b>\nNuova candidatura!\n\n👤 <b>${form.fullName}</b>\n📱 ${form.instagram}\n👥 ${parseInt(form.followers||0).toLocaleString()} follower\n🏆 Tier: <b>${sc.tier}</b> (${sc.score}/100)\n\nControlla il pannello admin.`;
-        sendTelegram(settings.tgToken, settings.tgChatId, msg);
-      }
+      // Notifica Telegram — legge config da Firebase
+      try{
+        const cfg = await FB.getSettings();
+        if(cfg.tgToken && cfg.tgChatId){
+          const msg=`🔔 <b>EVORΛ ATHLETES</b>\nNuova candidatura!\n\n👤 <b>${form.fullName}</b>\n📱 ${form.instagram}\n👥 ${parseInt(form.followers||0).toLocaleString()} follower\n🏆 Tier: <b>${sc.tier}</b> (${sc.score}/100)\n\nControlla il pannello admin.`;
+          sendTelegram(cfg.tgToken, cfg.tgChatId, msg);
+        }
+      }catch(e){ /* notifica fallita, non blocca l'invio */ }
       setDone(true);
     }catch(err){
       setSaveError(true);
@@ -642,9 +670,17 @@ function ApplicationForm({onBack,onAdmin}){
     <div className="form-page">
       <Nav onAdmin={onAdmin} links={false} onBack={onBack}/>
       <div className="form-inner">
-        <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(26px,5vw,44px)",color:"#fff",lineHeight:1,marginBottom:8,fontWeight:900}}>
-          ATHLETES APPLICATION
-        </h1>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
+          <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(26px,5vw,44px)",color:"#fff",lineHeight:1,fontWeight:900}}>
+            ATHLETES APPLICATION
+          </h1>
+          {testMode&&(
+            <button onClick={()=>{setForm({...testForm});setStep(5);}}
+              style={{background:"#1a1a0a",border:"1px solid #e67e2260",color:"#e67e22",padding:"8px 16px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",cursor:"pointer",fontWeight:700}}>
+              ⚡ COMPILA TEST
+            </button>
+          )}
+        </div>
         <div className="steps-bar" style={{marginBottom:32}}>
           {STEPS.map((s,i)=><div key={s} className="step-item">
             <div className="step-line" style={{background:i<=step?"var(--red)":"#222"}}/>
@@ -1850,7 +1886,7 @@ function ScoringPanel(){
 const DEFAULT_ADMIN="evora2025";
 const DEFAULT_MANAGER="evora_smm";
 
-function AdminPanel({onBack}){
+function AdminPanel({onBack,onTestForm}){
   const [role,setRole]=useState(null);
   const [pw,setPw]=useState("");
   const [pwError,setPwError]=useState(false);
@@ -1908,6 +1944,7 @@ function AdminPanel({onBack}){
             <Logo size={16}/>
             <Tag color={role==="admin"?"var(--red)":"var(--gold)"}>{role==="admin"?"ADMIN":"MANAGER"}</Tag>
           </div>
+          {role==="admin"&&onTestForm&&<button onClick={onTestForm} style={{position:"absolute",right:80,padding:"5px 14px",fontSize:10,background:"transparent",border:"1px solid #e67e2260",color:"#e67e22",fontFamily:"var(--fu)",letterSpacing:"0.15em",cursor:"pointer",fontWeight:700}}>⚡ TEST FORM</button>}
           <button className="btn-ghost" onClick={()=>{setRole(null);setPw("");}} style={{padding:"5px 14px",fontSize:10,position:"absolute",right:20}}>ESCI</button>
         </div>
       </div>
@@ -1932,8 +1969,9 @@ function App(){
   return(
     <>
       {view==="landing"&&<Landing onApply={()=>setView("apply")} onAdmin={()=>setView("admin")}/>}
-      {view==="apply"&&<ApplicationForm onBack={()=>setView("landing")} onAdmin={()=>setView("admin")}/>}
-      {view==="admin"&&<AdminPanel onBack={()=>setView("landing")}/>}
+      {view==="apply"&&<ApplicationForm onBack={()=>setView("landing")} onAdmin={()=>setView("admin")} testMode={false}/>}
+      {view==="apply-test"&&<ApplicationForm onBack={()=>setView("admin")} onAdmin={()=>setView("admin")} testMode={true}/>}
+      {view==="admin"&&<AdminPanel onBack={()=>setView("landing")} onTestForm={()=>setView("apply-test")}/>}
     </>
   );
 }
