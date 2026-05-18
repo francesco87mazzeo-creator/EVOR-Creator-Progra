@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779032612</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779094987</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -708,6 +708,26 @@ function ApplicationForm({onBack,onAdmin}){
   );
 }
 
+
+// ── SCORE CIRCLE ──────────────────────────────────────────────────────────────
+function ScoreCircle({score,color,size=52}){
+  const r=(size/2)-5; const circ=2*Math.PI*r;
+  const dash=circ*((score||0)/100);
+  return(
+    <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+      <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#2a2a2a" strokeWidth={4}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={4}
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"/>
+      </svg>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <span style={{fontFamily:"'Archivo',sans-serif",fontSize:size*.3,fontWeight:900,color,lineHeight:1}}>{score||0}</span>
+        <span style={{fontFamily:"'Archivo',sans-serif",fontSize:size*.14,color,opacity:.6,letterSpacing:"0.05em"}}>SCORE</span>
+      </div>
+    </div>
+  );
+}
+
 // ── CANDIDATURE PANEL ─────────────────────────────────────────────────────────
 function CandidaturePanel({role}){
   const [apps,setApps]=useState([]);
@@ -715,6 +735,9 @@ function CandidaturePanel({role}){
   const [sel,setSel]=useState(null);
   const [filter,setFilter]=useState("ALL");
   const [search,setSearch]=useState("");
+  const [sortBy,setSortBy]=useState("date");
+  const [perPage,setPerPage]=useState(10);
+  const [page,setPage]=useState(1);
   const [note,setNote]=useState("");
   const [code,setCode]=useState("");
   const [showDetail,setShowDetail]=useState(false);
@@ -724,8 +747,7 @@ function CandidaturePanel({role}){
   useEffect(()=>{
     FB.getApps().then(a=>{setApps(a);setLoading(false);}).catch(()=>setLoading(false));
     db.collection("settings").doc("scoring").get()
-      .then(doc=>{ if(doc.exists) setScoringCfg(doc.data()); })
-      .catch(()=>{});
+      .then(doc=>{ if(doc.exists) setScoringCfg(doc.data()); }).catch(()=>{});
   },[]);
 
   const upd=async(id,patch)=>{
@@ -746,175 +768,374 @@ function CandidaturePanel({role}){
     setSel(null); setShowDetail(false);
   };
 
-  const selectApp=a=>{setSel(a);setNote(a.notes||"");setCode(a.creatorCode||"");setShowDetail(true);};
+  const selectApp=a=>{ setSel(a); setNote(a.notes||""); setCode(a.creatorCode||""); setShowDetail(true); };
 
-  const list=apps.filter(a=>{
+  const getBand=(followers)=>{
+    const cfg=scoringCfg||DEFAULT_SCORING;
+    return cfg.bands.find(b=>followers<=b.max)||cfg.bands[cfg.bands.length-1];
+  };
+
+  const getMetricColor=(value,benchmarks)=>{
+    if(!benchmarks) return "#888";
+    if(value>=benchmarks.excellent) return "#3a7bd5";
+    if(value>=benchmarks.good)      return "#27ae60";
+    if(value>=benchmarks.avg)       return "#e67e22";
+    return "#c0392b";
+  };
+
+  const getMetricLabel=(value,benchmarks)=>{
+    if(!benchmarks) return "—";
+    if(value>=benchmarks.excellent) return "ECCELLENTE";
+    if(value>=benchmarks.good)      return "BUONO";
+    if(value>=benchmarks.avg)       return "MEDIO";
+    return "SCARSO";
+  };
+
+  // Filter
+  const filtered=apps.filter(a=>{
     const mt=filter==="ALL"?true:filter==="NEW"?a.status==="new":a.tier===filter;
-    const ms=!search||(a.fullName||"").toLowerCase().includes(search.toLowerCase())||(a.instagram||"").toLowerCase().includes(search.toLowerCase());
+    const q=search.toLowerCase();
+    const ms=!search||(a.fullName||"").toLowerCase().includes(q)||(a.instagram||"").toLowerCase().includes(q)||(a.city||"").toLowerCase().includes(q);
     return mt&&ms;
   });
 
-  const st={total:apps.length,nw:apps.filter(a=>a.status==="new").length,el:apps.filter(a=>a.tier==="ELITE").length,pr:apps.filter(a=>a.tier==="PRO").length,ri:apps.filter(a=>a.tier==="RISING").length,ap:apps.filter(a=>a.status==="approved").length};
+  // Sort
+  const sorted=[...filtered].sort((a,b)=>{
+    if(sortBy==="score")    return (b.score||0)-(a.score||0);
+    if(sortBy==="followers")return (parseInt(b.followers)||0)-(parseInt(a.followers)||0);
+    if(sortBy==="er")       return (parseFloat(b.erReach)||0)-(parseFloat(a.erReach)||0);
+    if(sortBy==="reach")    return (parseFloat(b.reachRate)||0)-(parseFloat(a.reachRate)||0);
+    if(sortBy==="growth")   return (parseFloat(b.growthRate)||0)-(parseFloat(a.growthRate)||0);
+    return new Date(b.date||0)-new Date(a.date||0);
+  });
+
+  const totalPages=Math.max(1,Math.ceil(sorted.length/perPage));
+  const paginated=sorted.slice((page-1)*perPage,page*perPage);
+
+  const st={
+    total:apps.length,
+    nw:apps.filter(a=>a.status==="new").length,
+    el:apps.filter(a=>a.tier==="ELITE").length,
+    pr:apps.filter(a=>a.tier==="PRO").length,
+    ri:apps.filter(a=>a.tier==="RISING").length,
+    pe:apps.filter(a=>a.tier==="PENDING").length,
+    ap:apps.filter(a=>a.status==="approved").length
+  };
+
+  const statItems=[
+    {key:"ALL",  label:"Totali candidature",  val:st.total, color:"#EFF0F5", icon:"📋"},
+    {key:"NEW",  label:"Nuove candidature",    val:st.nw,    color:"var(--red)", icon:"🔔"},
+    {key:"ELITE",label:"Livello Elite",        val:st.el,    color:"var(--red)", icon:"👑"},
+    {key:"PRO",  label:"Livello Pro",          val:st.pr,    color:"var(--gold)",icon:"💎"},
+    {key:"RISING",label:"Livello Rising",      val:st.ri,    color:"#6a9a7a",   icon:"📈"},
+    {key:"PENDING",label:"Da valutare",        val:st.pe,    color:"#3a7bd5",   icon:"🕐"},
+    {key:"OK",   label:"Approvate",            val:st.ap,    color:"#27ae60",   icon:"✅"}
+  ];
 
   if(loading)return(
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <div className="spinner" style={{width:32,height:32,borderWidth:3}}/>
-      <div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t4)",letterSpacing:"0.2em"}}>CARICAMENTO CANDIDATURE...</div>
+      <div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t4)",letterSpacing:"0.2em"}}>CARICAMENTO...</div>
     </div>
   );
 
-  return(
-    <div style={{display:"flex",flex:1,overflow:"hidden",flexDirection:"column"}}>
-      <div style={{display:"flex",background:"var(--surf)",borderBottom:"1px solid var(--brd)",flexShrink:0,overflowX:"auto"}}>
-        {[["TOT",st.total,"#fff"],["NUOVE",st.nw,"var(--red)"],["ELITE",st.el,"var(--red)"],["PRO",st.pr,"var(--gold)"],["RISING",st.ri,"#6a9a7a"],["OK",st.ap,"#6a9a7a"]].map(([l,v,c])=>(
-          <div key={l} style={{padding:"12px 20px",borderRight:"1px solid var(--brd)",textAlign:"center",minWidth:70,flexShrink:0}}>
-            <div style={{fontFamily:"var(--fd)",fontSize:22,color:c,lineHeight:1}}>{v}</div>
-            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.15em",marginTop:2}}>{l}</div>
+  // ── DETAIL VIEW ──────────────────────────────────────────────────────────────
+  if(showDetail&&sel) return(
+    <div style={{flex:1,overflow:"auto",padding:24}}>
+      <button onClick={()=>setShowDetail(false)} style={{background:"transparent",border:"none",color:"var(--t3)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:20,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>← LISTA CANDIDATURE</button>
+
+      {/* Header candidato */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Archivo',sans-serif",fontSize:"clamp(24px,4vw,36px)",color:"#fff",lineHeight:1,fontWeight:900}}>{sel.fullName}</h2>
+          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",marginTop:4}}>{sel.email} · {sel.city} · {sel.age} anni</div>
+          <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap"}}>
+            <Tag color={sel.tierColor}>{sel.tier}</Tag>
+            <Tag color="#555">{sel.tierLabel}</Tag>
+            {sel.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
+            {sel.status==="approved"&&<Tag color="#27ae60">APPROVATO</Tag>}
+            {sel.status==="rejected"&&<Tag color="#c0392b">RIFIUTATO</Tag>}
+            {sel.status==="review"&&<Tag color="var(--gold)">IN REVIEW</Tag>}
+          </div>
+        </div>
+        <ScoreCircle score={sel.score} color={sel.tierColor} size={72}/>
+      </div>
+
+      {/* Analisi score */}
+      <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:16}}>
+        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:12}}>ANALISI SCORE</div>
+        {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",marginBottom:14}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
+        {(()=>{
+          const config=scoringCfg||DEFAULT_SCORING;
+          const followers=parseInt(sel.followers)||0;
+          const band=config.bands.find(b=>followers<=b.max)||config.bands[config.bands.length-1];
+          const getMC=(value,benchmarks)=>{
+            if(!benchmarks) return{color:"#888",bg:"#1a1a1a",label:"—"};
+            if(value>=benchmarks.excellent) return{color:"#3a7bd5",bg:"#0a1428",label:"ECCELLENTE"};
+            if(value>=benchmarks.good)      return{color:"#27ae60",bg:"#0a2a14",label:"BUONO"};
+            if(value>=benchmarks.avg)       return{color:"#e67e22",bg:"#2a1a08",label:"MEDIO"};
+            return{color:"#c0392b",bg:"#2a1010",label:"SCARSO"};
+          };
+          const er=parseFloat(sel.erReach)||0;
+          const reach=parseFloat(sel.reachRate)||0;
+          const growth=parseFloat(sel.growthRate)||0;
+          return(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+              {[["ENGAGEMENT RATE",er+"%",getMC(er,band.er),sel.erScore],
+                ["REACH RATE",reach+"%",getMC(reach,band.reach),sel.reachScore],
+                ["GROWTH RATE",growth+"%",getMC(growth,band.growth),sel.growthScore]
+              ].map(([l,v,meta,score])=>(
+                <div key={l} style={{background:meta.bg,border:`1px solid ${meta.color}50`,padding:14}}>
+                  <div style={{fontFamily:"var(--fu)",fontSize:8,color:meta.color,letterSpacing:"0.15em",marginBottom:4,fontWeight:700}}>{l}</div>
+                  <div style={{fontFamily:"'Archivo',sans-serif",fontSize:22,color:meta.color,fontWeight:900,lineHeight:1}}>{v}</div>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,fontWeight:700}}>{meta.label}</div>
+                  <div style={{height:3,background:"#1a1a1a",marginTop:8,borderRadius:2}}>
+                    <div style={{height:"100%",background:meta.color,width:`${score||0}%`,borderRadius:2}}/>
+                  </div>
+                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,opacity:.6}}>{score||0}/100</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sel.reasons?.map(r=><Tag key={r} color="#555">{r}</Tag>)}</div>
+      </div>
+
+      {/* Screenshot */}
+      {sel.screenshotData&&<div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}>
+        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div>
+        <img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:280,objectFit:"contain"}}/>
+      </div>}
+
+      {/* Dati social */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,marginBottom:16}}>
+        {[["Instagram",sel.instagram],["TikTok",sel.tiktok||"—"],["Follower IG",parseInt(sel.followers||0).toLocaleString()],
+          ["Follower TK",parseInt(sel.tiktokFollowers||0).toLocaleString()||"—"],["Visualizzazioni",parseInt(sel.views||0).toLocaleString()],
+          ["Interazioni",parseInt(sel.interactions||0).toLocaleString()],["+Follower 30gg",`+${sel.newFollowers||0}`],
+          ["Brand collabs",sel.hasBrandCollabs==="yes"?"Sì":"No"],["Città",sel.city||"—"]
+        ].map(([k,v])=>(
+          <div key={k} style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:"10px 12px"}}>
+            <div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t3)",letterSpacing:"0.18em",marginBottom:3}}>{k}</div>
+            <div style={{fontFamily:"var(--fu)",fontSize:12,color:"#fff"}}>{v}</div>
           </div>
         ))}
       </div>
-      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-        {!showDetail&&(
-          <div style={{width:"100%",maxWidth:360,borderRight:"1px solid var(--brd)",display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
-            <div style={{padding:"12px 14px",borderBottom:"1px solid var(--brd)"}}>
-              <input placeholder="Cerca nome, @handle..." style={{marginBottom:8,fontSize:12}} value={search} onChange={e=>setSearch(e.target.value)}/>
-              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                {["ALL","NEW","ELITE","PRO","RISING","PENDING"].map(f=>(
-                  <button key={f} onClick={()=>setFilter(f)} style={{padding:"4px 8px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.08em",textTransform:"uppercase",cursor:"pointer",background:filter===f?"var(--red)":"#0d0d0d",border:`1px solid ${filter===f?"var(--red)":"#2a2a2a"}`,color:filter===f?"#fff":"var(--t3)",transition:"all .2s"}}>{f}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{overflow:"auto",flex:1}}>
-              {list.length===0&&<div style={{padding:24,textAlign:"center",fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.2em"}}>NESSUNA CANDIDATURA</div>}
-              {list.map(a=>(
-                <div key={a.id} onClick={()=>selectApp(a)} style={{padding:"12px 16px",borderBottom:"1px solid var(--brd)",cursor:"pointer",background:sel?.id===a.id?"#0e0e0e":"transparent",borderLeft:`2px solid ${sel?.id===a.id?"var(--red)":"transparent"}`,transition:"all .15s"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-                    <div><div style={{fontFamily:"var(--fu)",fontSize:13,color:"#fff"}}>{a.fullName||"—"}</div><div style={{fontFamily:"var(--fb)",fontSize:11,color:"var(--t3)",marginTop:1}}>{a.instagram}</div></div>
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-                      <Tag color={a.tierColor}>{a.tier}</Tag>
-                      {a.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
-                      {a.status==="approved"&&<Tag color="#6a9a7a">✓</Tag>}
-                      {a.status==="rejected"&&<Tag color="#7a3030">✗</Tag>}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                    <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>👥 {parseInt(a.followers||0).toLocaleString()}</span>
-                    <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)"}}>ER {a.erReach}%</span>
-                    <span style={{fontFamily:"var(--fd)",fontSize:18,color:a.tierColor,marginLeft:"auto"}}>{a.score}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+
+      {/* Risposte */}
+      {[["3 PAROLE",sel.threeWords],["TIPO CONTENUTI",sel.contentType],["COSA TRASMETTE",sel.whatToTransmit],
+        ["PERCHÉ EVORΛ",sel.motivation],["COSA GLI PIACE",sel.brandLike],["COME INTEGREREBBE",sel.contentIntegration],
+        ["IMMAGINE ATLETA",sel.athleteImage],["QUALITÀ VS VENDERE",sel.qualityVsSell],
+        ["SENZA GUADAGNO IMMEDIATO",sel.buildWithoutEarnings],["REAZIONE BAD CONTENT",sel.badContentReaction],
+        ["RAPPRESENTARE UN BRAND",sel.brandMeaning],["CONTENUTI/MESE",sel.contentPerMonth],
+        ["ROUTINE",sel.hasRoutine],["LINEE GUIDA",sel.followsGuidelines],["PRODOTTI ACQUISTATI",sel.boughtProducts],
+        ["MIGLIORAMENTI",sel.improvements],["NOTA EXTRA",sel.extra],["DETTAGLI COLLABS",sel.brandCollabDetails]
+      ].filter(([,v])=>v).map(([k,v])=>(
+        <div key={k} style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:6}}>
+          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:6}}>{k}</div>
+          <p style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.8}}>{v}</p>
+        </div>
+      ))}
+
+      {/* Admin tools */}
+      <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <div>
+          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>CODICE CREATOR</div>
+          <div style={{display:"flex",gap:6}}>
+            <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/>
+            <button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>{saving?"...":"SALVA"}</button>
           </div>
-        )}
-
-        {showDetail&&sel&&(
-          <div style={{flex:1,overflow:"auto",padding:20}}>
-            <button onClick={()=>setShowDetail(false)} style={{background:"transparent",border:"none",color:"var(--t3)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:20,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>← LISTA</button>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
-              <div>
-                <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(24px,5vw,36px)",color:"#fff",lineHeight:1}}>{sel.fullName}</h2>
-                <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",marginTop:3}}>{sel.email} · {sel.city} · {sel.age} anni</div>
-                <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap"}}><Tag color={sel.tierColor}>{sel.tier}</Tag><Tag color="#555">{sel.tierLabel}</Tag></div>
-              </div>
-              <div style={{textAlign:"right"}}><div style={{fontFamily:"var(--fd)",fontSize:56,color:sel.tierColor,lineHeight:1}}>{sel.score}</div><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)"}}>/ 100</div></div>
-            </div>
-
-            <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:16}}>
-              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:12}}>ANALISI SCORE</div>
-              {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",marginBottom:14}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
-
-              {/* Breakdown metriche con colori da benchmark */}
-              {(()=>{
-                // Recupera benchmark dalla config (già caricata nel sistema)
-                const config = scoringCfg;
-                const followers = parseInt(sel.followers)||0;
-                const band = config.bands.find(b=>followers<=b.max) || config.bands[config.bands.length-1];
-
-                const getMetricColor = (value, benchmarks) => {
-                  if(value >= benchmarks.excellent) return { color:"#3a7bd5", bg:"#0a1428", label:"ECCELLENTE" };
-                  if(value >= benchmarks.good)      return { color:"#27ae60", bg:"#0a2a14", label:"BUONO" };
-                  if(value >= benchmarks.avg)       return { color:"#e67e22", bg:"#2a1a08", label:"MEDIO" };
-                  return                                   { color:"#c0392b", bg:"#2a1010", label:"SCARSO" };
-                };
-
-                const er     = parseFloat(sel.erReach)||0;
-                const reach  = parseFloat(sel.reachRate)||0;
-                const growth = parseFloat(sel.growthRate)||0;
-
-                const erMeta     = getMetricColor(er,     band.er);
-                const reachMeta  = getMetricColor(reach,  band.reach);
-                const growthMeta = getMetricColor(growth, band.growth);
-
-                return(
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
-                    {[
-                      ["ENGAGEMENT RATE", er+"%",    erMeta,     sel.erScore],
-                      ["REACH RATE",      reach+"%",  reachMeta,  sel.reachScore],
-                      ["GROWTH RATE",     growth+"%", growthMeta, sel.growthScore]
-                    ].map(([l,v,meta,score])=>(
-                      <div key={l} style={{background:meta.bg, border:`1px solid ${meta.color}50`, padding:14}}>
-                        <div style={{fontFamily:"var(--fu)",fontSize:8,color:meta.color,letterSpacing:"0.15em",marginBottom:4,fontWeight:700,opacity:.85}}>{l}</div>
-                        <div style={{fontFamily:"var(--fd)",fontSize:24,color:meta.color,fontWeight:900,lineHeight:1}}>{v}</div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,fontWeight:700,letterSpacing:"0.1em"}}>{meta.label}</div>
-                        <div style={{height:3,background:"#1a1a1a",marginTop:10,borderRadius:2}}>
-                          <div style={{height:"100%",background:meta.color,width:`${score||0}%`,borderRadius:2,transition:"width .6s"}}/>
-                        </div>
-                        <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,opacity:.6}}>{score||0}/100</div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {sel.reasons?.map(r=><Tag key={r} color="#555">{r}</Tag>)}
-              </div>
-            </div>
-
-            {sel.screenshotData&&<div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div><img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:280,objectFit:"contain"}}/></div>}
-
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:16}}>
-              {[["Instagram",sel.instagram],["TikTok",sel.tiktok||"—"],["Follower",parseInt(sel.followers||0).toLocaleString()],["Visualizzazioni",parseInt(sel.views||0).toLocaleString()],["Interazioni",parseInt(sel.interactions||0).toLocaleString()],["+Follower",`+${sel.newFollowers||0}`]].map(([k,v])=>(
-                <div key={k} style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:"10px 12px"}}><div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t3)",letterSpacing:"0.18em",marginBottom:3}}>{k}</div><div style={{fontFamily:"var(--fu)",fontSize:12,color:"#fff"}}>{v}</div></div>
-              ))}
-            </div>
-
-            {[["3 PAROLE",sel.threeWords],["TIPO CONTENUTI",sel.contentType],["COSA TRASMETTE",sel.whatToTransmit],["PERCHÉ EVORΛ",sel.motivation],["COSA GLI PIACE",sel.brandLike],["COME INTEGREREBBE",sel.contentIntegration],["IMMAGINE ATLETA",sel.athleteImage],["QUALITÀ VS VENDERE",sel.qualityVsSell],["SENZA GUADAGNO IMMEDIATO",sel.buildWithoutEarnings],["REAZIONE BAD CONTENT",sel.badContentReaction],["RAPPRESENTARE UN BRAND",sel.brandMeaning],["CONTENUTI/MESE",sel.contentPerMonth],["ROUTINE",sel.hasRoutine],["LINEE GUIDA",sel.followsGuidelines],["PRODOTTI ACQUISTATI",sel.boughtProducts],["MIGLIORAMENTI",sel.improvements],["NOTA EXTRA",sel.extra],["DETTAGLI COLLABS",sel.brandCollabDetails]].filter(([,v])=>v).map(([k,v])=>(
-              <div key={k} style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:6}}><div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:6}}>{k}</div><p style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.8}}>{v}</p></div>
+          {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5}}>✓ {sel.creatorCode}</div>}
+        </div>
+        <div>
+          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>STATO</div>
+          <div style={{display:"flex",gap:3}}>
+            {[["new","NEW","#333"],["review","REV","var(--gold)"],["approved","OK","#1a4a1a"],["rejected","NO","#4a1a1a"]].map(([s,l,c])=>(
+              <button key={s} onClick={()=>upd(sel.id,{status:s})} style={{flex:1,padding:"9px 4px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.06em",textTransform:"uppercase",cursor:"pointer",background:sel.status===s?c:"#0d0d0d",border:`1px solid ${sel.status===s?c:"#2a2a2a"}`,color:sel.status===s?"#fff":"var(--t3)",transition:"all .2s"}}>{l}</button>
             ))}
-
-            <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-              <div>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>CODICE CREATOR</div>
-                <div style={{display:"flex",gap:6}}>
-                  <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/>
-                  <button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>{saving?"...":"SALVA"}</button>
-                </div>
-                {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5}}>✓ {sel.creatorCode}</div>}
-              </div>
-              <div>
-                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>STATO</div>
-                <div style={{display:"flex",gap:3}}>
-                  {[["new","NEW","#333"],["review","REV","var(--gold)"],["approved","OK","#1a4a1a"],["rejected","NO","#4a1a1a"]].map(([s,l,c])=>(
-                    <button key={s} onClick={()=>upd(sel.id,{status:s})} style={{flex:1,padding:"9px 4px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.06em",textTransform:"uppercase",cursor:"pointer",background:sel.status===s?c:"#0d0d0d",border:`1px solid ${sel.status===s?c:"#2a2a2a"}`,color:sel.status===s?"#fff":"var(--t3)",transition:"all .2s"}}>{l}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div style={{marginTop:14}}>
-              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>NOTE INTERNE</div>
-              <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Note riservate al team..." style={{fontSize:13}}/>
-              <div style={{display:"flex",justifyContent:"space-between",marginTop:9,gap:8}}>
-                <button className="btn-red" onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>{saving?"SALVATAGGIO...":"SALVA NOTE"}</button>
-                {role==="admin"&&<button onClick={()=>del(sel.id)} style={{background:"transparent",border:"1px solid #5a1010",color:"#cc4444",padding:"11px 18px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>ELIMINA</button>}
-              </div>
-            </div>
           </div>
-        )}
-        {!showDetail&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}><div style={{fontFamily:"var(--fd)",fontSize:40,color:"#1a1a1a"}}>EVORΛ</div><div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.3em"}}>SELEZIONA UNA CANDIDATURA</div></div>}
+        </div>
       </div>
+      <div style={{marginTop:14}}>
+        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>NOTE INTERNE</div>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Note riservate al team..." style={{fontSize:13}}/>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:9,gap:8}}>
+          <button className="btn-red" onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>{saving?"SALVATAGGIO...":"SALVA NOTE"}</button>
+          {role==="admin"&&<button onClick={()=>del(sel.id)} style={{background:"transparent",border:"1px solid #5a1010",color:"#cc4444",padding:"11px 18px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>ELIMINA</button>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── LIST VIEW ────────────────────────────────────────────────────────────────
+  return(
+    <div style={{display:"flex",flex:1,overflow:"hidden",flexDirection:"column"}}>
+
+      {/* STATS HEADER */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:"var(--deep)",borderBottom:"1px solid var(--brd)",flexShrink:0}}>
+        {statItems.map(s=>(
+          <div key={s.key} onClick={()=>{setFilter(s.key==="OK"?"ALL":s.key);setPage(1);}}
+            style={{padding:"16px 12px",borderRight:"1px solid var(--brd)",textAlign:"center",cursor:"pointer",transition:"background .2s",
+              background:filter===(s.key==="OK"?"ALL":s.key)&&s.key!=="OK"?"#1e1e1e":"transparent"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#1e1e1e"}
+            onMouseLeave={e=>e.currentTarget.style.background=filter===(s.key==="OK"?"ALL":s.key)&&s.key!=="OK"?"#1e1e1e":"transparent"}>
+            <div style={{fontSize:20,marginBottom:4}}>{s.icon}</div>
+            <div style={{fontFamily:"'Archivo',sans-serif",fontSize:28,color:s.color,lineHeight:1,fontWeight:900}}>{s.val}</div>
+            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.12em",marginTop:4,lineHeight:1.3}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* SEARCH + FILTERS + SORT */}
+      <div style={{padding:"12px 16px",borderBottom:"1px solid var(--brd)",background:"var(--black)",flexShrink:0,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        {/* Search */}
+        <div style={{display:"flex",alignItems:"center",gap:8,background:"#141414",border:"1px solid #333",padding:"8px 14px",flex:1,minWidth:200}}>
+          <span style={{color:"var(--t4)",fontSize:14}}>🔍</span>
+          <input placeholder="Cerca nome, @handle, città..." value={search}
+            onChange={e=>{setSearch(e.target.value);setPage(1);}}
+            style={{background:"transparent",border:"none",color:"var(--t1)",fontSize:13,fontFamily:"var(--fb)",outline:"none",width:"100%",padding:0}}/>
+        </div>
+        {/* Filter tabs */}
+        <div style={{display:"flex",gap:3}}>
+          {["ALL","NEW","ELITE","PRO","RISING","PENDING"].map(f=>(
+            <button key={f} onClick={()=>{setFilter(f);setPage(1);}}
+              style={{padding:"8px 14px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:700,cursor:"pointer",
+                background:filter===f?"var(--red)":"#141414",border:`1px solid ${filter===f?"var(--red)":"#333"}`,
+                color:filter===f?"#fff":"var(--t3)",transition:"all .2s"}}>{f}</button>
+          ))}
+        </div>
+        {/* Sort */}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.15em",whiteSpace:"nowrap"}}>ORDINA PER</span>
+          <select value={sortBy} onChange={e=>{setSortBy(e.target.value);setPage(1);}}
+            style={{background:"#141414",border:"1px solid #333",color:"var(--t1)",padding:"8px 12px",fontSize:12,fontFamily:"var(--fu)",outline:"none",cursor:"pointer",letterSpacing:"0.08em"}}>
+            <option value="date">Più recenti</option>
+            <option value="score">Score ↓</option>
+            <option value="followers">Follower ↓</option>
+            <option value="er">ER ↓</option>
+            <option value="reach">Reach ↓</option>
+            <option value="growth">Growth ↓</option>
+          </select>
+        </div>
+        {/* Per page */}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.15em",whiteSpace:"nowrap"}}>PER PAGINA</span>
+          <select value={perPage} onChange={e=>{setPerPage(parseInt(e.target.value));setPage(1);}}
+            style={{background:"#141414",border:"1px solid #333",color:"var(--t1)",padding:"8px 12px",fontSize:12,fontFamily:"var(--fu)",outline:"none",cursor:"pointer"}}>
+            {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>
+          {sorted.length} RISULTATI
+        </div>
+      </div>
+
+      {/* LIST */}
+      <div style={{overflow:"auto",flex:1}}>
+        {paginated.length===0&&<div style={{padding:40,textAlign:"center",fontFamily:"var(--fu)",fontSize:12,color:"var(--t4)",letterSpacing:"0.2em"}}>NESSUNA CANDIDATURA</div>}
+
+        {paginated.map((a,i)=>{
+          const followers=parseInt(a.followers)||0;
+          const band=getBand(followers);
+          const er=parseFloat(a.erReach)||0;
+          const reach=parseFloat(a.reachRate)||0;
+          const growth=parseFloat(a.growthRate)||0;
+          const erColor=getMetricColor(er,band.er);
+          const reachColor=getMetricColor(reach,band.reach);
+          const growthColor=getMetricColor(growth,band.growth);
+          return(
+            <div key={a.id} onClick={()=>selectApp(a)}
+              style={{display:"grid",gridTemplateColumns:"auto 1fr auto auto auto auto auto",gap:0,
+                padding:"14px 20px",borderBottom:"1px solid var(--brd)",cursor:"pointer",
+                background:"transparent",borderLeft:`3px solid ${a.tierColor}`,
+                transition:"background .15s",alignItems:"center"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#111"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+
+              {/* Tier + Status */}
+              <div style={{display:"flex",flexDirection:"column",gap:4,marginRight:16,minWidth:70}}>
+                <Tag color={a.tierColor}>{a.tier}</Tag>
+                {a.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
+                {a.status==="approved"&&<Tag color="#27ae60">OK</Tag>}
+                {a.status==="review"&&<Tag color="var(--gold)">REV</Tag>}
+                {a.status==="rejected"&&<Tag color="#c0392b">NO</Tag>}
+              </div>
+
+              {/* Nome + Handle + Città */}
+              <div style={{minWidth:0}}>
+                <div style={{fontFamily:"'Archivo',sans-serif",fontSize:14,color:"#fff",fontWeight:700,marginBottom:2}}>{a.fullName||"—"}</div>
+                <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t3)"}}>{a.instagram}{a.city?` · ${a.city}`:""}</div>
+              </div>
+
+              {/* Follower */}
+              <div style={{textAlign:"center",padding:"0 16px",minWidth:80}}>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>FOLLOWER</div>
+                <div style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:"var(--t1)",fontWeight:700}}>{followers>=1000?(followers/1000).toFixed(1)+"K":followers}</div>
+              </div>
+
+              {/* ER */}
+              <div style={{textAlign:"center",padding:"0 12px",minWidth:70}}>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>ER</div>
+                <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:erColor,flexShrink:0}}/>
+                  <span style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:erColor,fontWeight:700}}>{er.toFixed(1)}%</span>
+                </div>
+              </div>
+
+              {/* REACH */}
+              <div style={{textAlign:"center",padding:"0 12px",minWidth:80}}>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>REACH</div>
+                <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:reachColor,flexShrink:0}}/>
+                  <span style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:reachColor,fontWeight:700}}>{reach.toFixed(1)}%</span>
+                </div>
+              </div>
+
+              {/* GROWTH */}
+              <div style={{textAlign:"center",padding:"0 12px",minWidth:80}}>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.15em",marginBottom:3}}>GROWTH</div>
+                <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:growthColor,flexShrink:0}}/>
+                  <span style={{fontFamily:"'Archivo',sans-serif",fontSize:15,color:growthColor,fontWeight:700}}>{growth.toFixed(2)}%</span>
+                </div>
+              </div>
+
+              {/* SCORE */}
+              <div style={{paddingLeft:16}}>
+                <ScoreCircle score={a.score} color={a.tierColor} size={52}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* PAGINAZIONE */}
+      {totalPages>1&&(
+        <div style={{padding:"12px 20px",borderTop:"1px solid var(--brd)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:10}}>
+          <div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t4)",letterSpacing:"0.1em"}}>
+            Pagina {page} di {totalPages} · {sorted.length} risultati
+          </div>
+          <div style={{display:"flex",gap:3,alignItems:"center"}}>
+            <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
+              style={{background:"#141414",border:"1px solid #333",color:page===1?"var(--t4)":"var(--t1)",padding:"7px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:page===1?"default":"pointer"}}>‹</button>
+            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+              let p; const half=2;
+              if(totalPages<=5) p=i+1;
+              else if(page<=half+1) p=i+1;
+              else if(page>=totalPages-half) p=totalPages-4+i;
+              else p=page-half+i;
+              return(
+                <button key={p} onClick={()=>setPage(p)}
+                  style={{background:page===p?"var(--red)":"#141414",border:`1px solid ${page===p?"var(--red)":"#333"}`,
+                    color:page===p?"#fff":"var(--t2)",padding:"7px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:"pointer",minWidth:34,fontWeight:page===p?700:400}}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
+              style={{background:"#141414",border:"1px solid #333",color:page===totalPages?"var(--t4)":"var(--t1)",padding:"7px 12px",fontFamily:"var(--fu)",fontSize:11,cursor:page===totalPages?"default":"pointer"}}>›</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
