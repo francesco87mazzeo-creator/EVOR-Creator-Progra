@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779138744</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779139303</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -589,11 +589,10 @@ function ApplicationForm({onBack,onAdmin}){
       const app={...form,...sc,id,date:new Date().toISOString(),status:"new",notes:"",creatorCode:""};
       await FB.saveApp(app);
       setSavedId(id);
-      // Notifica WhatsApp
-      const settings=await FB.getSettings();
-      if(settings.waPhone&&settings.waApiKey){
-        const msg=`🔔 EVORΛ ATHLETES\nNuova candidatura!\n👤 ${form.fullName}\n📱 ${form.instagram}\n👥 ${parseInt(form.followers||0).toLocaleString()} follower\n🏆 Tier: ${sc.tier} (${sc.score}/100)\nControlla il pannello admin.`;
-        sendWhatsApp(settings.waPhone, settings.waApiKey, msg);
+      // Notifica Telegram
+      if(settings.tgToken&&settings.tgChatId){
+        const msg=`🔔 <b>EVORΛ ATHLETES</b>\nNuova candidatura!\n\n👤 <b>${form.fullName}</b>\n📱 ${form.instagram}\n👥 ${parseInt(form.followers||0).toLocaleString()} follower\n🏆 Tier: <b>${sc.tier}</b> (${sc.score}/100)\n\nControlla il pannello admin.`;
+        sendTelegram(settings.tgToken, settings.tgChatId, msg);
       }
       setDone(true);
     }catch(err){
@@ -969,13 +968,16 @@ const exportToExcel = (apps) => {
   URL.revokeObjectURL(url);
 };
 
-// ── WHATSAPP (CallMeBot) ──────────────────────────────────────────────────────
-const sendWhatsApp = async (phone, apiKey, message) => {
-  const encoded = encodeURIComponent(message);
-  const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encoded}&apikey=${apiKey}`;
+// ── TELEGRAM ─────────────────────────────────────────────────────────────────
+const sendTelegram = async (botToken, chatId, message) => {
+  const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   try {
-    await fetch(url, {mode:"no-cors"});
-    return true;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({chat_id: chatId, text: message, parse_mode: "HTML"})
+    });
+    return res.ok;
   } catch(e) {
     return false;
   }
@@ -1588,40 +1590,42 @@ function SettingsPanel(){
         </div>
 
         <div className="settings-section">
-          <div className="settings-title">📱 Notifiche WhatsApp</div>
+          <div className="settings-title">✈️ Notifiche Telegram</div>
           <div className="settings-desc">
-            Ricevi un messaggio WhatsApp ogni volta che arriva una nuova candidatura. Usa <strong style={{color:"var(--t1)"}}>CallMeBot</strong> — gratuito, zero abbonamenti.<br/><br/>
-            <strong style={{color:"var(--t1)"}}>Setup (2 minuti):</strong><br/>
-            1. Salva il numero <strong style={{color:"var(--t1)"}}>+34 644 71 07 14</strong> in rubrica come "CallMeBot"<br/>
-            2. Mandagli su WhatsApp: <strong style={{color:"var(--t1)"}}>I allow callmebot to send me messages</strong><br/>
-            3. Ricevi la tua API key via WhatsApp<br/>
-            4. Inserisci numero e API key qui sotto
+            Ricevi un messaggio Telegram ogni volta che arriva una nuova candidatura. Gratuito, nessun limite.<br/><br/>
+            <strong style={{color:"var(--t1)"}}>Setup (3 minuti):</strong><br/>
+            1. Apri Telegram e cerca <strong style={{color:"var(--t1)"}}>@BotFather</strong><br/>
+            2. Scrivi <strong style={{color:"var(--t1)"}}>/newbot</strong> e segui le istruzioni — scegli un nome e uno username<br/>
+            3. BotFather ti manda il <strong style={{color:"var(--t1)"}}>Bot Token</strong> (es. 123456:ABC-DEF...)<br/>
+            4. Cerca il tuo bot su Telegram e premi <strong style={{color:"var(--t1)"}}>Start</strong><br/>
+            5. Apri <strong style={{color:"var(--t1)"}}>@userinfobot</strong> su Telegram — ti dice il tuo Chat ID<br/>
+            6. Inserisci token e chat ID qui sotto
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
             <div>
-              <Field label="Tuo numero WhatsApp">
-                <input type="text" value={settings.waPhone||""} onChange={e=>setSettings(p=>({...p,waPhone:e.target.value}))} placeholder="39XXXXXXXXXX (con prefisso, senza +)"/>
+              <Field label="Bot Token">
+                <input type="text" value={settings.tgToken||""} onChange={e=>setSettings(p=>({...p,tgToken:e.target.value}))} placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v..."/>
               </Field>
             </div>
             <div>
-              <Field label="API Key CallMeBot">
-                <input type="text" value={settings.waApiKey||""} onChange={e=>setSettings(p=>({...p,waApiKey:e.target.value}))} placeholder="123456"/>
+              <Field label="Chat ID">
+                <input type="text" value={settings.tgChatId||""} onChange={e=>setSettings(p=>({...p,tgChatId:e.target.value}))} placeholder="es. 123456789"/>
               </Field>
             </div>
           </div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <button className="btn-red" onClick={()=>save({waPhone:settings.waPhone,waApiKey:settings.waApiKey})} style={{padding:"11px 28px",fontSize:11}}>
-              {saved==="waPhone"?"✓ SALVATO":"SALVA WHATSAPP"}
+            <button className="btn-red" onClick={()=>save({tgToken:settings.tgToken,tgChatId:settings.tgChatId})} style={{padding:"11px 28px",fontSize:11}}>
+              {saved==="tgToken"?"✓ SALVATO":"SALVA TELEGRAM"}
             </button>
             <button onClick={async()=>{
-              if(!settings.waPhone||!settings.waApiKey){alert("Inserisci numero e API key prima");return;}
-              await sendWhatsApp(settings.waPhone,settings.waApiKey,"✅ EVORΛ Athletes — Notifiche WhatsApp configurate correttamente!");
-              alert("Messaggio di test inviato! Controlla WhatsApp.");
+              if(!settings.tgToken||!settings.tgChatId){alert("Inserisci Bot Token e Chat ID prima");return;}
+              const ok=await sendTelegram(settings.tgToken,settings.tgChatId,"✅ <b>EVORΛ Athletes</b> — Notifiche Telegram configurate correttamente!");
+              alert(ok?"Messaggio di test inviato! Controlla Telegram.":"Errore — controlla Bot Token e Chat ID.");
             }} style={{background:"transparent",border:"1px solid #333",color:"var(--t2)",padding:"11px 20px",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.1em",cursor:"pointer"}}>
               📤 TEST
             </button>
           </div>
-          {settings.waPhone&&settings.waApiKey&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:10,letterSpacing:"0.12em"}}>✓ Notifiche WhatsApp attive</div>}
+          {settings.tgToken&&settings.tgChatId&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:10,letterSpacing:"0.12em"}}>✓ Notifiche Telegram attive</div>}
         </div>
 
         <div className="settings-section">
