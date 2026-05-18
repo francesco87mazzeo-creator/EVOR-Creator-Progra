@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779097529</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779098851</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -854,131 +854,181 @@ function CandidaturePanel({role}){
   );
 
   // ── DETAIL VIEW ──────────────────────────────────────────────────────────────
-  if(showDetail&&sel) return(
-    <div style={{flex:1,overflow:"auto",padding:24}}>
-      <button onClick={()=>setShowDetail(false)} style={{background:"transparent",border:"none",color:"var(--t3)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:20,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>← LISTA CANDIDATURE</button>
+  if(showDetail&&sel){
+    const config=scoringCfg||DEFAULT_SCORING;
+    const followers=parseInt(sel.followers)||0;
+    const band=config.bands.find(b=>followers<=b.max)||config.bands[config.bands.length-1];
+    const getMC=(value,benchmarks)=>{
+      if(!benchmarks) return{color:"#888",bg:"#1a1a1a",label:"—"};
+      if(value>=benchmarks.excellent) return{color:"#3a7bd5",bg:"#0a1428",label:"ECCELLENTE"};
+      if(value>=benchmarks.good)      return{color:"#27ae60",bg:"#0a2a14",label:"BUONO"};
+      if(value>=benchmarks.avg)       return{color:"#e67e22",bg:"#2a1a08",label:"MEDIO"};
+      return{color:"#c0392b",bg:"#2a1010",label:"SCARSO"};
+    };
+    const er=parseFloat(sel.erReach)||0;
+    const reach=parseFloat(sel.reachRate)||0;
+    const growth=parseFloat(sel.growthRate)||0;
+    const erM=getMC(er,band.er);
+    const reachM=getMC(reach,band.reach);
+    const growthM=getMC(growth,band.growth);
+    const fmtN=n=>n>=1000?(n/1000).toFixed(1)+"K":String(n||"—");
 
-      {/* Header candidato */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
-        <div>
-          <h2 style={{fontFamily:"'Archivo',sans-serif",fontSize:"clamp(24px,4vw,36px)",color:"#fff",lineHeight:1,fontWeight:900}}>{sel.fullName}</h2>
-          <div style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",marginTop:4}}>{sel.email} · {sel.city} · {sel.age} anni</div>
-          <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap"}}>
-            <Tag color={sel.tierColor}>{sel.tier}</Tag>
-            <Tag color="#555">{sel.tierLabel}</Tag>
-            {sel.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
-            {sel.status==="approved"&&<Tag color="#27ae60">APPROVATO</Tag>}
-            {sel.status==="rejected"&&<Tag color="#c0392b">RIFIUTATO</Tag>}
-            {sel.status==="review"&&<Tag color="var(--gold)">IN REVIEW</Tag>}
-          </div>
-        </div>
-        <ScoreCircle score={sel.score} color={sel.tierColor} size={72}/>
+    const InfoCard=({label,value,color="var(--t1)",size=13})=>(
+      <div style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:"10px 14px",minWidth:0}}>
+        <div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t3)",letterSpacing:"0.18em",marginBottom:4,textTransform:"uppercase"}}>{label}</div>
+        <div style={{fontFamily:"'Archivo',sans-serif",fontSize:size,color,fontWeight:700,wordBreak:"break-word"}}>{value||"—"}</div>
       </div>
+    );
 
-      {/* Analisi score */}
-      <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:16,marginBottom:16}}>
-        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:12}}>ANALISI SCORE</div>
-        {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"var(--t3)",marginBottom:14}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
-        {(()=>{
-          const config=scoringCfg||DEFAULT_SCORING;
-          const followers=parseInt(sel.followers)||0;
-          const band=config.bands.find(b=>followers<=b.max)||config.bands[config.bands.length-1];
-          const getMC=(value,benchmarks)=>{
-            if(!benchmarks) return{color:"#888",bg:"#1a1a1a",label:"—"};
-            if(value>=benchmarks.excellent) return{color:"#3a7bd5",bg:"#0a1428",label:"ECCELLENTE"};
-            if(value>=benchmarks.good)      return{color:"#27ae60",bg:"#0a2a14",label:"BUONO"};
-            if(value>=benchmarks.avg)       return{color:"#e67e22",bg:"#2a1a08",label:"MEDIO"};
-            return{color:"#c0392b",bg:"#2a1010",label:"SCARSO"};
-          };
-          const er=parseFloat(sel.erReach)||0;
-          const reach=parseFloat(sel.reachRate)||0;
-          const growth=parseFloat(sel.growthRate)||0;
-          return(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
-              {[["ENGAGEMENT RATE",er+"%",getMC(er,band.er),sel.erScore],
-                ["REACH RATE",reach+"%",getMC(reach,band.reach),sel.reachScore],
-                ["GROWTH RATE",growth+"%",getMC(growth,band.growth),sel.growthScore]
-              ].map(([l,v,meta,score])=>(
-                <div key={l} style={{background:meta.bg,border:`1px solid ${meta.color}50`,padding:14}}>
-                  <div style={{fontFamily:"var(--fu)",fontSize:8,color:meta.color,letterSpacing:"0.15em",marginBottom:4,fontWeight:700}}>{l}</div>
-                  <div style={{fontFamily:"'Archivo',sans-serif",fontSize:22,color:meta.color,fontWeight:900,lineHeight:1}}>{v}</div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,fontWeight:700}}>{meta.label}</div>
-                  <div style={{height:3,background:"#1a1a1a",marginTop:8,borderRadius:2}}>
-                    <div style={{height:"100%",background:meta.color,width:`${score||0}%`,borderRadius:2}}/>
-                  </div>
-                  <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,opacity:.6}}>{score||0}/100</div>
-                </div>
-              ))}
+    const MetricCard=({label,value,meta,score})=>(
+      <div style={{background:meta.bg,border:`1px solid ${meta.color}50`,padding:isMobile?"10px":"14px",minWidth:0}}>
+        <div style={{fontFamily:"var(--fu)",fontSize:8,color:meta.color,letterSpacing:"0.15em",marginBottom:4,fontWeight:700,opacity:.85}}>{label}</div>
+        <div style={{fontFamily:"'Archivo',sans-serif",fontSize:isMobile?18:22,color:meta.color,fontWeight:900,lineHeight:1}}>{value}</div>
+        <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:4,fontWeight:700}}>{meta.label}</div>
+        <div style={{height:3,background:"#1a1a1a",marginTop:8,borderRadius:2}}>
+          <div style={{height:"100%",background:meta.color,width:`${score||0}%`,borderRadius:2}}/>
+        </div>
+        <div style={{fontFamily:"var(--fu)",fontSize:9,color:meta.color,marginTop:3,opacity:.6}}>{score||0}/100</div>
+      </div>
+    );
+
+    return(
+      <div style={{flex:1,overflow:"auto"}}>
+        <div style={{maxWidth:isMobile?"100%":"900px",margin:"0 auto",padding:isMobile?"16px":"24px"}}>
+
+          {/* BACK */}
+          <button onClick={()=>setShowDetail(false)}
+            style={{background:"transparent",border:"none",color:"var(--t3)",fontFamily:"var(--fu)",fontSize:11,letterSpacing:"0.2em",marginBottom:20,display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:0}}>
+            ← LISTA
+          </button>
+
+          {/* HEADER — nome + score */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,gap:12}}>
+            <div style={{minWidth:0,flex:1}}>
+              <h2 style={{fontFamily:"'Archivo',sans-serif",fontSize:isMobile?"clamp(20px,5vw,28px)":"clamp(24px,3vw,32px)",color:"#fff",lineHeight:1,fontWeight:900,marginBottom:6}}>{sel.fullName}</h2>
+              <div style={{fontFamily:"var(--fb)",fontSize:12,color:"var(--t2)",marginBottom:10}}>{sel.email}{sel.age?` · ${sel.age} anni`:""}</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <Tag color={sel.tierColor}>{sel.tier}</Tag>
+                <Tag color="#555">{sel.tierLabel}</Tag>
+                {sel.status==="new"&&<Tag color="var(--red)">NEW</Tag>}
+                {sel.status==="approved"&&<Tag color="#27ae60">APPROVATO</Tag>}
+                {sel.status==="rejected"&&<Tag color="#c0392b">RIFIUTATO</Tag>}
+                {sel.status==="review"&&<Tag color="var(--gold)">IN REVIEW</Tag>}
+              </div>
             </div>
-          );
-        })()}
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{sel.reasons?.map(r=><Tag key={r} color="#555">{r}</Tag>)}</div>
-      </div>
-
-      {/* Screenshot */}
-      {sel.screenshotData&&<div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}>
-        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div>
-        <img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:280,objectFit:"contain"}}/>
-      </div>}
-
-      {/* Dati social */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,marginBottom:16}}>
-        {[["Instagram",sel.instagram],["TikTok",sel.tiktok||"—"],["Follower IG",parseInt(sel.followers||0).toLocaleString()],
-          ["Follower TK",parseInt(sel.tiktokFollowers||0).toLocaleString()||"—"],["Visualizzazioni",parseInt(sel.views||0).toLocaleString()],
-          ["Interazioni",parseInt(sel.interactions||0).toLocaleString()],["+Follower 30gg",`+${sel.newFollowers||0}`],
-          ["Brand collabs",sel.hasBrandCollabs==="yes"?"Sì":"No"],["Città",sel.city||"—"]
-        ].map(([k,v])=>(
-          <div key={k} style={{background:"var(--surf)",border:"1px solid var(--brd)",padding:"10px 12px"}}>
-            <div style={{fontFamily:"var(--fu)",fontSize:8,color:"var(--t3)",letterSpacing:"0.18em",marginBottom:3}}>{k}</div>
-            <div style={{fontFamily:"var(--fu)",fontSize:12,color:"#fff"}}>{v}</div>
+            <div style={{flexShrink:0}}>
+              <ScoreCircle score={sel.score} color={sel.tierColor} size={isMobile?56:68}/>
+            </div>
           </div>
-        ))}
-      </div>
 
-      {/* Risposte */}
-      {[["3 PAROLE",sel.threeWords],["TIPO CONTENUTI",sel.contentType],["COSA TRASMETTE",sel.whatToTransmit],
-        ["PERCHÉ EVORΛ",sel.motivation],["COSA GLI PIACE",sel.brandLike],["COME INTEGREREBBE",sel.contentIntegration],
-        ["IMMAGINE ATLETA",sel.athleteImage],["QUALITÀ VS VENDERE",sel.qualityVsSell],
-        ["SENZA GUADAGNO IMMEDIATO",sel.buildWithoutEarnings],["REAZIONE BAD CONTENT",sel.badContentReaction],
-        ["RAPPRESENTARE UN BRAND",sel.brandMeaning],["CONTENUTI/MESE",sel.contentPerMonth],
-        ["ROUTINE",sel.hasRoutine],["LINEE GUIDA",sel.followsGuidelines],["PRODOTTI ACQUISTATI",sel.boughtProducts],
-        ["MIGLIORAMENTI",sel.improvements],["NOTA EXTRA",sel.extra],["DETTAGLI COLLABS",sel.brandCollabDetails]
-      ].filter(([,v])=>v).map(([k,v])=>(
-        <div key={k} style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:6}}>
-          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:6}}>{k}</div>
-          <p style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.8}}>{v}</p>
-        </div>
-      ))}
+          {/* ANALISI SCORE */}
+          <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:isMobile?"12px":"16px",marginBottom:16}}>
+            <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:sel.bandLabel?8:12}}>ANALISI SCORE</div>
+            {sel.bandLabel&&<div style={{fontFamily:"var(--fu)",fontSize:10,color:"var(--t3)",marginBottom:12}}>Fascia: <strong style={{color:"var(--t1)"}}>{sel.bandLabel}</strong></div>}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:isMobile?6:8,marginBottom:12}}>
+              <MetricCard label="ENGAGEMENT RATE" value={er.toFixed(1)+"%"} meta={erM} score={sel.erScore}/>
+              <MetricCard label="REACH RATE"      value={reach.toFixed(1)+"%"} meta={reachM} score={sel.reachScore}/>
+              <MetricCard label="GROWTH RATE"     value={growth.toFixed(2)+"%"} meta={growthM} score={sel.growthScore}/>
+            </div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {sel.reasons?.map(r=><Tag key={r} color="#555">{r}</Tag>)}
+            </div>
+          </div>
 
-      {/* Admin tools */}
-      <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div>
-          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>CODICE CREATOR</div>
-          <div style={{display:"flex",gap:6}}>
-            <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/>
-            <button onClick={()=>upd(sel.id,{creatorCode:code})} style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>{saving?"...":"SALVA"}</button>
+          {/* SCREENSHOT */}
+          {sel.screenshotData&&(
+            <div style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:14,marginBottom:16}}>
+              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.28em",marginBottom:10}}>SCREENSHOT INSIGHTS</div>
+              <img src={sel.screenshotData} alt="Insights" style={{width:"100%",maxHeight:260,objectFit:"contain"}}/>
+            </div>
+          )}
+
+          {/* RIGA 1 — IDENTITÀ */}
+          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.28em",marginBottom:6}}>IDENTITÀ CREATOR</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:2}}>
+            <InfoCard label="Instagram" value={sel.instagram}/>
+            <InfoCard label="TikTok" value={sel.tiktok||"—"}/>
+            <InfoCard label="Città" value={sel.city}/>
           </div>
-          {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5}}>✓ {sel.creatorCode}</div>}
-        </div>
-        <div>
-          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>STATO</div>
-          <div style={{display:"flex",gap:3}}>
-            {[["new","NEW","#333"],["review","REV","var(--gold)"],["approved","OK","#1a4a1a"],["rejected","NO","#4a1a1a"]].map(([s,l,c])=>(
-              <button key={s} onClick={()=>upd(sel.id,{status:s})} style={{flex:1,padding:"9px 4px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.06em",textTransform:"uppercase",cursor:"pointer",background:sel.status===s?c:"#0d0d0d",border:`1px solid ${sel.status===s?c:"#2a2a2a"}`,color:sel.status===s?"#fff":"var(--t3)",transition:"all .2s"}}>{l}</button>
-            ))}
+
+          {/* RIGA 2 — AUDIENCE */}
+          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.28em",margin:"10px 0 6px"}}>DIMENSIONE AUDIENCE</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:2}}>
+            <InfoCard label="Follower Instagram" value={parseInt(sel.followers||0).toLocaleString()} color="var(--t1)" size={15}/>
+            <InfoCard label="Follower TikTok" value={sel.tiktokFollowers?parseInt(sel.tiktokFollowers).toLocaleString():"—"} color="var(--t1)" size={15}/>
+            <InfoCard label="Brand Collabs" value={sel.hasBrandCollabs==="yes"?"Sì, ho esperienza":"No"} color={sel.hasBrandCollabs==="yes"?"#6a9a7a":"var(--t3)"}/>
           </div>
+
+          {/* RIGA 3 — PERFORMANCE */}
+          <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",letterSpacing:"0.28em",margin:"10px 0 6px"}}>PERFORMANCE 30 GIORNI</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:16}}>
+            <InfoCard label="Visualizzazioni" value={parseInt(sel.views||0).toLocaleString()} color={reachM.color} size={15}/>
+            <InfoCard label="Interazioni" value={parseInt(sel.interactions||0).toLocaleString()} color={erM.color} size={15}/>
+            <InfoCard label="Nuovi Follower" value={`+${parseInt(sel.newFollowers||0).toLocaleString()}`} color={growthM.color} size={15}/>
+          </div>
+
+          {/* RISPOSTE */}
+          {[["3 PAROLE",sel.threeWords],["TIPO CONTENUTI",sel.contentType],["COSA TRASMETTE",sel.whatToTransmit],
+            ["PERCHÉ EVORΛ",sel.motivation],["COSA GLI PIACE",sel.brandLike],["COME INTEGREREBBE",sel.contentIntegration],
+            ["IMMAGINE ATLETA",sel.athleteImage],["QUALITÀ VS VENDERE",sel.qualityVsSell],
+            ["SENZA GUADAGNO IMMEDIATO",sel.buildWithoutEarnings],["REAZIONE BAD CONTENT",sel.badContentReaction],
+            ["RAPPRESENTARE UN BRAND",sel.brandMeaning],["CONTENUTI/MESE",sel.contentPerMonth],
+            ["ROUTINE",sel.hasRoutine],["LINEE GUIDA",sel.followsGuidelines],["PRODOTTI ACQUISTATI",sel.boughtProducts],
+            ["MIGLIORAMENTI",sel.improvements],["NOTA EXTRA",sel.extra],["DETTAGLI COLLABS",sel.brandCollabDetails]
+          ].filter(([,v])=>v).map(([k,v])=>(
+            <div key={k} style={{background:"#0a0a0a",border:"1px solid var(--brd)",padding:"12px 14px",marginBottom:6}}>
+              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:6,textTransform:"uppercase"}}>{k}</div>
+              <p style={{fontFamily:"var(--fb)",fontSize:13,color:"var(--t2)",lineHeight:1.85,margin:0,
+                whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"break-word"}}>{v}</p>
+            </div>
+          ))}
+
+          {/* ADMIN TOOLS */}
+          <div style={{borderTop:"1px solid var(--brd)",paddingTop:20,marginTop:16}}>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
+              <div>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>CODICE CREATOR</div>
+                <div style={{display:"flex",gap:6}}>
+                  <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MARIO10" style={{fontSize:12}}/>
+                  <button onClick={()=>upd(sel.id,{creatorCode:code})}
+                    style={{background:"#111",border:"1px solid #333",color:"var(--t2)",padding:"10px 12px",fontFamily:"var(--fu)",fontSize:9,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    {saving?"...":"SALVA"}
+                  </button>
+                </div>
+                {sel.creatorCode&&<div style={{fontFamily:"var(--fu)",fontSize:11,color:"#6a9a7a",marginTop:5}}>✓ {sel.creatorCode}</div>}
+              </div>
+              <div>
+                <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>STATO</div>
+                <div style={{display:"flex",gap:3}}>
+                  {[["new","NEW","#333"],["review","REV","var(--gold)"],["approved","OK","#1a4a1a"],["rejected","NO","#4a1a1a"]].map(([s,l,c])=>(
+                    <button key={s} onClick={()=>upd(sel.id,{status:s})}
+                      style={{flex:1,padding:"9px 4px",fontFamily:"var(--fu)",fontSize:8,letterSpacing:"0.06em",textTransform:"uppercase",cursor:"pointer",
+                        background:sel.status===s?c:"#0d0d0d",border:`1px solid ${sel.status===s?c:"#2a2a2a"}`,
+                        color:sel.status===s?"#fff":"var(--t3)",transition:"all .2s"}}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>NOTE INTERNE</div>
+              <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4}
+                placeholder="Note riservate al team..." style={{fontSize:13,resize:"vertical"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:9,gap:8}}>
+                <button className="btn-red" onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>
+                  {saving?"SALVATAGGIO...":"SALVA NOTE"}
+                </button>
+                {role==="admin"&&<button onClick={()=>del(sel.id)}
+                  style={{background:"transparent",border:"1px solid #5a1010",color:"#cc4444",padding:"11px 18px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>
+                  ELIMINA
+                </button>}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
-      <div style={{marginTop:14}}>
-        <div style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t3)",letterSpacing:"0.25em",marginBottom:7}}>NOTE INTERNE</div>
-        <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Note riservate al team..." style={{fontSize:13}}/>
-        <div style={{display:"flex",justifyContent:"space-between",marginTop:9,gap:8}}>
-          <button className="btn-red" onClick={()=>upd(sel.id,{notes:note})} style={{flex:1,padding:"11px",fontSize:11}}>{saving?"SALVATAGGIO...":"SALVA NOTE"}</button>
-          {role==="admin"&&<button onClick={()=>del(sel.id)} style={{background:"transparent",border:"1px solid #5a1010",color:"#cc4444",padding:"11px 18px",fontFamily:"var(--fu)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>ELIMINA</button>}
-        </div>
-      </div>
-    </div>
-  );
+    );
+  }
 
   // ── LIST VIEW ────────────────────────────────────────────────────────────────
   // Wrapper centrato per desktop
