@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779096775</title>
+  <title>EVORΛ ATHLETES v16 — Application 2025 — build:1779097529</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -742,6 +742,13 @@ function CandidaturePanel({role}){
   const [sel,setSel]=useState(null);
   const [filter,setFilter]=useState("ALL");
   const [search,setSearch]=useState("");
+  const searchRef = React.useRef(null);
+  const handleSearch = (val) => {
+    setSearch(val);
+    setPage(1);
+    // Mantieni focus sull'input dopo il re-render
+    setTimeout(()=>{ if(searchRef.current) searchRef.current.focus(); }, 0);
+  };
   const [sortBy,setSortBy]=useState("date");
   const perPage=10;
   const [page,setPage]=useState(1);
@@ -1009,9 +1016,13 @@ function CandidaturePanel({role}){
           {/* Search */}
           <div style={{display:"flex",alignItems:"center",gap:8,background:"#141414",border:"1px solid #333",padding:"8px 12px"}}>
             <span style={{color:"var(--t4)",fontSize:13}}>🔍</span>
-            <input placeholder="Cerca nome, @handle, città..." value={search}
-              onChange={e=>{setSearch(e.target.value);setPage(1);}}
+            <input
+              ref={searchRef}
+              placeholder="Cerca nome, @handle, città..."
+              value={search}
+              onChange={e=>handleSearch(e.target.value)}
               style={{background:"transparent",border:"none",color:"var(--t1)",fontSize:13,fontFamily:"var(--fb)",outline:"none",width:"100%",padding:0}}/>
+            {search&&<span onClick={()=>handleSearch("")} style={{color:"var(--t4)",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</span>}
             <span style={{fontFamily:"var(--fu)",fontSize:9,color:"var(--t4)",whiteSpace:"nowrap"}}>{sorted.length}</span>
           </div>
 
@@ -1493,20 +1504,23 @@ function AdminPanel({onBack}){
 
   return(
     <div style={{height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      <div style={{height:52,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px",borderBottom:"1px solid var(--brd)",background:"var(--deep)",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <Logo size={16}/>
-          <Tag color={role==="admin"?"var(--red)":"var(--gold)"}>{role==="admin"?"ADMIN":"MANAGER"}</Tag>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button className="btn-ghost" onClick={()=>{setRole(null);setPw("");}} style={{padding:"6px 14px",fontSize:10}}>ESCI</button>
-          <button className="btn-ghost" onClick={onBack} style={{padding:"6px 14px",fontSize:10}}>← SITO</button>
+      {/* HEADER — centrato su desktop */}
+      <div style={{height:52,borderBottom:"1px solid var(--brd)",background:"var(--deep)",flexShrink:0,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{maxWidth:900,width:"100%",margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Logo size={16}/>
+            <Tag color={role==="admin"?"var(--red)":"var(--gold)"}>{role==="admin"?"ADMIN":"MANAGER"}</Tag>
+          </div>
+          <button className="btn-ghost" onClick={()=>{setRole(null);setPw("");}} style={{padding:"5px 14px",fontSize:10,position:"absolute",right:20}}>ESCI</button>
         </div>
       </div>
-      <div className="tab-bar">
-        <button className={`tab${activeTab==="candidature"?" active":""}`} onClick={()=>setActiveTab("candidature")}>📋 Candidature</button>
-        {role==="admin"&&<button className={`tab${activeTab==="scoring"?" active":""}`} onClick={()=>setActiveTab("scoring")}>🎯 Scoring</button>}
-        {role==="admin"&&<button className={`tab${activeTab==="settings"?" active":""}`} onClick={()=>setActiveTab("settings")}>⚙️ Impostazioni</button>}
+      {/* TAB BAR — centrata su desktop */}
+      <div style={{borderBottom:"1px solid var(--brd)",background:"var(--deep)",flexShrink:0}}>
+        <div style={{maxWidth:900,margin:"0 auto",display:"flex"}}>
+          <button className={`tab${activeTab==="candidature"?" active":""}`} onClick={()=>setActiveTab("candidature")}>📋 Candidature</button>
+          {role==="admin"&&<button className={`tab${activeTab==="scoring"?" active":""}`} onClick={()=>setActiveTab("scoring")}>🎯 Scoring</button>}
+          {role==="admin"&&<button className={`tab${activeTab==="settings"?" active":""}`} onClick={()=>setActiveTab("settings")}>⚙️ Impostazioni</button>}
+        </div>
       </div>
       {activeTab==="candidature"&&<CandidaturePanel role={role}/>}
       {activeTab==="scoring"&&role==="admin"&&<ScoringPanel/>}
