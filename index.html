@@ -228,7 +228,9 @@ const TELEGRAM_API= "https://api.telegram.org/bot";
 const FALLBACK_ADMIN_PASS   = "evora2025";
 const FALLBACK_MANAGER_PASS = "evora_smm";
 
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB
+const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // limite del file scelto dall'utente
+const MAX_STORED_BYTES = 700000;           // limite del base64 salvato: il documento Firestore non può superare 1 MiB
+const IMG_MAX_WIDTH    = 1400;
 const ALLOWED_IMAGE = ["image/jpeg","image/png","image/webp","image/heic","image/heif"];
 
 /* ---- Categorie profilo ---- */
@@ -337,7 +339,7 @@ const extractInsights = async (base64Image, apiKey) => {
           role:"user",
           content:[
             { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
-            { type:"text", text:"Guarda questo screenshot Instagram Insights. Estrai i numeri. Rispondi SOLO con questo JSON: {\"views\":NUMERO,\"interactions\":NUMERO,\"newFollowers\":NUMERO}. Usa 0 se non visibile. SOLO JSON nient'altro." }
+            { type:"text", text:"Questo screenshot proviene dalla Dashboard per professionisti di Instagram, sezione Visualizzazioni, periodo 30 giorni. Estrai esattamente questi quattro valori: Visualizzazioni, Follower netti, Interazioni, Account raggiunti. Rispondi SOLO con questo JSON: {\"views\":\"\",\"netFollowers\":\"\",\"interactions\":\"\",\"accountsReached\":\"\"}. Riporta ogni numero esattamente come appare nello screenshot, mantenendo separatori e il segno + o - dei follower netti. Se un valore non è visibile scrivi \"0\". Nessun altro testo." }
           ]
         }]
       })
@@ -351,9 +353,17 @@ const extractInsights = async (base64Image, apiKey) => {
   }
   const data = await res.json();
   const raw = data.content[0].text.trim();
-  const match = raw.match(/\{[^}]+\}/);
-  if(!match) throw new Error("Immagine non leggibile");
-  return JSON.parse(match[0]);
+  const match = raw.match(/\{[\s\S]*\}/);
+  if(!match) throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili.");
+  let parsed;
+  try{ parsed = JSON.parse(match[0]); }
+  catch(e){ throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili."); }
+  return {
+    views:           toNum(parsed.views),
+    netFollowers:    toNum(parsed.netFollowers),
+    interactions:    toNum(parsed.interactions),
+    accountsReached: toNum(parsed.accountsReached)
+  };
 };
 
 /* ============================================================================
@@ -375,8 +385,12 @@ const sendTelegram = async (botToken, chatId, message) => {
    Valuta ESCLUSIVAMENTE i dati numerici Instagram.
    Nessuna analisi delle risposte, nessuna keyword, nessun giudizio automatico.
    ========================================================================== */
+const SCORING_VERSION = 2;   // incrementare quando cambiano formule o benchmark predefiniti
+
 const DEFAULT_SCORING = {
-  weights: { er:40, reach:35, growth:25 },
+  version: SCORING_VERSION,
+  // Le visualizzazioni vengono salvate e mostrate ma non entrano nel punteggio.
+  weights: { er:45, reach:35, growth:20 },
   levels: [
     {v:"HIGH",    l:"Performance numerica alta",  min:75, c:"#3A7BD5"},
     {v:"GOOD",    l:"Performance numerica buona", min:55, c:"#27AE60"},
@@ -385,21 +399,24 @@ const DEFAULT_SCORING = {
   ],
   bands: [
     { label:"0–1K",     max:1000,
-      er:{avg:3,good:6,excellent:10},    reach:{avg:50,good:100,excellent:200}, growth:{avg:1,good:3,excellent:8} },
+      er:{avg:3,good:6,excellent:10},    reach:{avg:60,good:120,excellent:250}, growth:{avg:1,good:3,excellent:7} },
     { label:"1K–5K",    max:5000,
-      er:{avg:2.5,good:5,excellent:8},   reach:{avg:40,good:80,excellent:150},  growth:{avg:0.8,good:2,excellent:5} },
+      er:{avg:2.5,good:5,excellent:8},   reach:{avg:40,good:80,excellent:160},  growth:{avg:0.5,good:1.5,excellent:4} },
     { label:"5K–20K",   max:20000,
-      er:{avg:2,good:4,excellent:7},     reach:{avg:30,good:60,excellent:120},  growth:{avg:0.5,good:1.5,excellent:4} },
+      er:{avg:2,good:4,excellent:7},     reach:{avg:30,good:60,excellent:120},  growth:{avg:0.3,good:1,excellent:3} },
     { label:"20K–100K", max:100000,
-      er:{avg:1.5,good:3,excellent:5},   reach:{avg:20,good:40,excellent:80},   growth:{avg:0.3,good:1,excellent:2.5} },
+      er:{avg:1.5,good:3,excellent:5},   reach:{avg:20,good:40,excellent:80},   growth:{avg:0.15,good:0.5,excellent:1.5} },
     { label:"100K+",    max:Infinity,
-      er:{avg:1,good:2,excellent:4},     reach:{avg:15,good:30,excellent:60},   growth:{avg:0.2,good:0.5,excellent:1.5} }
+      er:{avg:1,good:2,excellent:4},     reach:{avg:15,good:30,excellent:60},   growth:{avg:0.08,good:0.25,excellent:0.8} }
   ]
 };
 
 // Normalizza config salvate con lo schema precedente (tiers ELITE/PRO/...).
 const normalizeScoring = (cfg) => {
-  if(!cfg) return JSON.parse(JSON.stringify(DEFAULT_SCORING));
+  // Una configurazione salvata con lo schema precedente (formule e benchmark diversi)
+  // non viene applicata: si riparte dai valori predefiniti aggiornati.
+  // Il documento su Firestore resta invariato finché l'admin non salva di nuovo.
+  if(!cfg || cfg.version !== SCORING_VERSION) return JSON.parse(JSON.stringify(DEFAULT_SCORING));
   const out = JSON.parse(JSON.stringify(DEFAULT_SCORING));
   if(cfg.weights) out.weights = { ...out.weights, ...cfg.weights };
   if(Array.isArray(cfg.bands) && cfg.bands.length){
@@ -451,23 +468,29 @@ const gradeOf = s => METRIC_GRADES.find(g=>s>=g.min) || METRIC_GRADES[3];
  */
 const computeSocial = (data, cfgRaw) => {
   const cfg = cfgRaw || DEFAULT_SCORING;
-  const followers    = parseInt(data.followers)    || 0;
-  const views        = parseInt(data.views)        || 0;
-  const interactions = parseInt(data.interactions) || 0;
-  const newFollowers = parseInt(data.newFollowers) || 0;
+  const n = v => { const x = parseFloat(v); return Number.isFinite(x) ? x : 0; };
+  const has = v => !(v===undefined || v===null || v==="");
+
+  const followers    = n(data.followers);
+  const views        = n(data.views);
+  const interactions = n(data.interactions);
+  // Compatibilità con le candidature precedenti:
+  // se manca accountsReached si usano le visualizzazioni, se manca netFollowers si usa newFollowers.
+  const reached = has(data.accountsReached) ? n(data.accountsReached) : views;
+  const net     = has(data.netFollowers)    ? n(data.netFollowers)    : n(data.newFollowers);
 
   const band   = bandFor(followers, cfg);
-  const er     = views>0     ? (interactions/views)*100     : 0;
-  const reach  = followers>0 ? (views/followers)*100        : 0;
-  const growth = followers>0 ? (newFollowers/followers)*100 : 0;
+  const er     = reached>0   ? (interactions/reached)*100 : 0;   // interazioni / account raggiunti
+  const reach  = followers>0 ? (reached/followers)*100    : 0;   // account raggiunti / follower
+  const growth = followers>0 ? (net/followers)*100        : 0;   // follower netti / follower
 
-  const erScore     = normalizeMetric(er,     band.er);
-  const reachScore  = normalizeMetric(reach,  band.reach);
-  const growthScore = normalizeMetric(growth, band.growth);
+  const erScore     = normalizeMetric(er, band.er);
+  const reachScore  = normalizeMetric(reach, band.reach);
+  const growthScore = normalizeMetric(Math.max(growth,0), band.growth);
 
   const w  = cfg.weights;
-  const tw = (w.er||0)+(w.reach||0)+(w.growth||0) || 100;
-  const socialScore = Math.round((erScore*(w.er||0) + reachScore*(w.reach||0) + growthScore*(w.growth||0)) / tw);
+  const tw = (+w.er||0)+(+w.reach||0)+(+w.growth||0) || 100;
+  const socialScore = Math.round((erScore*(+w.er||0) + reachScore*(+w.reach||0) + growthScore*(+w.growth||0)) / tw);
 
   const level = [...cfg.levels].sort((a,b)=>b.min-a.min).find(l=>socialScore>=l.min) || cfg.levels[cfg.levels.length-1];
 
@@ -475,6 +498,7 @@ const computeSocial = (data, cfgRaw) => {
     socialScore,
     erScore:Math.round(erScore), reachScore:Math.round(reachScore), growthScore:Math.round(growthScore),
     er, reach, growth,
+    views, reached, net, interactions, followers,
     erGrade:gradeOf(erScore), reachGrade:gradeOf(reachScore), growthGrade:gradeOf(growthScore),
     bandLabel:band.label, band,
     perfLevel:level.v, perfLabel:level.l, perfColor:level.c
@@ -493,6 +517,74 @@ const agoLabel = d => { const n=daysSince(d); return n===0?"oggi":n===1?"ieri":n
 const isEmail  = v => /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(String(v||"").trim());
 const isUrl    = v => { if(!v) return true; try{ const u=new URL(String(v).trim()); return u.protocol==="http:"||u.protocol==="https:"; }catch(e){ return false; } };
 const cleanHandle = v => String(v||"").trim().replace(/^@+/,"");
+
+/**
+ * Converte un valore letto dallo screenshot in numero intero.
+ * Gestisce: 3.648 · 3,648 · 1.234.567 · +5 · -3 · 1,2K · 3,6 Mln
+ */
+const toNum = (raw) => {
+  if(raw===null || raw===undefined) return 0;
+  if(typeof raw==="number") return Number.isFinite(raw) ? Math.round(raw) : 0;
+  let s = String(raw).trim().toLowerCase().replace(/\s+/g,"");
+  if(!s) return 0;
+  const sign = s.charAt(0)==="-" ? -1 : 1;
+  s = s.replace(/^[+-]/,"");
+  let mult = 1;
+  if(/(mln|mio|m)$/.test(s)){ mult = 1e6; s = s.replace(/(mln|mio|m)$/,""); }
+  else if(/(mila|k)$/.test(s)){ mult = 1e3; s = s.replace(/(mila|k)$/,""); }
+  s = s.replace(/[^0-9.,]/g,"");
+  if(!s) return 0;
+  let value;
+  if(mult>1){
+    value = parseFloat(s.replace(",",".")) || 0;
+  }else{
+    const parts = s.split(/[.,]/);
+    if(parts.length===1) value = parseFloat(parts[0]) || 0;
+    else if(parts[parts.length-1].length===3) value = parseFloat(parts.join("")) || 0;
+    else if(parts.length===2) value = parseFloat(parts[0]+"."+parts[1]) || 0;
+    else value = parseFloat(parts.join("")) || 0;
+  }
+  return Math.round(sign * value * mult);
+};
+
+const readFileAsDataURL = file => new Promise((resolve,reject)=>{
+  const r = new FileReader();
+  r.onload  = e => resolve(e.target.result);
+  r.onerror = () => reject(new Error("Impossibile leggere il file."));
+  r.readAsDataURL(file);
+});
+
+/**
+ * Ridimensiona e comprime lo screenshot prima del salvataggio.
+ * Senza questo passaggio un'immagine da telefono supera il limite di 1 MiB
+ * previsto da Firestore per singolo documento e il salvataggio viene rifiutato.
+ */
+const compressImage = dataUrl => new Promise((resolve,reject)=>{
+  const img = new Image();
+  img.onerror = () => reject(new Error("Immagine non valida."));
+  img.onload  = () => {
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if(!w || !h) return reject(new Error("Immagine non valida."));
+    const scale = w > IMG_MAX_WIDTH ? IMG_MAX_WIDTH/w : 1;
+    w = Math.round(w*scale); h = Math.round(h*scale);
+    const draw = (cw,ch,q) => {
+      const c = document.createElement("canvas");
+      c.width = cw; c.height = ch;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#0E0E0E"; ctx.fillRect(0,0,cw,ch);
+      ctx.drawImage(img,0,0,cw,ch);
+      return c.toDataURL("image/jpeg", q);
+    };
+    let q = 0.82, out = draw(w,h,q);
+    while(out.length > MAX_STORED_BYTES && q > 0.4){ q -= 0.1; out = draw(w,h,q); }
+    while(out.length > MAX_STORED_BYTES && w > 640){
+      w = Math.round(w*0.85); h = Math.round(h*0.85); out = draw(w,h,q);
+    }
+    if(out.length > MAX_STORED_BYTES) return reject(new Error("Immagine troppo grande: riprova con uno screenshot più leggero."));
+    resolve(out);
+  };
+  img.src = dataUrl;
+});
 
 /* ============================================================================
    7. COMPONENTI CONDIVISI
@@ -845,7 +937,8 @@ const EMPTY_FORM = {
   fullName:"", age:"", email:"", city:"", country:"Italia", isAdult:false, mainActivity:"", category:"",
   // Step 2 — social
   instagram:"", followers:"", tiktok:"", tiktokFollowers:"",
-  screenshotData:null, screenshotName:"", views:"", interactions:"", newFollowers:"",
+  screenshotData:null, screenshotName:"",
+  views:"", netFollowers:"", interactions:"", accountsReached:"",
   contentUrl1:"", contentUrl2:"", contentUrl3:"",
   // Step 3 — posizionamento
   threeWords:"", contentType:"", whatToTransmit:"", whyFollow:"",
@@ -860,7 +953,7 @@ const EMPTY_FORM = {
   availEvents:"", availShooting:"", availUgc:"", availRawFiles:"",
   boughtProducts:"", improvements:"", extra:"",
   // Step 7 — consensi
-  privacyConsent:false, marketingConsent:false
+  privacyConsent:false
 };
 
 const YESNO = [{v:"yes",l:"Sì"},{v:"no",l:"No"},{v:"maybe",l:"Da valutare"}];
@@ -875,6 +968,26 @@ function CharField({id, value, onChange, max, rows=4, placeholder, error, invali
     </div>
   );
 }
+
+/** Notifica al team. Volutamente separata dall'invio: non deve mai bloccarlo. */
+const notifyTelegram = async (doc, s) => {
+  const st = await FB.getSettings();
+  if(!st.tgToken || !st.tgChatId) return;
+  const msg =
+    "🔔 <b>"+BRAND.program+"</b>\nNuova candidatura\n\n"+
+    "👤 <b>"+doc.fullName+"</b>\n"+
+    "📱 "+doc.instagram+"\n"+
+    "🏷 "+catLabel(doc.category)+"\n"+
+    "👥 "+fmtInt(doc.followers)+" follower · fascia "+s.bandLabel+"\n\n"+
+    "👁 Visualizzazioni: "+fmtInt(doc.views)+"\n"+
+    "🎯 Account raggiunti: "+fmtInt(doc.accountsReached)+"\n"+
+    "💬 Interazioni: "+fmtInt(doc.interactions)+"\n"+
+    "📈 Follower netti: "+(doc.netFollowers>0?"+":"")+fmtInt(doc.netFollowers)+"\n\n"+
+    "ER "+s.er.toFixed(2)+"% · Reach "+s.reach.toFixed(1)+"% · Growth "+s.growth.toFixed(2)+"%\n"+
+    "📊 Social Performance Score: <b>"+s.socialScore+"/100</b> · "+s.perfLabel;
+  const r = await sendTelegram(st.tgToken, st.tgChatId, msg);
+  if(!r.ok) console.error("Telegram ha rifiutato il messaggio:", r.description);
+};
 
 function ApplicationForm({onBack, testMode=false}){
   const [step,setStep]           = useState(0);
@@ -905,31 +1018,34 @@ function ApplicationForm({onBack, testMode=false}){
       setOcrState("failed"); setOcrMsg("Formato non supportato. Usa JPG, PNG o WEBP."); return;
     }
     if(file.size > MAX_UPLOAD_BYTES){
-      setOcrState("failed"); setOcrMsg("Immagine troppo pesante (max 8 MB)."); return;
+      setOcrState("failed"); setOcrMsg("Immagine troppo pesante (massimo 12 MB)."); return;
     }
     setOcrState("reading"); setOcrMsg("");
-    const reader = new FileReader();
-    reader.onerror = () => { setOcrState("failed"); setOcrMsg("Impossibile leggere il file."); };
-    reader.onload = async (ev) => {
-      const img = ev.target.result;
+    let img;
+    try{
+      const raw = await readFileAsDataURL(file);
+      img = await compressImage(raw);            // riduce il peso entro il limite di Firestore
       setForm(p=>({...p, screenshotData:img, screenshotName:file.name}));
       setErrors(p=>({...p, screenshotData:undefined}));
-      setOcrState("analyzing");
-      try{
-        const cfg = await FB.getSettings();
-        const d = await extractInsights(img, cfg.apiKey);
-        setForm(p=>({...p,
-          views:        d.views!==undefined        ? String(d.views)        : p.views,
-          interactions: d.interactions!==undefined ? String(d.interactions) : p.interactions,
-          newFollowers: d.newFollowers!==undefined ? String(d.newFollowers) : p.newFollowers
-        }));
-        setOcrState("done"); setOcrMsg("");
-      }catch(err){
-        setOcrState("failed");
-        setOcrMsg(err.message || "Lettura non riuscita");
-      }
-    };
-    reader.readAsDataURL(file);
+    }catch(err){
+      console.error("Preparazione immagine non riuscita:", err);
+      setOcrState("failed"); setOcrMsg(err.message || "Immagine non valida."); return;
+    }
+    setOcrState("analyzing");
+    try{
+      const cfg = await FB.getSettings();
+      const d = await extractInsights(img, cfg.apiKey);
+      setForm(p=>({...p,
+        views:           String(d.views),
+        netFollowers:    String(d.netFollowers),
+        interactions:    String(d.interactions),
+        accountsReached: String(d.accountsReached)
+      }));
+      setOcrState("done"); setOcrMsg("");
+    }catch(err){
+      console.warn("Lettura automatica non riuscita:", err);
+      setOcrState("failed"); setOcrMsg(err.message || "Lettura non riuscita");
+    }
   };
 
   /* ---------- VALIDAZIONE ---------- */
@@ -953,11 +1069,14 @@ function ApplicationForm({onBack, testMode=false}){
       req("instagram","Inserisci il tuo username Instagram");
       if(!String(form.followers).trim()) e.followers="Inserisci il numero di follower";
       else if(isNaN(form.followers) || +form.followers<0) e.followers="Valore non valido";
-      if(!form.screenshotData) e.screenshotData="Carica lo screenshot degli Insights";
-      ["views","interactions","newFollowers"].forEach(k=>{
+      if(!form.screenshotData) e.screenshotData="Carica lo screenshot richiesto";
+      ["views","interactions","accountsReached"].forEach(k=>{
         if(String(form[k]).trim()==="") e[k]="Dato mancante";
         else if(isNaN(form[k]) || +form[k]<0) e[k]="Valore non valido";
       });
+      // I follower netti possono essere negativi
+      if(String(form.netFollowers).trim()==="") e.netFollowers="Dato mancante";
+      else if(isNaN(form.netFollowers)) e.netFollowers="Valore non valido";
       if(form.tiktokFollowers && (isNaN(form.tiktokFollowers) || +form.tiktokFollowers<0)) e.tiktokFollowers="Valore non valido";
       ["contentUrl1","contentUrl2","contentUrl3"].forEach(k=>{
         if(form[k] && !isUrl(form[k])) e[k]="Inserisci un link valido (https://…)";
@@ -1010,60 +1129,74 @@ function ApplicationForm({onBack, testMode=false}){
 
   /* ---------- INVIO ---------- */
   const submit = async () => {
-    if(saving) return;                       // blocca doppio invio
+    if(saving) return;                                  // blocca il doppio invio
     const e = validate(6);
     if(Object.keys(e).length){ setErrors(e); scrollTop(); return; }
+
     setSaving(true); setSaveErr("");
-    try{
-      const cfg = normalizeScoring(await FB.getScoring());
-      const s   = computeSocial(form, cfg);
-      const now = new Date().toISOString();
-      const id  = Date.now();
-      const doc = {
-        ...form,
-        instagram: "@"+cleanHandle(form.instagram),
-        tiktok: form.tiktok ? "@"+cleanHandle(form.tiktok) : "",
-        schemaVersion: BRAND.schemaVersion,
-        date: now,
-        updatedAt: now,
-        status: "new",
-        notes: "",
-        creatorCode: "",
-        evaluation: {},
-        // Metriche congelate al momento dell'invio (ricalcolate comunque a runtime)
-        socialScore: s.socialScore,
-        perfLevel:   s.perfLevel,
-        bandLabel:   s.bandLabel,
-        erRate:      s.er.toFixed(2),
-        erReach:     s.er.toFixed(2),   // alias storico
-        reachRate:   s.reach.toFixed(1),
-        growthRate:  s.growth.toFixed(2)
-      };
-      await FB.saveApp({ id, ...doc });
 
-      // Notifica Telegram (non blocca l'invio in caso di errore)
-      try{
-        const st = await FB.getSettings();
-        if(st.tgToken && st.tgChatId){
-          const msg =
-            "🔔 <b>"+BRAND.program+"</b>\nNuova candidatura\n\n"+
-            "👤 <b>"+form.fullName+"</b>\n"+
-            "📱 @"+cleanHandle(form.instagram)+"\n"+
-            "🏷 "+catLabel(form.category)+"\n"+
-            "👥 "+fmtInt(form.followers)+" follower\n"+
-            "📊 Social Performance Score: <b>"+s.socialScore+"/100</b> · "+s.perfLabel+"\n\n"+
-            "Apri il backend per la valutazione completa.";
-          sendTelegram(st.tgToken, st.tgChatId, msg);
-        }
-      }catch(err){ /* notifica non critica */ }
+    // 1 · preparazione documento — nessun campo undefined, nessun NaN
+    const num = v => { const x = parseInt(v,10); return Number.isFinite(x) ? x : 0; };
+    const now = new Date().toISOString();
+    const id  = Date.now();
 
-      setDone(true);
-      window.scrollTo({top:0});
-    }catch(err){
-      setSaveErr("Non siamo riusciti a salvare la candidatura. I dati inseriti non sono andati persi: controlla la connessione e riprova.");
-    }finally{
+    let scoring = DEFAULT_SCORING;
+    try{ scoring = normalizeScoring(await FB.getScoring()); }
+    catch(err){ console.warn("Configurazione scoring non raggiungibile, uso i valori predefiniti:", err); }
+    const s = computeSocial(form, scoring);
+
+    const doc = {};
+    Object.keys(EMPTY_FORM).forEach(k=>{
+      const v = form[k];
+      doc[k] = (v===undefined || v===null) ? (typeof EMPTY_FORM[k]==="boolean" ? false : "") : v;
+    });
+    doc.screenshotData  = form.screenshotData || "";
+    doc.instagram       = "@"+cleanHandle(form.instagram);
+    doc.tiktok          = form.tiktok ? "@"+cleanHandle(form.tiktok) : "";
+    doc.age             = num(form.age);
+    doc.followers       = num(form.followers);
+    doc.tiktokFollowers = num(form.tiktokFollowers);
+    doc.views           = num(form.views);
+    doc.netFollowers    = num(form.netFollowers);
+    doc.interactions    = num(form.interactions);
+    doc.accountsReached = num(form.accountsReached);
+    Object.assign(doc, {
+      schemaVersion: 3,
+      date: now, updatedAt: now,
+      status: "new", notes: "", creatorCode: "", evaluation: {},
+      socialScore: s.socialScore,
+      perfLevel:   s.perfLevel,
+      bandLabel:   s.bandLabel,
+      erRate:      +s.er.toFixed(2),
+      reachRate:   +s.reach.toFixed(2),
+      growthRate:  +s.growth.toFixed(2)
+    });
+
+    // Salvaguardia: il documento Firestore non può superare 1 MiB
+    if(doc.screenshotData.length > 900000){
+      console.error("Screenshot oltre il limite consentito:", doc.screenshotData.length);
       setSaving(false);
+      setSaveErr("Lo screenshot è troppo pesante per essere salvato. Ricaricalo: verrà compresso automaticamente.");
+      return;
     }
+
+    // 2 · salvataggio su Firestore — è questo il passaggio che determina l'esito
+    try{
+      await FB.saveApp({ id, ...doc });
+    }catch(err){
+      console.error("Salvataggio candidatura non riuscito:", err);
+      setSaving(false);
+      setSaveErr("Non siamo riusciti a salvare la candidatura"+(err && err.code ? " ("+err.code+")" : "")+". I dati inseriti non sono andati persi: riprova.");
+      return;
+    }
+
+    // 3 · conferma immediata all'utente
+    setSaving(false);
+    setDone(true);
+    window.scrollTo({top:0});
+
+    // 4 · notifica Telegram separata: un errore qui non influisce sulla candidatura
+    notifyTelegram(doc, s).catch(err => console.error("Notifica Telegram non inviata:", err));
   };
 
   /* ---------- SCHERMATA DI CONFERMA ---------- */
@@ -1188,20 +1321,20 @@ function ApplicationForm({onBack, testMode=false}){
               </Field>
             </div>
 
-            <Field label="Screenshot Insights — ultimi 30 giorni" required error={err("screenshotData")}
-              hint="Apri Instagram → Insights → ultimi 30 giorni e carica la schermata con visualizzazioni, interazioni e nuovi follower.">
+            <Field label="Screenshot · Dashboard per professionisti → Visualizzazioni" required error={err("screenshotData")}
+              hint="Un solo screenshot, con i quattro dati visibili. Le istruzioni sono qui sotto.">
               <div
                 className={"drop"+(dragOver?" over":"")+(err("screenshotData")?" err":"")}
                 onDragOver={e=>{e.preventDefault();setDragOver(true);}}
                 onDragLeave={()=>setDragOver(false)}
                 onDrop={e=>{e.preventDefault();setDragOver(false);processFile(e.dataTransfer.files[0]);}}>
                 {form.screenshotData ? (
-                  <img src={form.screenshotData} alt="Anteprima screenshot Insights" style={{maxHeight:190,objectFit:"contain"}}/>
+                  <img src={form.screenshotData} alt="Anteprima screenshot" style={{maxHeight:190,objectFit:"contain"}}/>
                 ) : (
                   <>
                     <div className="h-sm">Trascina qui lo screenshot</div>
                     <div className="body-sm">I dati verranno compilati automaticamente</div>
-                    <div className="label-xs" style={{color:"var(--t4)"}}>JPG · PNG · WEBP — max 8 MB</div>
+                    <div className="label-xs" style={{color:"var(--t4)"}}>JPG · PNG · WEBP</div>
                   </>
                 )}
               </div>
@@ -1212,13 +1345,34 @@ function ApplicationForm({onBack, testMode=false}){
               </label>
             </Field>
 
-            {ocrState==="reading"   && <Spinner label="Caricamento immagine in corso…"/>}
-            {ocrState==="analyzing" && <Spinner label="Lettura automatica degli Insights in corso…"/>}
+            {/* Istruzioni per ottenere la schermata corretta */}
+            <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:"16px",marginTop:-8,marginBottom:22}}>
+              <div className="h-sm" style={{marginBottom:10}}>Dove trovi questa schermata?</div>
+              <p className="body-sm" style={{marginBottom:8}}>Apri Instagram e vai su:</p>
+              <p style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:14,color:"var(--t1)",lineHeight:1.5,marginBottom:12}}>
+                Profilo → Dashboard per professionisti → Visualizzazioni
+              </p>
+              <p className="body-sm" style={{marginBottom:10}}>
+                Seleziona il periodo <strong style={{color:"var(--t1)"}}>30 giorni</strong> e fai uno screenshot della schermata
+                in cui siano visibili:
+              </p>
+              <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
+                  <div key={x} style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span className="dot" style={{background:"var(--red)"}}/>
+                    <span className="body-sm" style={{color:"var(--t2)"}}>{x}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {ocrState==="reading"   && <Spinner label="Preparazione immagine in corso…"/>}
+            {ocrState==="analyzing" && <Spinner label="Lettura automatica dei dati in corso…"/>}
             {ocrState==="done" && (
               <div className="status-box" style={{borderColor:"rgba(39,174,96,.45)"}}>
                 <div className="dot" style={{background:"var(--ok)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
-                  <strong style={{color:"var(--ok)"}}>Dati rilevati.</strong> Controlla i valori qui sotto e correggili se non corrispondono.
+                  <strong style={{color:"var(--ok)"}}>Dati rilevati.</strong> Controlla i quattro valori qui sotto e correggili se non corrispondono.
                 </div>
               </div>
             )}
@@ -1227,21 +1381,23 @@ function ApplicationForm({onBack, testMode=false}){
                 <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
                   <strong style={{color:"var(--warn)"}}>{ocrMsg||"Lettura non riuscita."}</strong>{" "}
-                  Puoi caricare un'altra immagine oppure inserire i dati manualmente qui sotto.
+                  Puoi caricare un'altra immagine oppure inserire i quattro dati manualmente.
                 </div>
               </div>
             )}
 
             <div style={{marginTop:18,padding:"16px",border:"1px solid var(--brd)",background:"var(--bg-2)"}}>
-              <div className="label-xs" style={{marginBottom:14}}>Dati Insights · ultimi 30 giorni</div>
-              <div className="g3-gap">
+              <div className="label-xs" style={{marginBottom:14}}>Dati degli ultimi 30 giorni</div>
+              <div className="g2-gap">
                 {[
-                  ["views","Visualizzazioni","28400"],
-                  ["interactions","Interazioni","1240"],
-                  ["newFollowers","Nuovi follower","310"]
-                ].map(([k,l,ph])=>(
-                  <Field key={k} label={l} required error={err(k)} htmlFor={"f-"+k}>
-                    <input id={"f-"+k} type="number" inputMode="numeric" value={form[k]} aria-invalid={inv(k)}
+                  ["views","Visualizzazioni","28400",""],
+                  ["netFollowers","Follower netti","260","Può essere negativo"],
+                  ["interactions","Interazioni","1240",""],
+                  ["accountsReached","Account raggiunti","18400",""]
+                ].map(([k,l,ph,hint])=>(
+                  <Field key={k} label={l} required error={err(k)} hint={hint||undefined} htmlFor={"f-"+k}>
+                    <input id={"f-"+k} type="number" inputMode={k==="netFollowers"?"text":"numeric"}
+                      value={form[k]} aria-invalid={inv(k)}
                       onChange={e=>set(k,e.target.value)} placeholder={ph}/>
                   </Field>
                 ))}
@@ -1455,8 +1611,8 @@ function ApplicationForm({onBack, testMode=false}){
                   <div className="kv" key={k}><div className="kv-k">{k}</div><div className="kv-v">{v}</div></div>
                 ))}
               </div>
-              <div className="g3-keep" style={{marginTop:2}}>
-                {[["Visualizzazioni",fmtInt(form.views)],["Interazioni",fmtInt(form.interactions)],["Nuovi follower",fmtInt(form.newFollowers)]].map(([k,v])=>(
+              <div className="g2" style={{marginTop:2}}>
+                {[["Visualizzazioni",fmtInt(form.views)],["Account raggiunti",fmtInt(form.accountsReached)],["Interazioni",fmtInt(form.interactions)],["Follower netti",(+form.netFollowers>0?"+":"")+fmtInt(form.netFollowers)]].map(([k,v])=>(
                   <div className="kv" key={k}><div className="kv-k">{k}</div><div className="kv-v">{v}</div></div>
                 ))}
               </div>
@@ -1477,12 +1633,6 @@ function ApplicationForm({onBack, testMode=false}){
                 </span>
               </label>
               {err("privacyConsent") && <span className="field-err" role="alert">{err("privacyConsent")}</span>}
-            </div>
-            <div className="field">
-              <label className="check">
-                <input type="checkbox" checked={form.marketingConsent} onChange={e=>set("marketingConsent",e.target.checked)}/>
-                <span>Facoltativo — acconsento a ricevere comunicazioni relative a iniziative e opportunità EVORΛ.</span>
-              </label>
             </div>
 
             {saveErr && (
@@ -1521,7 +1671,7 @@ const TEST_FORM = {
   fullName:"Candidato Prova", age:"27", email:"prova@evora.test", city:"Milano", country:"Italia",
   isAdult:true, mainActivity:"Personal trainer e creator", category:"coach",
   instagram:"@profilo_prova", followers:"8500", tiktok:"@profilo_prova", tiktokFollowers:"3200",
-  views:"24800", interactions:"1120", newFollowers:"260",
+  views:"24800", netFollowers:"260", interactions:"1120", accountsReached:"18400",
   contentUrl1:"https://www.instagram.com/",
   threeWords:"Concreto, costante, diretto",
   contentType:"Reels tecnici su allenamento e alimentazione, più contenuti dietro le quinte.",
@@ -1544,7 +1694,7 @@ const TEST_FORM = {
   boughtProducts:"Pre-workout e abbigliamento",
   improvements:"Più contenuti girati dai creator rispetto agli shooting in studio.",
   extra:"Disponibile per una call conoscitiva.",
-  privacyConsent:true, marketingConsent:false
+  privacyConsent:true
 };
 
 /* ============================================================================
@@ -1554,7 +1704,7 @@ const exportCSV = (rows, cfg) => {
   const head = [
     "Data","Ultima modifica","Stato","Nome","Età","Email","Città","Paese","Categoria","Attività",
     "Instagram","Follower IG","TikTok","Follower TikTok",
-    "Visualizzazioni","Interazioni","Nuovi follower",
+    "Visualizzazioni","Account raggiunti","Interazioni","Follower netti",
     "ER %","Reach %","Growth %","Social Performance Score","Livello performance","Fascia follower",
     "Valutazione interna","Brand Fit","Qualità contenuti","Credibilità","Affidabilità","Potenziale","Valore strategico",
     "Codice creator","Note interne",
@@ -1565,7 +1715,7 @@ const exportCSV = (rows, cfg) => {
     "Valore oltre i contenuti","Immagine del rappresentante",
     "Scenario contenuto brand","Periodo di prova","Reazione a contenuto sotto attese","Elementi analizzati","Significato rappresentare",
     "Contenuti/mese","Costanza","Linee guida","Eventi","Shooting","UGC per canali EVORΛ","File originali",
-    "Prodotti acquistati","Miglioramenti","Nota finale","Consenso privacy","Consenso marketing"
+    "Prodotti acquistati","Miglioramenti","Nota finale","Consenso privacy"
   ];
   const line = a => {
     const s = computeSocial(a, cfg);
@@ -1576,7 +1726,7 @@ const exportCSV = (rows, cfg) => {
       fmtDate(a.date), a.updatedAt?fmtDateTime(a.updatedAt):"", statusMeta(a.status).l,
       a.fullName, a.age, a.email, a.city, a.country||"", catLabel(a.category), a.mainActivity||"",
       a.instagram, a.followers, a.tiktok||"", a.tiktokFollowers||"",
-      a.views, a.interactions, a.newFollowers,
+      s.views, s.reached, s.interactions, s.net,
       s.er.toFixed(2), s.reach.toFixed(1), s.growth.toFixed(2), s.socialScore, s.perfLabel, s.bandLabel,
       avg, ev.brandFit||"", ev.contentQuality||"", ev.credibility||"", ev.reliability||"", ev.potential||"", ev.strategicValue||"",
       a.creatorCode||"", a.notes||"",
@@ -1589,7 +1739,7 @@ const exportCSV = (rows, cfg) => {
       a.contentPerMonth||"", a.hasRoutine||"", a.followsGuidelines||"",
       a.availEvents||"", a.availShooting||"", a.availUgc||"", a.availRawFiles||"",
       a.boughtProducts||"", a.improvements||"", a.extra||"",
-      a.privacyConsent?"Sì":"No", a.marketingConsent?"Sì":"No"
+      a.privacyConsent?"Sì":"No"
     ];
   };
   const esc = v => '"'+String(v===undefined||v===null?"":v).replace(/"/g,'""').replace(/\r?\n/g," ")+'"';
@@ -1683,6 +1833,10 @@ function ApplicationsPanel({role, scoring}){
       er:        (a,b)=> b._s.er-a._s.er,
       reach:     (a,b)=> b._s.reach-a._s.reach,
       growth:    (a,b)=> b._s.growth-a._s.growth,
+      views:        (a,b)=> b._s.views-a._s.views,
+      reached:      (a,b)=> b._s.reached-a._s.reached,
+      interactions: (a,b)=> b._s.interactions-a._s.interactions,
+      net:          (a,b)=> b._s.net-a._s.net,
       name:      (a,b)=> String(a.fullName||"").localeCompare(String(b.fullName||""),"it")
     };
     return arr.sort(by[sort]||by.date);
@@ -1796,6 +1950,10 @@ function ApplicationsPanel({role, scoring}){
               <option value="er">Engagement ↓</option>
               <option value="reach">Reach ↓</option>
               <option value="growth">Growth ↓</option>
+              <option value="views">Visualizzazioni ↓</option>
+              <option value="reached">Account raggiunti ↓</option>
+              <option value="interactions">Interazioni ↓</option>
+              <option value="net">Follower netti ↓</option>
               <option value="name">Nome A–Z</option>
             </select>
             <button className="btn btn-ghost btn-sm" onClick={()=>setOpenFilters(o=>!o)}>
@@ -1868,6 +2026,9 @@ function ApplicationsPanel({role, scoring}){
                   </div>
                   <div className="body-sm" style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {a.instagram} · {catLabel(a.category)}{a.city?" · "+a.city:""}
+                  </div>
+                  <div className="label-xs" style={{marginTop:4,color:"var(--t3)",letterSpacing:".06em"}}>
+                    Visual. {fmtShort(s.views)} · Raggiunti {fmtShort(s.reached)} · Interaz. {fmtShort(s.interactions)} · Netti {s.net>0?"+":""}{fmtShort(Math.abs(s.net))}
                   </div>
                   <div className="label-xs" style={{marginTop:3,color: late ? "var(--warn)" : "var(--t4)"}}>
                     {fmtDate(a.date)} · {agoLabel(a.date)}
@@ -2030,13 +2191,16 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
           </div>
           <div className="g3-keep" style={{marginTop:2}}>
             <KV k="Follower TikTok" v={app.tiktokFollowers?fmtInt(app.tiktokFollowers):"—"}/>
-            <KV k="Visualizzazioni (30gg)" v={fmtInt(app.views)}/>
-            <KV k="Interazioni (30gg)" v={fmtInt(app.interactions)}/>
-          </div>
-          <div className="g3-keep" style={{marginTop:2}}>
-            <KV k="Nuovi follower (30gg)" v={"+"+fmtInt(app.newFollowers)}/>
             <KV k="Collaborazioni" v={enumLabel(app.hasBrandCollabs)}/>
             <KV k="Data candidatura" v={fmtDate(app.date)}/>
+          </div>
+
+          <div className="label-xs" style={{margin:"14px 0 8px"}}>Dati degli ultimi 30 giorni</div>
+          <div className="g2">
+            <KV k="Visualizzazioni" v={fmtInt(s.views)}/>
+            <KV k="Account raggiunti" v={fmtInt(s.reached)}/>
+            <KV k="Interazioni" v={fmtInt(s.interactions)}/>
+            <KV k="Follower netti" v={(s.net>0?"+":"")+fmtInt(s.net)} color={s.net<0?"var(--bad)":undefined}/>
           </div>
 
           {links.length>0 && (
@@ -2237,7 +2401,7 @@ function ScoringPanel({scoring, onSaved}){
   const save = async ()=>{
     setBusy(true);
     try{
-      const clean = { ...cfg, bands: cfg.bands.map(b=>({ ...b, max: b.max===Infinity ? null : b.max })) };
+      const clean = { ...cfg, version: SCORING_VERSION, bands: cfg.bands.map(b=>({ ...b, max: b.max===Infinity ? null : b.max })) };
       await FB.saveScoring(clean);
       onSaved(normalizeScoring(clean));
       setMsg("Configurazione salvata"); setTimeout(()=>setMsg(""),2200);
