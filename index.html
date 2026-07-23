@@ -12,6 +12,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Questrial&display=swap');
@@ -63,15 +64,34 @@ a{color:inherit;}
 .divider{height:1px;background:var(--brd);}
 
 /* ---------- NAV ---------- */
-.nav{position:sticky;top:0;z-index:900;background:rgba(14,14,14,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--brd);}
-.nav-in{display:flex;align-items:center;justify-content:space-between;height:64px;gap:12px;}
-.nav-logo{height:26px;width:auto;}
-.nav-links{display:flex;align-items:center;gap:22px;}
-.nav-link{font-family:var(--fh);font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);text-decoration:none;transition:color .18s;}
-.nav-link:hover{color:var(--t1);}
-@media(max-width:800px){.nav-links{display:none;}}
-.only-mobile{display:none;}
-@media(max-width:800px){.only-mobile{display:flex;}}
+.nav{position:sticky;top:0;z-index:900;background:rgba(14,14,14,.96);backdrop-filter:blur(14px);border-bottom:1px solid var(--brd);}
+.nav-link{font-family:var(--fh);font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);text-decoration:none;transition:color .18s;background:none;border:none;cursor:pointer;padding:6px 2px;}
+.nav-link:hover,.nav-link:focus-visible{color:var(--t1);}
+
+/* Header pubblico desktop: logo centrato sopra, sezioni sotto */
+.hd{display:none;}
+@media(min-width:861px){
+  .hd{display:block;padding:16px 0 0;}
+  .hd-logo{display:flex;justify-content:center;margin-bottom:12px;}
+  .hd-nav{display:flex;justify-content:center;align-items:center;gap:32px;padding-bottom:12px;}
+}
+
+/* Header pubblico mobile: logo centrato + hamburger */
+.hm{display:flex;align-items:center;justify-content:center;height:58px;position:relative;}
+@media(min-width:861px){.hm{display:none;}}
+.hm-burger{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:none;border:none;cursor:pointer;}
+.hm-burger span{display:block;width:20px;height:2px;background:var(--t2);transition:transform .25s,opacity .2s;}
+.hm-burger[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg);}
+.hm-burger[aria-expanded="true"] span:nth-child(2){opacity:0;}
+.hm-burger[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
+.hm-panel{border-top:1px solid var(--brd);background:var(--bg);overflow:hidden;max-height:0;transition:max-height .28s ease;}
+.hm-panel.open{max-height:340px;}
+.hm-item{display:block;width:100%;text-align:left;padding:16px 20px;border-bottom:1px solid var(--brd);background:none;border-left:none;border-right:none;border-top:none;color:var(--t2);font-family:var(--fh);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;}
+.hm-item:active{background:var(--surf);}
+
+/* Compensa l'header fisso quando si salta a una sezione */
+section[id]{scroll-margin-top:120px;}
+@media(max-width:860px){section[id]{scroll-margin-top:72px;}}
 
 /* ---------- BOTTONI ---------- */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--fh);font-weight:700;font-size:12px;letter-spacing:.18em;text-transform:uppercase;padding:16px 30px;border:1px solid transparent;cursor:pointer;transition:all .18s;text-decoration:none;min-height:48px;}
@@ -202,6 +222,9 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
+// La sessione non sopravvive alla chiusura della scheda.
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(()=>{});
 </script>
 
 <script type="text/babel">
@@ -221,12 +244,14 @@ const BRAND = {
 };
 
 // Endpoint invariati — non modificare senza aggiornare il servizio corrispondente.
-const OCR_PROXY   = "https://throbbing-feather-957f.francesco87-mazzeo.workers.dev";
+const WORKER_BASE = "https://throbbing-feather-957f.francesco87-mazzeo.workers.dev";
+const OCR_PROXY   = WORKER_BASE;              // compatibilità: la radice resta l'endpoint OCR
+const AUTH_URL    = WORKER_BASE + "/auth";    // verifica del codice, lato server
+const NOTIFY_URL  = WORKER_BASE + "/notify";  // notifica Telegram, token lato server
 const OCR_MODEL   = "claude-sonnet-4-5";
-const TELEGRAM_API= "https://api.telegram.org/bot";
 
-const FALLBACK_ADMIN_PASS   = "evora2025";
-const FALLBACK_MANAGER_PASS = "evora_smm";
+// I codici di accesso non esistono più nel frontend: vivono nei secret del Worker.
+const SESSION_HOURS = 8;
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // limite del file scelto dall'utente
 const MAX_STORED_BYTES = 700000;           // limite del base64 salvato: il documento Firestore non può superare 1 MiB
@@ -313,12 +338,69 @@ const FB = {
 };
 
 /* ============================================================================
+   2b. AUTENTICAZIONE STAFF
+   Il codice viaggia verso il Worker, che lo confronta con i propri secret e
+   restituisce un token Firebase contenente il ruolo. Il ruolo arriva quindi
+   firmato dal server: modificarlo dal browser non produce alcun effetto,
+   perché le regole Firestore leggono il claim del token, non lo stato React.
+   ========================================================================== */
+const AUTH = {
+  async login(code){
+    let res;
+    try{
+      res = await fetch(AUTH_URL, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ code })
+      });
+    }catch(e){ throw new Error("Servizio di accesso non raggiungibile."); }
+
+    let data = {};
+    try{ data = await res.json(); }catch(e){}
+
+    if(res.status===401) throw new Error("Codice non riconosciuto.");
+    if(res.status===429) throw new Error("Troppi tentativi. Riprova tra qualche minuto.");
+    if(!res.ok || !data.token) throw new Error(data.error || "Accesso non riuscito.");
+
+    await auth.signInWithCustomToken(data.token);
+    const t = await auth.currentUser.getIdTokenResult(true);
+    const role = t.claims.role;
+    if(role!=="admin" && role!=="manager"){
+      await auth.signOut();
+      throw new Error("Ruolo non valido.");
+    }
+    sessionStorage.setItem("evora_login_at", String(Date.now()));
+    return role;
+  },
+
+  /** Ruolo corrente letto dal token firmato, mai da uno stato locale. */
+  async currentRole(){
+    const u = auth.currentUser;
+    if(!u) return null;
+    const started = parseInt(sessionStorage.getItem("evora_login_at")||"0",10);
+    if(!started || Date.now()-started > SESSION_HOURS*3600*1000){
+      await AUTH.logout();
+      return null;
+    }
+    try{
+      const t = await u.getIdTokenResult();
+      const r = t.claims.role;
+      return (r==="admin"||r==="manager") ? r : null;
+    }catch(e){ return null; }
+  },
+
+  async logout(){
+    sessionStorage.removeItem("evora_login_at");
+    try{ await auth.signOut(); }catch(e){}
+  }
+};
+
+/* ============================================================================
    3. OCR — lettura automatica Insights.
    Formato richiesta identico all'originale: NON modificare senza aggiornare
    il Cloudflare Worker.
    ========================================================================== */
-const extractInsights = async (base64Image, apiKey) => {
-  if(!apiKey) throw new Error("Lettura automatica non configurata");
+const extractInsights = async (base64Image) => {
   const parts = base64Image.split(",");
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
@@ -327,9 +409,9 @@ const extractInsights = async (base64Image, apiKey) => {
   try{
     res = await fetch(OCR_PROXY, {
       method:"POST",
+      // La chiave Anthropic resta nei secret del Worker: il browser non la vede mai.
       headers:{
         "Content-Type":"application/json",
-        "x-api-key": apiKey,
         "anthropic-version":"2023-06-01"
       },
       body: JSON.stringify({
@@ -369,12 +451,16 @@ const extractInsights = async (base64Image, apiKey) => {
 /* ============================================================================
    4. TELEGRAM — invariato
    ========================================================================== */
-const sendTelegram = async (botToken, chatId, message) => {
+/**
+ * Invia la notifica tramite il Worker: token e chat ID restano server-side.
+ * Il browser non conosce né l'uno né l'altro.
+ */
+const sendTelegram = async (message) => {
   try{
-    const res = await fetch(TELEGRAM_API + botToken + "/sendMessage", {
+    const res = await fetch(NOTIFY_URL, {
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ chat_id:chatId, text:message, parse_mode:"HTML", disable_web_page_preview:true })
+      body: JSON.stringify({ text: message })
     });
     return await res.json();
   }catch(e){ return { ok:false, description:e.message }; }
@@ -708,38 +794,63 @@ const PROCESS = [
   ["05","Proposta di collaborazione","Definiamo insieme forma, obiettivi e durata."]
 ];
 
-function PublicNav({onApply, onAdmin}){
+const NAV_SECTIONS = [
+  {id:"progetto", l:"Il progetto"},
+  {id:"profili",  l:"Chi cerchiamo"},
+  {id:"criteri",  l:"Criteri"},
+  {id:"processo", l:"Processo"}
+];
+
+function PublicNav(){
+  const [open,setOpen] = useState(false);
+
+  const goTo = (id) => {
+    setOpen(false);
+    const el = document.getElementById(id);
+    if(el) el.scrollIntoView({behavior:"smooth", block:"start"});
+  };
+
   return (
     <nav className="nav">
-      <div className="wrap nav-in">
-        <a href={BRAND.siteUrl} target="_blank" rel="noopener noreferrer" aria-label="EVORΛ">
-          <Logo height={24} className="nav-logo"/>
-        </a>
-        <div className="nav-links">
-          <a href="#progetto" className="nav-link">Il progetto</a>
-          <a href="#profili" className="nav-link">Chi cerchiamo</a>
-          <a href="#criteri" className="nav-link">Criteri</a>
-          <a href="#processo" className="nav-link">Processo</a>
-          <button className="btn btn-primary btn-sm" onClick={onApply}>Candidati</button>
-          <button className="nav-link" style={{background:"none",border:"none",cursor:"pointer"}} onClick={onAdmin}>Area riservata</button>
+      {/* Desktop: logo centrato in alto, sezioni sotto */}
+      <div className="hd">
+        <div className="wrap">
+          <div className="hd-logo"><Logo height={30}/></div>
+          <div className="hd-nav">
+            {NAV_SECTIONS.map(s=>(
+              <button key={s.id} className="nav-link" onClick={()=>goTo(s.id)}>{s.l}</button>
+            ))}
+          </div>
         </div>
-        <div style={{display:"flex",gap:8}} className="only-mobile">
-          <button className="btn btn-primary btn-sm" onClick={onApply}>Candidati</button>
+      </div>
+
+      {/* Mobile: logo centrato + hamburger */}
+      <div className="wrap">
+        <div className="hm">
+          <Logo height={24}/>
+          <button className="hm-burger" aria-expanded={open} aria-controls="menu-mobile"
+            aria-label={open?"Chiudi il menu":"Apri il menu"} onClick={()=>setOpen(o=>!o)}>
+            <span/><span/><span/>
+          </button>
         </div>
+      </div>
+      <div id="menu-mobile" className={"hm-panel"+(open?" open":"")}>
+        {NAV_SECTIONS.map(s=>(
+          <button key={s.id} className="hm-item" onClick={()=>goTo(s.id)}>{s.l}</button>
+        ))}
       </div>
     </nav>
   );
 }
 
-function Landing({onApply, onAdmin}){
+function Landing({onApply}){
   return (
     <div>
-      <PublicNav onApply={onApply} onAdmin={onAdmin}/>
+      <PublicNav/>
 
       {/* ---------- HERO ---------- */}
       <header style={{borderBottom:"1px solid var(--brd)",background:"radial-gradient(ellipse at 50% -10%, rgba(178,34,34,.16) 0%, transparent 62%)"}}>
         <div className="wrap" style={{padding:"72px 20px 76px",textAlign:"center",animation:"fadeUp .7s ease both"}}>
-          <Logo height={44} style={{margin:"0 auto 26px"}}/>
           <div className="eyebrow" style={{marginBottom:18}}>{BRAND.program}</div>
           <h1 className="h-xl" style={{maxWidth:820,margin:"0 auto 22px"}}>
             Non cerchiamo semplicemente visibilità.<br/>
@@ -907,10 +1018,7 @@ function Landing({onApply, onAdmin}){
         <div className="wrap" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,textAlign:"center"}}>
           <Logo height={22}/>
           <div className="label-xs" style={{color:"var(--t4)"}}>{BRAND.program} · Partner Program</div>
-          <div style={{display:"flex",gap:18,flexWrap:"wrap",justifyContent:"center"}}>
-            <a href={BRAND.siteUrl} target="_blank" rel="noopener noreferrer" className="nav-link">evorafitness.it</a>
-            <button className="nav-link" style={{background:"none",border:"none",cursor:"pointer"}} onClick={onAdmin}>Area riservata</button>
-          </div>
+          <a href={BRAND.siteUrl} target="_blank" rel="noopener noreferrer" className="nav-link">evorafitness.it</a>
         </div>
       </footer>
     </div>
@@ -971,8 +1079,6 @@ function CharField({id, value, onChange, max, rows=4, placeholder, error, invali
 
 /** Notifica al team. Volutamente separata dall'invio: non deve mai bloccarlo. */
 const notifyTelegram = async (doc, s) => {
-  const st = await FB.getSettings();
-  if(!st.tgToken || !st.tgChatId) return;
   const msg =
     "🔔 <b>"+BRAND.program+"</b>\nNuova candidatura\n\n"+
     "👤 <b>"+doc.fullName+"</b>\n"+
@@ -985,8 +1091,8 @@ const notifyTelegram = async (doc, s) => {
     "📈 Follower netti: "+(doc.netFollowers>0?"+":"")+fmtInt(doc.netFollowers)+"\n\n"+
     "ER "+s.er.toFixed(2)+"% · Reach "+s.reach.toFixed(1)+"% · Growth "+s.growth.toFixed(2)+"%\n"+
     "📊 Social Performance Score: <b>"+s.socialScore+"/100</b> · "+s.perfLabel;
-  const r = await sendTelegram(st.tgToken, st.tgChatId, msg);
-  if(!r.ok) console.error("Telegram ha rifiutato il messaggio:", r.description);
+  const r = await sendTelegram(msg);
+  if(!r.ok) console.error("Notifica non inviata:", r.description);
 };
 
 function ApplicationForm({onBack, testMode=false}){
@@ -1033,8 +1139,7 @@ function ApplicationForm({onBack, testMode=false}){
     }
     setOcrState("analyzing");
     try{
-      const cfg = await FB.getSettings();
-      const d = await extractInsights(img, cfg.apiKey);
+      const d = await extractInsights(img);
       setForm(p=>({...p,
         views:           String(d.views),
         netFollowers:    String(d.netFollowers),
@@ -2514,95 +2619,90 @@ function ScoringPanel({scoring, onSaved}){
    14. IMPOSTAZIONI (solo admin)
    ========================================================================== */
 function SettingsPanel(){
-  const [st,setSt]     = useState({});
-  const [load,setLoad] = useState(true);
-  const [show,setShow] = useState(false);
-  const [msg,setMsg]   = useState("");
-  const [tgMsg,setTgMsg] = useState("");
+  const [tgTest,setTgTest] = useState("");
+  const [busy,setBusy]     = useState(false);
 
-  useEffect(()=>{ FB.getSettings().then(s=>{setSt(s);setLoad(false);}).catch(()=>setLoad(false)); },[]);
-
-  const save = async patch => {
-    try{ await FB.saveSettings(patch); setSt(p=>({...p,...patch})); setMsg("Salvato"); setTimeout(()=>setMsg(""),2000); }
-    catch(e){ setMsg("Errore nel salvataggio"); }
+  const testNotifica = async ()=>{
+    setBusy(true); setTgTest("Invio in corso…");
+    const r = await sendTelegram("✅ <b>"+BRAND.program+"</b> — canale di notifica attivo.");
+    setTgTest(r.ok ? "Messaggio inviato. Controlla Telegram."
+                   : "Non inviato: "+(r.description||"verifica i secret TG_TOKEN e TG_CHAT sul Worker."));
+    setBusy(false);
   };
 
-  const testTg = async ()=>{
-    if(!st.tgToken || !st.tgChatId){ setTgMsg("Inserisci token e chat ID."); return; }
-    setTgMsg("Invio in corso…");
-    const r = await sendTelegram(st.tgToken, st.tgChatId, "✅ <b>"+BRAND.program+"</b> — notifiche configurate correttamente.");
-    setTgMsg(r.ok ? "Messaggio inviato. Controlla Telegram." : "Errore: "+(r.description||"verifica token e chat ID"));
-  };
-
-  if(load) return <div style={{padding:60,textAlign:"center"}}><div className="label-xs">Caricamento…</div></div>;
+  const Item = ({name, where, note}) => (
+    <div style={{display:"flex",gap:12,padding:"14px 0",borderBottom:"1px solid var(--brd)"}}>
+      <span className="dot" style={{background:"var(--ok)",marginTop:7}}/>
+      <div style={{minWidth:0}}>
+        <div style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:13,color:"var(--t1)"}}>{name}</div>
+        <div className="body-sm" style={{fontSize:13,marginTop:2}}>{where}</div>
+        {note && <div className="body-sm" style={{fontSize:12,color:"var(--t4)",marginTop:4}}>{note}</div>}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{flex:1,overflow:"auto"}}>
       <div className="wrap-panel" style={{padding:"22px 16px 80px",maxWidth:720}}>
-        <h2 className="h-md" style={{marginBottom:22}}>Impostazioni</h2>
+        <h2 className="h-md" style={{marginBottom:8}}>Impostazioni</h2>
+        <p className="body-sm" style={{marginBottom:24,maxWidth:620}}>
+          Chiavi, token e codici di accesso non risiedono più nel sito: sono conservati come secret
+          del Cloudflare Worker. Il browser non può leggerli, nemmeno aprendo il codice sorgente.
+        </p>
 
-        {/* LETTURA AUTOMATICA */}
         <div className="panel" style={{padding:18,marginBottom:14}}>
-          <div className="h-sm" style={{marginBottom:6}}>Lettura automatica Insights</div>
-          <p className="body-sm" style={{marginBottom:16}}>
-            Chiave usata dal proxy per la lettura degli screenshot. È salvata su Firestore e non compare mai nel codice pubblicato.
+          <div className="h-sm" style={{marginBottom:6}}>Configurazioni server-side</div>
+          <p className="body-sm" style={{marginBottom:8}}>
+            Si modificano dalla dashboard Cloudflare: Workers &amp; Pages → il tuo Worker →
+            Settings → Variables and Secrets.
           </p>
-          <Field label="Chiave API">
-            <div style={{display:"flex",gap:6}}>
-              <input type={show?"text":"password"} value={st.apiKey||""} placeholder="sk-ant-…"
-                onChange={e=>setSt(p=>({...p,apiKey:e.target.value}))}/>
-              <button className="btn btn-ghost btn-sm" style={{flexShrink:0}} onClick={()=>setShow(s=>!s)}>{show?"Nascondi":"Mostra"}</button>
-            </div>
-          </Field>
-          <button className="btn btn-primary btn-sm" onClick={()=>save({apiKey:(st.apiKey||"").trim()})}>Salva chiave</button>
-          {st.apiKey && <div className="label-xs" style={{color:"var(--ok)",marginTop:10}}>Lettura automatica attiva</div>}
+          <Item name="ANTHROPIC_KEY"  where="Chiave usata per la lettura automatica degli screenshot."/>
+          <Item name="TG_TOKEN · TG_CHAT" where="Bot e destinazione delle notifiche di nuova candidatura."/>
+          <Item name="ADMIN_CODE"     where="Codice di accesso con permessi completi."/>
+          <Item name="MANAGER_CODE"   where="Codice di accesso con permessi limitati."
+                note="Dopo la modifica di un codice il Worker si aggiorna da solo: nessun intervento sul sito."/>
+          <Item name="FIREBASE_SERVICE_ACCOUNT" where="Credenziale con cui il Worker firma il ruolo di chi accede."
+                note="Da sostituire solo se rigeneri la chiave dalla console Firebase."/>
         </div>
 
-        {/* TELEGRAM */}
         <div className="panel" style={{padding:18,marginBottom:14}}>
-          <div className="h-sm" style={{marginBottom:6}}>Notifiche Telegram</div>
-          <p className="body-sm" style={{marginBottom:16}}>
-            Una notifica per ogni nuova candidatura. Per i gruppi l'ID inizia con <strong>-100</strong>.
+          <div className="h-sm" style={{marginBottom:6}}>Verifica notifiche</div>
+          <p className="body-sm" style={{marginBottom:14}}>
+            Invia un messaggio di prova sul canale Telegram configurato.
+          </p>
+          <button className="btn btn-ghost btn-sm" onClick={testNotifica} disabled={busy}>
+            Invia messaggio di prova
+          </button>
+          {tgTest && <div className="label-xs" style={{marginTop:12,color:"var(--t2)"}}>{tgTest}</div>}
+        </div>
+
+        <div className="panel" style={{padding:18}}>
+          <div className="h-sm" style={{marginBottom:6}}>Permessi in vigore</div>
+          <p className="body-sm" style={{marginBottom:14}}>
+            I limiti sono applicati dalle regole del database, non solo dall'interfaccia.
+            Un Manager che tentasse un'operazione riservata riceverebbe un rifiuto dal server.
           </p>
           <div className="g2-gap">
-            <Field label="Bot token">
-              <input type="password" value={st.tgToken||""} placeholder="123456:ABC-DEF…"
-                onChange={e=>setSt(p=>({...p,tgToken:e.target.value}))}/>
-            </Field>
-            <Field label="Chat ID">
-              <input value={st.tgChatId||""} placeholder="-1001234567890"
-                onChange={e=>setSt(p=>({...p,tgChatId:e.target.value}))}/>
-            </Field>
+            <div>
+              <div className="label-xs" style={{marginBottom:8,color:"#B22222"}}>Admin</div>
+              <div className="body-sm" style={{fontSize:13,lineHeight:1.9}}>
+                Candidature · Stati · Note · Valutazione<br/>
+                Codici creator · Export<br/>
+                Eliminazione candidature<br/>
+                Benchmark e pesi · Impostazioni
+              </div>
+            </div>
+            <div>
+              <div className="label-xs" style={{marginBottom:8,color:"#C0A060"}}>Manager</div>
+              <div className="body-sm" style={{fontSize:13,lineHeight:1.9}}>
+                Candidature · Stati · Note · Valutazione<br/>
+                Codici creator · Export<br/>
+                <span style={{color:"var(--t4)"}}>Nessuna eliminazione</span><br/>
+                <span style={{color:"var(--t4)"}}>Nessun accesso a scoring e impostazioni</span>
+              </div>
+            </div>
           </div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-            <button className="btn btn-primary btn-sm" onClick={()=>save({tgToken:(st.tgToken||"").trim(),tgChatId:(st.tgChatId||"").trim()})}>Salva</button>
-            <button className="btn btn-ghost btn-sm" onClick={testTg}>Invia messaggio di prova</button>
-          </div>
-          {tgMsg && <div className="label-xs" style={{marginTop:10,color:"var(--t2)"}}>{tgMsg}</div>}
         </div>
-
-        {/* ACCESSI */}
-        <div className="panel" style={{padding:18}}>
-          <div className="h-sm" style={{marginBottom:6}}>Accessi</div>
-          <p className="body-sm" style={{marginBottom:16}}>
-            Due livelli: Admin (accesso completo) e Manager (gestione candidature).
-            Le password sono salvate su Firestore e valgono su tutti i dispositivi.
-          </p>
-          <Field label="Password Admin" hint="Solo per te.">
-            <input type="password" value={st.adminPass||""} placeholder="Nuova password admin"
-              onChange={e=>setSt(p=>({...p,adminPass:e.target.value}))}/>
-          </Field>
-          <button className="btn btn-primary btn-sm" style={{marginBottom:22}}
-            onClick={()=>save({adminPass:(st.adminPass||"").trim()})}>Aggiorna password admin</button>
-
-          <Field label="Password Manager" hint="Da condividere con chi gestisce le candidature.">
-            <input type="text" value={st.managerPass||""} placeholder="Nuova password manager"
-              onChange={e=>setSt(p=>({...p,managerPass:e.target.value}))}/>
-          </Field>
-          <button className="btn btn-primary btn-sm" onClick={()=>save({managerPass:(st.managerPass||"").trim()})}>Aggiorna password manager</button>
-        </div>
-
-        {msg && <div className="label-xs" style={{color:"var(--ok)",marginTop:16}}>{msg}</div>}
       </div>
     </div>
   );
@@ -2612,12 +2712,34 @@ function SettingsPanel(){
    15. AREA RISERVATA
    ========================================================================== */
 function AdminPanel({onBack, onTestForm}){
-  const [role,setRole]     = useState(null);
-  const [pw,setPw]         = useState("");
-  const [err,setErr]       = useState("");
-  const [checking,setChk]  = useState(false);
-  const [tab,setTab]       = useState("apps");
+  const [role,setRole]       = useState(null);
+  const [ready,setReady]     = useState(false);   // sessione già verificata?
+  const [code,setCode]       = useState("");
+  const [err,setErr]         = useState("");
+  const [checking,setChk]    = useState(false);
+  const [tab,setTab]         = useState("apps");
   const [scoring,setScoring] = useState(DEFAULT_SCORING);
+
+  // Ripristina una sessione ancora valida senza richiedere di nuovo il codice.
+  useEffect(()=>{
+    let alive = true;
+    const stop = auth.onAuthStateChanged(async ()=>{
+      const r = await AUTH.currentRole();
+      if(!alive) return;
+      setRole(r); setReady(true);
+    });
+    return ()=>{ alive=false; stop(); };
+  },[]);
+
+  // Scadenza controllata anche a scheda aperta.
+  useEffect(()=>{
+    if(!role) return;
+    const t = setInterval(async ()=>{
+      const r = await AUTH.currentRole();
+      if(!r){ setRole(null); setErr("Sessione scaduta. Inserisci di nuovo il codice."); }
+    }, 60000);
+    return ()=>clearInterval(t);
+  },[role]);
 
   useEffect(()=>{
     if(!role) return;
@@ -2625,36 +2747,49 @@ function AdminPanel({onBack, onTestForm}){
   },[role]);
 
   const login = async ()=>{
+    const v = code.trim();
+    if(!v){ setErr("Inserisci il codice di accesso."); return; }
     setChk(true); setErr("");
-    let cfg={};
-    try{ cfg = await FB.getSettings(); }catch(e){}
-    const admin   = (cfg.adminPass   || FALLBACK_ADMIN_PASS).trim();
-    const manager = (cfg.managerPass || FALLBACK_MANAGER_PASS).trim();
-    const v = pw.trim();
-    if(v && v===admin)        setRole("admin");
-    else if(v && v===manager) setRole("manager");
-    else setErr("Password non riconosciuta.");
-    setChk(false);
+    try{
+      const r = await AUTH.login(v);
+      setRole(r); setCode("");
+    }catch(e){
+      setErr(e.message || "Accesso non riuscito.");
+    }finally{ setChk(false); }
   };
 
+  const logout = async ()=>{ await AUTH.logout(); setRole(null); setTab("apps"); };
+
+  if(!ready) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div className="spinner" style={{width:26,height:26}}/>
+    </div>
+  );
+
   if(!role) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{width:"100%",maxWidth:380,animation:"fadeUp .5s ease both"}}>
-        <Logo height={30} style={{marginBottom:26}}/>
-        <h1 className="h-md" style={{marginBottom:8}}>Area riservata</h1>
-        <p className="body-sm" style={{marginBottom:24}}>Accesso limitato al team {BRAND.program}.</p>
-        <Field label="Password" error={err} htmlFor="pw">
-          <input id="pw" type="password" value={pw} autoFocus aria-invalid={err?"true":"false"}
-            onChange={e=>{setPw(e.target.value);setErr("");}}
-            onKeyDown={e=>e.key==="Enter"&&login()} placeholder="••••••••"/>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"32px 20px"}}>
+      <div style={{width:"100%",maxWidth:400,animation:"fadeUp .5s ease both"}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:30}}><Logo height={32}/></div>
+        <h1 className="h-md" style={{marginBottom:8,textAlign:"center"}}>Accesso riservato</h1>
+        <p className="body-sm" style={{marginBottom:26,textAlign:"center"}}>
+          Inserisci il codice fornito dal team {BRAND.program}.
+        </p>
+        <Field label="Codice di accesso" error={err} htmlFor="access-code">
+          <input id="access-code" type="password" value={code} autoFocus autoComplete="off"
+            aria-invalid={err?"true":"false"} style={{fontSize:16,padding:"16px 15px",letterSpacing:".08em"}}
+            onChange={e=>{setCode(e.target.value);setErr("");}}
+            onKeyDown={e=>e.key==="Enter"&&!checking&&login()}
+            placeholder="••••••••"/>
         </Field>
         <button className="btn btn-primary" style={{width:"100%"}} onClick={login} disabled={checking}>
-          {checking?"Verifica…":"Accedi"}
+          {checking?"Verifica in corso…":"Accedi"}
         </button>
-        <button className="btn btn-ghost" style={{width:"100%",marginTop:8}} onClick={onBack}>Torna al sito</button>
+        <button className="btn btn-ghost" style={{width:"100%",marginTop:8}} onClick={onBack}>Torna alla home</button>
       </div>
     </div>
   );
+
+  const isAdmin = role==="admin";
 
   return (
     <div className="admin-shell">
@@ -2662,11 +2797,11 @@ function AdminPanel({onBack, onTestForm}){
         <div className="wrap-panel admin-bar-in">
           <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
             <Logo height={20}/>
-            <Badge color={role==="admin"?"#B22222":"#C0A060"}>{role==="admin"?"Admin":"Manager"}</Badge>
+            <Badge color={isAdmin?"#B22222":"#C0A060"}>{isAdmin?"Admin":"Manager"}</Badge>
           </div>
           <div style={{display:"flex",gap:8}}>
-            {role==="admin" && <button className="btn btn-ghost btn-sm" onClick={onTestForm}>Form di prova</button>}
-            <button className="btn btn-ghost btn-sm" onClick={()=>{setRole(null);setPw("");}}>Esci</button>
+            {isAdmin && <button className="btn btn-ghost btn-sm" onClick={onTestForm}>Form di prova</button>}
+            <button className="btn btn-ghost btn-sm" onClick={logout}>Esci</button>
           </div>
         </div>
       </div>
@@ -2674,14 +2809,14 @@ function AdminPanel({onBack, onTestForm}){
       <div className="tabs">
         <div className="wrap-panel" style={{display:"flex",padding:0}}>
           <button className={"tab"+(tab==="apps"?" tab-on":"")} onClick={()=>setTab("apps")}>Candidature</button>
-          {role==="admin" && <button className={"tab"+(tab==="scoring"?" tab-on":"")} onClick={()=>setTab("scoring")}>Scoring</button>}
-          {role==="admin" && <button className={"tab"+(tab==="settings"?" tab-on":"")} onClick={()=>setTab("settings")}>Impostazioni</button>}
+          {isAdmin && <button className={"tab"+(tab==="scoring"?" tab-on":"")} onClick={()=>setTab("scoring")}>Scoring</button>}
+          {isAdmin && <button className={"tab"+(tab==="settings"?" tab-on":"")} onClick={()=>setTab("settings")}>Impostazioni</button>}
         </div>
       </div>
 
       {tab==="apps"     && <ApplicationsPanel role={role} scoring={scoring}/>}
-      {tab==="scoring"  && role==="admin" && <ScoringPanel scoring={scoring} onSaved={setScoring}/>}
-      {tab==="settings" && role==="admin" && <SettingsPanel/>}
+      {tab==="scoring"  && isAdmin && <ScoringPanel scoring={scoring} onSaved={setScoring}/>}
+      {tab==="settings" && isAdmin && <SettingsPanel/>}
     </div>
   );
 }
@@ -2690,14 +2825,32 @@ function AdminPanel({onBack, onTestForm}){
    16. APP
    ========================================================================== */
 function App(){
-  const [view,setView] = useState("landing");
+  const routeFromHash = () => (window.location.hash||"").toLowerCase()==="#admin" ? "admin" : "landing";
+  const [view,setView] = useState(routeFromHash);
+
+  // L'accesso staff esiste solo come indirizzo diretto: /#admin
+  useEffect(()=>{
+    const onHash = () => {
+      const r = routeFromHash();
+      setView(v => (r==="admin" || v==="admin") ? r : v);
+    };
+    window.addEventListener("hashchange", onHash);
+    return ()=>window.removeEventListener("hashchange", onHash);
+  },[]);
+
   useEffect(()=>{ window.scrollTo(0,0); },[view]);
+
+  const goHome = () => {
+    if(window.location.hash) history.replaceState(null,"",window.location.pathname+window.location.search);
+    setView("landing");
+  };
+
   return (
     <>
-      {view==="landing"   && <Landing onApply={()=>setView("apply")} onAdmin={()=>setView("admin")}/>}
+      {view==="landing"   && <Landing onApply={()=>setView("apply")}/>}
       {view==="apply"     && <ApplicationForm onBack={()=>setView("landing")}/>}
       {view==="apply-test"&& <ApplicationForm onBack={()=>setView("admin")} testMode={true}/>}
-      {view==="admin"     && <AdminPanel onBack={()=>setView("landing")} onTestForm={()=>setView("apply-test")}/>}
+      {view==="admin"     && <AdminPanel onBack={goHome} onTestForm={()=>setView("apply-test")}/>}
     </>
   );
 }
