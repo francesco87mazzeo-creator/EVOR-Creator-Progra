@@ -1962,8 +1962,8 @@ function ApplicationForm({onBack, testMode=false}){
           </button>
           {step < STEPS.length-1 ? (
             <button className="btn btn-primary" style={{flex:2}} onClick={next}
-              disabled={ocrState==="reading"||ocrState==="analyzing"}>
-              {ocrState==="analyzing" ? "Lettura in corso…" : "Avanti"}
+              disabled={ocr1.state==="reading"||ocr1.state==="analyzing"||ocr2.state==="reading"||ocr2.state==="analyzing"}>
+              {(ocr1.state==="analyzing"||ocr2.state==="analyzing") ? "Lettura in corso…" : "Avanti"}
             </button>
           ) : (
             <button className="btn btn-primary" style={{flex:2}} onClick={submit} disabled={saving}>
