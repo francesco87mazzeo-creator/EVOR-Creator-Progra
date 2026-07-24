@@ -2398,6 +2398,24 @@ const ENUM_LABELS = {
 };
 const enumLabel = v => ENUM_LABELS[v] || (v || "—");
 
+/** Categorie mostrate come badge multipli, con fallback al vecchio campo `category` singolo. */
+const categoriesOf = a => {
+  const list = Array.isArray(a.profileCategories) ? a.profileCategories.filter(Boolean) : [];
+  if(list.length) return list;
+  if(a.category)  return [a.category];
+  return [];
+};
+
+/** Restituisce URL e handle "puliti" gestendo anche le candidature precedenti. */
+const socialLink = (a, net) => {
+  const url    = net==="tiktok" ? a.tiktokUrl    : a.instagramUrl;
+  const handle = net==="tiktok" ? a.tiktokHandle : a.instagramHandle;
+  const raw    = net==="tiktok" ? a.tiktok       : a.instagram;
+  if(url && handle) return { url, handle };
+  const p = parseSocial(raw, net);
+  return p.handle ? { url:p.url, handle:p.handle } : { url:"", handle:"" };
+};
+
 function Section({title, children}){
   return (
     <section style={{marginBottom:24}}>
