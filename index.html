@@ -201,6 +201,16 @@ select option{background:var(--surf-2);color:var(--t1);}
 }
 .g3-keep{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 
+.pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+@media(max-width:520px){.pick-grid{grid-template-columns:1fr;}}
+.pick{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg-2);border:1px solid var(--brd);cursor:pointer;transition:border-color .18s,background .18s;min-height:48px;}
+.pick:hover{border-color:var(--brd-hi);}
+.pick.on{background:rgba(178,34,34,.10);border-color:var(--red);}
+.pick input{width:18px;height:18px;flex-shrink:0;accent-color:var(--red);cursor:pointer;margin:0;}
+.pick span{font-family:var(--fh);font-weight:600;font-size:13px;color:var(--t2);line-height:1.35;}
+.pick.on span{color:var(--t1);}
+.kv a{color:var(--info);text-decoration:none;word-break:break-word;}
+.kv a:hover{text-decoration:underline;}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 </style>
 </head>
@@ -421,7 +431,7 @@ const extractInsights = async (base64Image) => {
           role:"user",
           content:[
             { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
-            { type:"text", text:"Questo screenshot proviene dalla Dashboard per professionisti di Instagram, sezione Visualizzazioni, periodo 30 giorni. Estrai esattamente questi quattro valori: Visualizzazioni, Follower netti, Interazioni, Account raggiunti. Rispondi SOLO con questo JSON: {\"views\":\"\",\"netFollowers\":\"\",\"interactions\":\"\",\"accountsReached\":\"\"}. Riporta ogni numero esattamente come appare nello screenshot, mantenendo separatori e il segno + o - dei follower netti. Se un valore non è visibile scrivi \"0\". Nessun altro testo." }
+            { type:"text", text:"Questo screenshot proviene dalla Dashboard per professionisti di Instagram, sezione Visualizzazioni, periodo 30 giorni. Estrai esattamente questi quattro valori: Visualizzazioni, Follower netti, Interazioni, Account raggiunti. Rispondi SOLO con questo JSON: {\"views\":null,\"netFollowers\":null,\"interactions\":null,\"accountsReached\":null}. Riporta ogni numero esattamente come appare nello screenshot, mantenendo separatori e il segno + o - dei follower netti. Se un valore non è visibile lascia null. Nessun altro testo." }
           ]
         }]
       })
@@ -440,11 +450,18 @@ const extractInsights = async (base64Image) => {
   let parsed;
   try{ parsed = JSON.parse(match[0]); }
   catch(e){ throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili."); }
+  // Un dato mancante resta null: 0 sarebbe stato indistinguibile da un valore reale a zero.
+  const num = v => {
+    if(v===null || v===undefined) return null;
+    const s = String(v).trim().toLowerCase();
+    if(s==="" || s==="null" || s==="n/a" || s==="-") return null;
+    return toNum(v);
+  };
   return {
-    views:           toNum(parsed.views),
-    netFollowers:    toNum(parsed.netFollowers),
-    interactions:    toNum(parsed.interactions),
-    accountsReached: toNum(parsed.accountsReached)
+    views:           num(parsed.views),
+    netFollowers:    num(parsed.netFollowers),
+    interactions:    num(parsed.interactions),
+    accountsReached: num(parsed.accountsReached)
   };
 };
 
@@ -605,6 +622,33 @@ const isUrl    = v => { if(!v) return true; try{ const u=new URL(String(v).trim(
 const cleanHandle = v => String(v||"").trim().replace(/^@+/,"");
 
 /**
+ * Normalizza qualunque cosa scriva il candidato in { handle, url }.
+ * Accetta @nome, nome, URL con o senza https, con o senza www, con o senza slash finali.
+ * Se il valore non riconduce a un handle valido restituisce {handle:"", url:""}.
+ */
+const parseSocial = (raw, network) => {
+  let s = String(raw||"").trim();
+  if(!s) return { handle:"", url:"" };
+  try{
+    if(/^https?:\/\//i.test(s) || /^(www\.)?(instagram|tiktok)\.com/i.test(s)){
+      if(!/^https?:\/\//i.test(s)) s = "https://" + s;
+      const u = new URL(s);
+      const first = u.pathname.split("/").filter(Boolean)[0] || "";
+      s = first.replace(/^@+/,"");
+    }
+  }catch(e){ /* non è un URL, va bene */ }
+  const h = s.replace(/^@+/,"").replace(/[^A-Za-z0-9._]/g,"");
+  if(!h) return { handle:"", url:"" };
+  const url = network==="tiktok"
+    ? "https://www.tiktok.com/@"+h
+    : "https://www.instagram.com/"+h+"/";
+  return { handle:h, url:url };
+};
+
+/** Sfugge < > & per non spezzare Telegram in HTML mode. */
+const escTg = v => String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+/**
  * Converte un valore letto dallo screenshot in numero intero.
  * Gestisce: 3.648 · 3,648 · 1.234.567 · +5 · -3 · 1,2K · 3,6 Mln
  */
@@ -631,6 +675,31 @@ const toNum = (raw) => {
     else value = parseFloat(parts.join("")) || 0;
   }
   return Math.round(sign * value * mult);
+};
+
+/**
+ * Unisce i dati letti da due screenshot.
+ * - Ogni campo è null quando non è visibile: null non sovrascrive un numero valido.
+ * - Se entrambi gli screenshot forniscono un valore, si tiene quello del primo
+ *   e si segnala il conflitto per una verifica manuale.
+ * - Nessun campo viene sommato: le due immagini mostrano finestre diverse dello stesso dato.
+ */
+const mergeInsights = (a, b) => {
+  a = a || {}; b = b || {};
+  const merged = {};
+  const conflicts = [];
+  ["views","netFollowers","interactions","accountsReached"].forEach(k=>{
+    const va = a[k], vb = b[k];
+    const okA = va!==null && va!==undefined;
+    const okB = vb!==null && vb!==undefined;
+    if(okA && okB){
+      merged[k] = va;
+      if(Number(va)!==Number(vb)) conflicts.push(k);
+    }else if(okA)      merged[k] = va;
+    else if(okB)       merged[k] = vb;
+    else               merged[k] = null;
+  });
+  return { merged, conflicts };
 };
 
 const readFileAsDataURL = file => new Promise((resolve,reject)=>{
@@ -1042,10 +1111,11 @@ const LIMITS = { short:120, medium:600, long:900 };
 
 const EMPTY_FORM = {
   // Step 1 — profilo
-  fullName:"", age:"", email:"", city:"", country:"Italia", isAdult:false, mainActivity:"", category:"",
+  fullName:"", age:"", email:"", city:"", country:"Italia", isAdult:false, profileCategories:[], otherProfileCategory:"",
   // Step 2 — social
   instagram:"", followers:"", tiktok:"", tiktokFollowers:"",
   screenshotData:null, screenshotName:"",
+  screenshotData2:null, screenshotName2:"",
   views:"", netFollowers:"", interactions:"", accountsReached:"",
   contentUrl1:"", contentUrl2:"", contentUrl3:"",
   // Step 3 — posizionamento
@@ -1079,18 +1149,28 @@ function CharField({id, value, onChange, max, rows=4, placeholder, error, invali
 
 /** Notifica al team. Volutamente separata dall'invio: non deve mai bloccarlo. */
 const notifyTelegram = async (doc, s) => {
+  const cats = Array.isArray(doc.profileCategories) && doc.profileCategories.length
+    ? doc.profileCategories.map(catLabel).join(", ")
+    : (doc.category ? catLabel(doc.category) : "—");
+  const igLine = doc.instagramUrl
+    ? "📱 Instagram: <a href=\""+escTg(doc.instagramUrl)+"\">@"+escTg(doc.instagramHandle||cleanHandle(doc.instagram))+"</a>"
+    : (doc.instagram ? "📱 Instagram: "+escTg(doc.instagram) : "");
+  const ttLine = doc.tiktokUrl
+    ? "🎵 TikTok: <a href=\""+escTg(doc.tiktokUrl)+"\">@"+escTg(doc.tiktokHandle||cleanHandle(doc.tiktok))+"</a>"
+    : "";
   const msg =
-    "🔔 <b>"+BRAND.program+"</b>\nNuova candidatura\n\n"+
-    "👤 <b>"+doc.fullName+"</b>\n"+
-    "📱 "+doc.instagram+"\n"+
-    "🏷 "+catLabel(doc.category)+"\n"+
-    "👥 "+fmtInt(doc.followers)+" follower · fascia "+s.bandLabel+"\n\n"+
+    "🔔 <b>"+escTg(BRAND.program)+"</b>\nNuova candidatura\n\n"+
+    "👤 <b>"+escTg(doc.fullName)+"</b>\n"+
+    (igLine ? igLine+"\n" : "")+
+    (ttLine ? ttLine+"\n" : "")+
+    "🏷 "+escTg(cats)+"\n"+
+    "👥 "+fmtInt(doc.followers)+" follower · fascia "+escTg(s.bandLabel)+"\n\n"+
     "👁 Visualizzazioni: "+fmtInt(doc.views)+"\n"+
     "🎯 Account raggiunti: "+fmtInt(doc.accountsReached)+"\n"+
     "💬 Interazioni: "+fmtInt(doc.interactions)+"\n"+
     "📈 Follower netti: "+(doc.netFollowers>0?"+":"")+fmtInt(doc.netFollowers)+"\n\n"+
     "ER "+s.er.toFixed(2)+"% · Reach "+s.reach.toFixed(1)+"% · Growth "+s.growth.toFixed(2)+"%\n"+
-    "📊 Social Performance Score: <b>"+s.socialScore+"/100</b> · "+s.perfLabel;
+    "📊 Social Performance Score: <b>"+s.socialScore+"/100</b> · "+escTg(s.perfLabel);
   const r = await sendTelegram(msg);
   if(!r.ok) console.error("Notifica non inviata:", r.description);
 };
@@ -1099,9 +1179,12 @@ function ApplicationForm({onBack, testMode=false}){
   const [step,setStep]           = useState(0);
   const [form,setForm]           = useState(EMPTY_FORM);
   const [errors,setErrors]       = useState({});
-  const [ocrState,setOcrState]   = useState("idle"); // idle|reading|analyzing|done|failed
-  const [ocrMsg,setOcrMsg]       = useState("");
-  const [dragOver,setDragOver]   = useState(false);
+  // Stato per due upload indipendenti (1 = obbligatorio, 2 = facoltativo)
+  const [ocr1,setOcr1] = useState({ state:"idle", msg:"", drag:false });
+  const [ocr2,setOcr2] = useState({ state:"idle", msg:"", drag:false });
+  const [insightConflicts,setInsightConflicts] = useState([]);
+  // Ultime letture per fondere quando arriva la seconda
+  const parsedRef = useRef({ a:null, b:null });
   const [saving,setSaving]       = useState(false);
   const [done,setDone]           = useState(false);
   const [saveErr,setSaveErr]     = useState("");
@@ -1118,39 +1201,63 @@ function ApplicationForm({onBack, testMode=false}){
   };
 
   /* ---------- UPLOAD + LETTURA AUTOMATICA ---------- */
-  const processFile = async (file) => {
+  const applyMerged = (parsedA, parsedB) => {
+    const { merged, conflicts } = mergeInsights(parsedA, parsedB);
+    setForm(p=>({
+      ...p,
+      views:           merged.views===null           ? p.views           : String(merged.views),
+      netFollowers:    merged.netFollowers===null    ? p.netFollowers    : String(merged.netFollowers),
+      interactions:    merged.interactions===null    ? p.interactions    : String(merged.interactions),
+      accountsReached: merged.accountsReached===null ? p.accountsReached : String(merged.accountsReached)
+    }));
+    setInsightConflicts(conflicts);
+  };
+
+  const processFile = async (file, slot) => {
     if(!file) return;
+    const setSlot = slot===1 ? setOcr1 : setOcr2;
     if(!ALLOWED_IMAGE.includes(file.type)){
-      setOcrState("failed"); setOcrMsg("Formato non supportato. Usa JPG, PNG o WEBP."); return;
+      setSlot(s=>({...s,state:"failed",msg:"Formato non supportato. Usa JPG, PNG o WEBP."})); return;
     }
     if(file.size > MAX_UPLOAD_BYTES){
-      setOcrState("failed"); setOcrMsg("Immagine troppo pesante (massimo 12 MB)."); return;
+      setSlot(s=>({...s,state:"failed",msg:"Immagine troppo pesante (massimo 12 MB)."})); return;
     }
-    setOcrState("reading"); setOcrMsg("");
+    setSlot(s=>({...s,state:"reading",msg:""}));
     let img;
     try{
       const raw = await readFileAsDataURL(file);
-      img = await compressImage(raw);            // riduce il peso entro il limite di Firestore
-      setForm(p=>({...p, screenshotData:img, screenshotName:file.name}));
-      setErrors(p=>({...p, screenshotData:undefined}));
+      img = await compressImage(raw);
+      const dataKey = slot===1 ? "screenshotData"  : "screenshotData2";
+      const nameKey = slot===1 ? "screenshotName"  : "screenshotName2";
+      setForm(p=>({...p, [dataKey]:img, [nameKey]:file.name}));
+      if(slot===1) setErrors(p=>({...p, screenshotData:undefined}));
     }catch(err){
       console.error("Preparazione immagine non riuscita:", err);
-      setOcrState("failed"); setOcrMsg(err.message || "Immagine non valida."); return;
+      setSlot(s=>({...s,state:"failed",msg:err.message || "Immagine non valida."})); return;
     }
-    setOcrState("analyzing");
+    setSlot(s=>({...s,state:"analyzing"}));
     try{
       const d = await extractInsights(img);
-      setForm(p=>({...p,
-        views:           String(d.views),
-        netFollowers:    String(d.netFollowers),
-        interactions:    String(d.interactions),
-        accountsReached: String(d.accountsReached)
-      }));
-      setOcrState("done"); setOcrMsg("");
+      parsedRef.current[slot===1?"a":"b"] = d;
+      applyMerged(parsedRef.current.a, parsedRef.current.b);
+      setSlot(s=>({...s,state:"done",msg:""}));
     }catch(err){
       console.warn("Lettura automatica non riuscita:", err);
-      setOcrState("failed"); setOcrMsg(err.message || "Lettura non riuscita");
+      setSlot(s=>({...s,state:"failed",msg:err.message || "Lettura non riuscita"}));
     }
+  };
+
+  const removeScreenshot = (slot) => {
+    if(slot===1){
+      setForm(p=>({...p, screenshotData:null, screenshotName:""}));
+      parsedRef.current.a = null;
+      setOcr1({state:"idle",msg:"",drag:false});
+    }else{
+      setForm(p=>({...p, screenshotData2:null, screenshotName2:""}));
+      parsedRef.current.b = null;
+      setOcr2({state:"idle",msg:"",drag:false});
+    }
+    applyMerged(parsedRef.current.a, parsedRef.current.b);
   };
 
   /* ---------- VALIDAZIONE ---------- */
@@ -1166,15 +1273,17 @@ function ApplicationForm({onBack, testMode=false}){
       else if(!isEmail(form.email)) e.email="Indirizzo email non valido";
       req("city","Inserisci la città");
       req("country","Inserisci il Paese");
-      req("mainActivity","Indica la tua attività principale");
-      req("category","Seleziona una categoria");
+      if(!Array.isArray(form.profileCategories) || form.profileCategories.length===0)
+        e.profileCategories = "Seleziona almeno una categoria";
+      if(Array.isArray(form.profileCategories) && form.profileCategories.includes("altro") && !String(form.otherProfileCategory||"").trim())
+        e.otherProfileCategory = "Specifica la tua categoria";
       if(!form.isAdult) e.isAdult="Devi confermare di essere maggiorenne";
     }
     if(s===1){
       req("instagram","Inserisci il tuo username Instagram");
       if(!String(form.followers).trim()) e.followers="Inserisci il numero di follower";
       else if(isNaN(form.followers) || +form.followers<0) e.followers="Valore non valido";
-      if(!form.screenshotData) e.screenshotData="Carica lo screenshot richiesto";
+      if(!form.screenshotData) e.screenshotData="Carica il primo screenshot richiesto";
       ["views","interactions","accountsReached"].forEach(k=>{
         if(String(form[k]).trim()==="") e[k]="Dato mancante";
         else if(isNaN(form[k]) || +form[k]<0) e[k]="Valore non valido";
@@ -1255,9 +1364,18 @@ function ApplicationForm({onBack, testMode=false}){
       const v = form[k];
       doc[k] = (v===undefined || v===null) ? (typeof EMPTY_FORM[k]==="boolean" ? false : "") : v;
     });
-    doc.screenshotData  = form.screenshotData || "";
-    doc.instagram       = "@"+cleanHandle(form.instagram);
-    doc.tiktok          = form.tiktok ? "@"+cleanHandle(form.tiktok) : "";
+    doc.screenshotData  = form.screenshotData  || "";
+    doc.screenshotData2 = form.screenshotData2 || "";
+    const ig = parseSocial(form.instagram, "instagram");
+    const tt = parseSocial(form.tiktok,    "tiktok");
+    doc.instagram        = ig.handle ? "@"+ig.handle : "";
+    doc.instagramHandle  = ig.handle;
+    doc.instagramUrl     = ig.url;
+    doc.tiktok           = tt.handle ? "@"+tt.handle : "";
+    doc.tiktokHandle     = tt.handle;
+    doc.tiktokUrl        = tt.url;
+    doc.profileCategories    = Array.isArray(form.profileCategories) ? form.profileCategories : [];
+    doc.otherProfileCategory = String(form.otherProfileCategory||"").trim();
     doc.age             = num(form.age);
     doc.followers       = num(form.followers);
     doc.tiktokFollowers = num(form.tiktokFollowers);
@@ -1266,7 +1384,7 @@ function ApplicationForm({onBack, testMode=false}){
     doc.interactions    = num(form.interactions);
     doc.accountsReached = num(form.accountsReached);
     Object.assign(doc, {
-      schemaVersion: 3,
+      schemaVersion: 4,
       date: now, updatedAt: now,
       status: "new", notes: "", creatorCode: "", evaluation: {},
       socialScore: s.socialScore,
@@ -1278,10 +1396,10 @@ function ApplicationForm({onBack, testMode=false}){
     });
 
     // Salvaguardia: il documento Firestore non può superare 1 MiB
-    if(doc.screenshotData.length > 900000){
-      console.error("Screenshot oltre il limite consentito:", doc.screenshotData.length);
+    if((doc.screenshotData||"").length + (doc.screenshotData2||"").length > 900000){
+      console.error("Screenshot oltre il limite consentito");
       setSaving(false);
-      setSaveErr("Lo screenshot è troppo pesante per essere salvato. Ricaricalo: verrà compresso automaticamente.");
+      setSaveErr("Gli screenshot sono troppo pesanti per essere salvati. Riprova ricaricandoli.");
       return;
     }
 
@@ -1390,17 +1508,33 @@ function ApplicationForm({onBack, testMode=false}){
                   onChange={e=>set("country",e.target.value)} placeholder="Italia"/>
               </Field>
             </div>
-            <Field label="Attività principale" required error={err("mainActivity")}
-              hint="Che cosa fai principalmente oggi." htmlFor="f-activity">
-              <input id="f-activity" value={form.mainActivity} aria-invalid={inv("mainActivity")}
-                onChange={e=>set("mainActivity",e.target.value)} placeholder="Es. Personal trainer e creator"/>
+            <Field label="Categoria del profilo" required
+              hint="Puoi selezionarne più di una."
+              error={err("profileCategories") || err("otherProfileCategory")}>
+              <div className="pick-grid" role="group" aria-label="Categorie del profilo">
+                {CATEGORIES.map(c=>{
+                  const on = (form.profileCategories||[]).includes(c.v);
+                  return (
+                    <label key={c.v} className={"pick"+(on?" on":"")}>
+                      <input type="checkbox" checked={on}
+                        onChange={()=>{
+                          const list = Array.isArray(form.profileCategories) ? form.profileCategories.slice() : [];
+                          const i = list.indexOf(c.v);
+                          if(i>=0) list.splice(i,1); else list.push(c.v);
+                          set("profileCategories", list);
+                        }}/>
+                      <span>{c.l}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </Field>
-            <Field label="Categoria del profilo" required error={err("category")} htmlFor="f-cat">
-              <select id="f-cat" value={form.category} aria-invalid={inv("category")} onChange={e=>set("category",e.target.value)}>
-                <option value="">Seleziona…</option>
-                {CATEGORIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
-              </select>
-            </Field>
+            {(form.profileCategories||[]).includes("altro") && (
+              <Field label="Specifica la tua categoria" required error={err("otherProfileCategory")} htmlFor="f-otherCat">
+                <input id="f-otherCat" value={form.otherProfileCategory} aria-invalid={inv("otherProfileCategory")}
+                  onChange={e=>set("otherProfileCategory",e.target.value)} placeholder="Es. Fisioterapista sportivo"/>
+              </Field>
+            )}
             <div className="field">
               <label className="check">
                 <input type="checkbox" checked={form.isAdult} onChange={e=>set("isAdult",e.target.checked)}/>
@@ -1426,15 +1560,41 @@ function ApplicationForm({onBack, testMode=false}){
               </Field>
             </div>
 
-            <Field label="Screenshot · Dashboard per professionisti → Visualizzazioni" required error={err("screenshotData")}
-              hint="Un solo screenshot, con i quattro dati visibili. Le istruzioni sono qui sotto.">
+            {/* Box istruzioni */}
+            <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:"16px",marginBottom:18}}>
+              <div className="h-sm" style={{marginBottom:10}}>Dove trovi questa schermata?</div>
+              <p className="body-sm" style={{marginBottom:8}}>Apri Instagram e segui questo percorso:</p>
+              <p style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:14,color:"var(--t1)",lineHeight:1.5,marginBottom:12}}>
+                Profilo → Dashboard per professionisti → Visualizzazioni
+              </p>
+              <p className="body-sm" style={{marginBottom:10}}>
+                Assicurati che il periodo selezionato sia <strong style={{color:"var(--t1)"}}>30 giorni</strong>.
+                Carica uno screenshot in cui siano visibili:
+              </p>
+              <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:10}}>
+                {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
+                  <div key={x} style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span className="dot" style={{background:"var(--red)"}}/>
+                    <span className="body-sm" style={{color:"var(--t2)"}}>{x}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="body-sm" style={{fontSize:12,color:"var(--t3)"}}>
+                Se sul tuo dispositivo non riesci a visualizzare tutti i dati in un'unica schermata,
+                puoi caricare un secondo screenshot scorrendo leggermente verso il basso.
+              </p>
+            </div>
+
+            {/* Slot 1 — obbligatorio */}
+            <Field label="Screenshot 1 — obbligatorio" required error={err("screenshotData")}
+              hint="Il primo screenshot con i quattro dati visibili.">
               <div
-                className={"drop"+(dragOver?" over":"")+(err("screenshotData")?" err":"")}
-                onDragOver={e=>{e.preventDefault();setDragOver(true);}}
-                onDragLeave={()=>setDragOver(false)}
-                onDrop={e=>{e.preventDefault();setDragOver(false);processFile(e.dataTransfer.files[0]);}}>
+                className={"drop"+(ocr1.drag?" over":"")+(err("screenshotData")?" err":"")}
+                onDragOver={e=>{e.preventDefault();setOcr1(s=>({...s,drag:true}));}}
+                onDragLeave={()=>setOcr1(s=>({...s,drag:false}))}
+                onDrop={e=>{e.preventDefault();setOcr1(s=>({...s,drag:false}));processFile(e.dataTransfer.files[0],1);}}>
                 {form.screenshotData ? (
-                  <img src={form.screenshotData} alt="Anteprima screenshot" style={{maxHeight:190,objectFit:"contain"}}/>
+                  <img src={form.screenshotData} alt="Anteprima primo screenshot" style={{maxHeight:190,objectFit:"contain"}}/>
                 ) : (
                   <>
                     <div className="h-sm">Trascina qui lo screenshot</div>
@@ -1443,50 +1603,91 @@ function ApplicationForm({onBack, testMode=false}){
                   </>
                 )}
               </div>
-              <label className="file-btn" style={{marginTop:8}}>
-                {form.screenshotData ? "Sostituisci immagine" : "Scegli dal dispositivo"}
-                <input type="file" accept="image/*" className="sr-only"
-                  onChange={e=>{ processFile(e.target.files[0]); e.target.value=""; }}/>
-              </label>
+              <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                <label className="file-btn" style={{flex:1,minWidth:180}}>
+                  {form.screenshotData ? "Sostituisci immagine" : "Scegli dal dispositivo"}
+                  <input type="file" accept="image/*" className="sr-only"
+                    onChange={e=>{ processFile(e.target.files[0],1); e.target.value=""; }}/>
+                </label>
+                {form.screenshotData && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeScreenshot(1)}>Rimuovi</button>
+                )}
+              </div>
             </Field>
 
-            {/* Istruzioni per ottenere la schermata corretta */}
-            <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:"16px",marginTop:-8,marginBottom:22}}>
-              <div className="h-sm" style={{marginBottom:10}}>Dove trovi questa schermata?</div>
-              <p className="body-sm" style={{marginBottom:8}}>Apri Instagram e vai su:</p>
-              <p style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:14,color:"var(--t1)",lineHeight:1.5,marginBottom:12}}>
-                Profilo → Dashboard per professionisti → Visualizzazioni
-              </p>
-              <p className="body-sm" style={{marginBottom:10}}>
-                Seleziona il periodo <strong style={{color:"var(--t1)"}}>30 giorni</strong> e fai uno screenshot della schermata
-                in cui siano visibili:
-              </p>
-              <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
-                  <div key={x} style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span className="dot" style={{background:"var(--red)"}}/>
-                    <span className="body-sm" style={{color:"var(--t2)"}}>{x}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {ocrState==="reading"   && <Spinner label="Preparazione immagine in corso…"/>}
-            {ocrState==="analyzing" && <Spinner label="Lettura automatica dei dati in corso…"/>}
-            {ocrState==="done" && (
+            {ocr1.state==="reading"   && <Spinner label="Preparazione immagine in corso…"/>}
+            {ocr1.state==="analyzing" && <Spinner label="Lettura automatica dei dati in corso…"/>}
+            {ocr1.state==="done" && (
               <div className="status-box" style={{borderColor:"rgba(39,174,96,.45)"}}>
                 <div className="dot" style={{background:"var(--ok)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
-                  <strong style={{color:"var(--ok)"}}>Dati rilevati.</strong> Controlla i quattro valori qui sotto e correggili se non corrispondono.
+                  <strong style={{color:"var(--ok)"}}>Dati rilevati.</strong> Se qualche valore non è stato letto, aggiungi il secondo screenshot oppure correggilo a mano qui sotto.
                 </div>
               </div>
             )}
-            {ocrState==="failed" && (
+            {ocr1.state==="failed" && (
               <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)"}}>
                 <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
-                  <strong style={{color:"var(--warn)"}}>{ocrMsg||"Lettura non riuscita."}</strong>{" "}
-                  Puoi caricare un'altra immagine oppure inserire i quattro dati manualmente.
+                  <strong style={{color:"var(--warn)"}}>{ocr1.msg||"Lettura non riuscita."}</strong>{" "}
+                  Puoi caricare un'altra immagine oppure inserire i dati manualmente.
+                </div>
+              </div>
+            )}
+
+            {/* Slot 2 — facoltativo */}
+            <div style={{marginTop:22,paddingTop:22,borderTop:"1px solid var(--brd)"}}>
+              <div className="label-xs" style={{marginBottom:6}}>Secondo screenshot facoltativo</div>
+              <p className="body-sm" style={{fontSize:12,marginBottom:12}}>
+                Usalo solo se alcuni dati non sono visibili nella prima immagine.
+              </p>
+              <div
+                className={"drop"+(ocr2.drag?" over":"")}
+                onDragOver={e=>{e.preventDefault();setOcr2(s=>({...s,drag:true}));}}
+                onDragLeave={()=>setOcr2(s=>({...s,drag:false}))}
+                onDrop={e=>{e.preventDefault();setOcr2(s=>({...s,drag:false}));processFile(e.dataTransfer.files[0],2);}}>
+                {form.screenshotData2 ? (
+                  <img src={form.screenshotData2} alt="Anteprima secondo screenshot" style={{maxHeight:190,objectFit:"contain"}}/>
+                ) : (
+                  <>
+                    <div className="body-sm">Trascina qui il secondo screenshot</div>
+                    <div className="label-xs" style={{color:"var(--t4)"}}>Facoltativo</div>
+                  </>
+                )}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                <label className="file-btn" style={{flex:1,minWidth:180}}>
+                  {form.screenshotData2 ? "Sostituisci immagine" : "Aggiungi secondo screenshot"}
+                  <input type="file" accept="image/*" className="sr-only"
+                    onChange={e=>{ processFile(e.target.files[0],2); e.target.value=""; }}/>
+                </label>
+                {form.screenshotData2 && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeScreenshot(2)}>Rimuovi</button>
+                )}
+              </div>
+              {ocr2.state==="reading"   && <Spinner label="Preparazione seconda immagine…"/>}
+              {ocr2.state==="analyzing" && <Spinner label="Lettura in corso…"/>}
+              {ocr2.state==="done" && (
+                <div className="status-box" style={{borderColor:"rgba(39,174,96,.45)",marginTop:10}}>
+                  <div className="dot" style={{background:"var(--ok)",marginTop:6}}/>
+                  <div className="body-sm" style={{color:"var(--t2)"}}>Dati aggiornati con i valori del secondo screenshot.</div>
+                </div>
+              )}
+              {ocr2.state==="failed" && (
+                <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
+                  <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+                  <div className="body-sm" style={{color:"var(--t2)"}}>{ocr2.msg||"Lettura non riuscita."}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Conflitti tra i due screenshot */}
+            {insightConflicts.length>0 && (
+              <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:14}}>
+                <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+                <div className="body-sm" style={{color:"var(--t2)"}}>
+                  <strong style={{color:"var(--warn)"}}>Verifica manuale consigliata.</strong>{" "}
+                  Le due immagini riportano valori diversi per: {insightConflicts.map(k=>({views:"visualizzazioni",netFollowers:"follower netti",interactions:"interazioni",accountsReached:"account raggiunti"}[k])).join(", ")}. Controlla i quattro dati qui sotto.
                 </div>
               </div>
             )}
@@ -1703,7 +1904,12 @@ function ApplicationForm({onBack, testMode=false}){
             <div className="panel" style={{padding:18,marginBottom:10}}>
               <div className="label-xs" style={{marginBottom:12}}>Profilo</div>
               <div className="g2">
-                {[["Nome",form.fullName],["Email",form.email],["Città",form.city+", "+form.country],["Categoria",catLabel(form.category)]].map(([k,v])=>(
+                {[
+                  ["Nome",form.fullName],
+                  ["Email",form.email],
+                  ["Città",form.city+", "+form.country],
+                  ["Categorie",(Array.isArray(form.profileCategories)&&form.profileCategories.length?form.profileCategories.map(catLabel).join(" · "):"—")+(form.profileCategories&&form.profileCategories.includes("altro")&&form.otherProfileCategory?" · "+form.otherProfileCategory:"")]
+                ].map(([k,v])=>(
                   <div className="kv" key={k}><div className="kv-k">{k}</div><div className="kv-v">{v||"—"}</div></div>
                 ))}
               </div>
@@ -1712,7 +1918,7 @@ function ApplicationForm({onBack, testMode=false}){
             <div className="panel" style={{padding:18,marginBottom:10}}>
               <div className="label-xs" style={{marginBottom:12}}>Social e Insights</div>
               <div className="g3-keep">
-                {[["Instagram","@"+cleanHandle(form.instagram)],["Follower",fmtInt(form.followers)],["TikTok",form.tiktok?("@"+cleanHandle(form.tiktok)):"—"]].map(([k,v])=>(
+                {[["Instagram", parseSocial(form.instagram,"instagram").handle ? "@"+parseSocial(form.instagram,"instagram").handle : "—"],["Follower",fmtInt(form.followers)],["TikTok", parseSocial(form.tiktok,"tiktok").handle ? "@"+parseSocial(form.tiktok,"tiktok").handle : "—"]].map(([k,v])=>(
                   <div className="kv" key={k}><div className="kv-k">{k}</div><div className="kv-v">{v}</div></div>
                 ))}
               </div>
@@ -1774,7 +1980,7 @@ function ApplicationForm({onBack, testMode=false}){
 const TEST_FORM = {
   ...EMPTY_FORM,
   fullName:"Candidato Prova", age:"27", email:"prova@evora.test", city:"Milano", country:"Italia",
-  isAdult:true, mainActivity:"Personal trainer e creator", category:"coach",
+  isAdult:true, profileCategories:["coach","creator"], otherProfileCategory:"",
   instagram:"@profilo_prova", followers:"8500", tiktok:"@profilo_prova", tiktokFollowers:"3200",
   views:"24800", netFollowers:"260", interactions:"1120", accountsReached:"18400",
   contentUrl1:"https://www.instagram.com/",
@@ -1807,7 +2013,7 @@ const TEST_FORM = {
    ========================================================================== */
 const exportCSV = (rows, cfg) => {
   const head = [
-    "Data","Ultima modifica","Stato","Nome","Età","Email","Città","Paese","Categoria","Attività",
+    "Data","Ultima modifica","Stato","Nome","Età","Email","Città","Paese","Categorie","Altra categoria",
     "Instagram","Follower IG","TikTok","Follower TikTok",
     "Visualizzazioni","Account raggiunti","Interazioni","Follower netti",
     "ER %","Reach %","Growth %","Social Performance Score","Livello performance","Fascia follower",
@@ -1829,7 +2035,7 @@ const exportCSV = (rows, cfg) => {
     const avg = vals.length ? (vals.reduce((x,y)=>x+y,0)/vals.length).toFixed(2) : "";
     return [
       fmtDate(a.date), a.updatedAt?fmtDateTime(a.updatedAt):"", statusMeta(a.status).l,
-      a.fullName, a.age, a.email, a.city, a.country||"", catLabel(a.category), a.mainActivity||"",
+      a.fullName, a.age, a.email, a.city, a.country||"", categoriesOf(a).map(catLabel).join(" | "), a.otherProfileCategory||"",
       a.instagram, a.followers, a.tiktok||"", a.tiktokFollowers||"",
       s.views, s.reached, s.interactions, s.net,
       s.er.toFixed(2), s.reach.toFixed(1), s.growth.toFixed(2), s.socialScore, s.perfLabel, s.bandLabel,
@@ -2243,7 +2449,7 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
           <div style={{minWidth:0,flex:"1 1 260px"}}>
             <h1 className="h-md" style={{marginBottom:6}}>{app.fullName||"—"}</h1>
             <div className="body-sm" style={{marginBottom:10}}>
-              {app.email} · {app.city}{app.country?", "+app.country:""} · {catLabel(app.category)}
+              {app.email} · {app.city}{app.country?", "+app.country:""}{(()=>{ const c=categoriesOf(app); return c.length ? " · "+c.map(catLabel).join(", ") : ""; })()}
             </div>
             <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
               <Badge color={st.c} filled>{st.l}</Badge>
@@ -2278,12 +2484,17 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             <KV k="Paese" v={app.country}/>
           </div>
           <div className="g2" style={{marginTop:2}}>
-            <KV k="Attività principale" v={app.mainActivity}/>
-            <KV k="Categoria" v={catLabel(app.category)}/>
-          </div>
-          <div className="g2" style={{marginTop:2}}>
             <KV k="Email" v={app.email}/>
             <KV k="Maggiorenne" v={app.isAdult ? "Dichiarato" : "Non dichiarato"}/>
+          </div>
+          <div style={{marginTop:10}}>
+            <div className="label-xs" style={{marginBottom:8}}>Categorie</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {categoriesOf(app).length
+                ? categoriesOf(app).map(c=><Badge key={c} color="#7A6AD5">{catLabel(c)}</Badge>)
+                : <span className="body-sm">—</span>}
+              {app.otherProfileCategory && <Badge color="#C0A060">Altro: {app.otherProfileCategory}</Badge>}
+            </div>
           </div>
         </Section>
 
