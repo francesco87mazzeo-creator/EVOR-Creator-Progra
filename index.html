@@ -2336,7 +2336,18 @@ function ApplicationsPanel({role, scoring}){
                     {String(a.notes||"").trim() && <Badge color="#7A6AD5">Note</Badge>}
                   </div>
                   <div className="body-sm" style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {a.instagram} · {catLabel(a.category)}{a.city?" · "+a.city:""}
+                    {(()=>{
+                       const ig=socialLink(a,"instagram");
+                       const cats=categoriesOf(a).slice(0,2).map(catLabel).join(", ");
+                       return <>
+                         {ig.handle
+                           ? <a href={ig.url} target="_blank" rel="noopener noreferrer"
+                                onClick={e=>e.stopPropagation()}
+                                style={{color:"var(--info)",textDecoration:"none"}}>@{ig.handle}</a>
+                           : "—"}
+                         {cats?" · "+cats:""}{a.city?" · "+a.city:""}
+                       </>;
+                     })()}
                   </div>
                   <div className="label-xs" style={{marginTop:4,color:"var(--t3)",letterSpacing:".06em"}}>
                     Visual. {fmtShort(s.views)} · Raggiunti {fmtShort(s.reached)} · Interaz. {fmtShort(s.interactions)} · Netti {s.net>0?"+":""}{fmtShort(Math.abs(s.net))}
@@ -2519,9 +2530,13 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
         {/* SOCIAL */}
         <Section title="Social e dati">
           <div className="g3-keep">
-            <KV k="Instagram" v={app.instagram}/>
+            <KV k="Instagram" v={(()=>{const ig=socialLink(app,"instagram");return ig.handle
+              ? <a href={ig.url} target="_blank" rel="noopener noreferrer">@{ig.handle}</a>
+              : "—";})()}/>
             <KV k="Follower Instagram" v={fmtInt(app.followers)}/>
-            <KV k="TikTok" v={app.tiktok}/>
+            <KV k="TikTok" v={(()=>{const tt=socialLink(app,"tiktok");return tt.handle
+              ? <a href={tt.url} target="_blank" rel="noopener noreferrer">@{tt.handle}</a>
+              : "—";})()}/>
           </div>
           <div className="g3-keep" style={{marginTop:2}}>
             <KV k="Follower TikTok" v={app.tiktokFollowers?fmtInt(app.tiktokFollowers):"—"}/>
