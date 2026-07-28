@@ -216,10 +216,10 @@ select option{background:var(--surf-2);color:var(--t1);}
 .modal-close{position:absolute;top:12px;right:12px;width:36px;height:36px;background:none;border:1px solid var(--brd);color:var(--t3);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .18s,color .18s;}
 .modal-close:hover{border-color:var(--t3);color:var(--t1);}
 .info-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--brd-hi);color:var(--t3);font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:14px;font-weight:400;line-height:1;background:none;transition:all .18s;flex-shrink:0;}
-.info-trigger{display:inline-flex;align-items:center;gap:8px;background:none;border:none;color:var(--t3);cursor:pointer;padding:8px 4px;font-family:var(--fh);font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;transition:color .18s;}
-.info-trigger:hover,.info-trigger:focus{color:var(--red);}
-.info-trigger:hover .info-btn,.info-trigger:focus .info-btn{border-color:var(--red);color:var(--red);}
-@media(max-width:480px){.info-trigger-label{display:none;}}
+.info-trigger{display:inline-flex;align-items:center;gap:10px;background:none;border:none;color:var(--t3);cursor:pointer;padding:10px 2px;font-family:var(--fh);font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;transition:color .18s;min-height:44px;text-decoration:none;border-bottom:1px solid transparent;}
+.info-trigger:hover,.info-trigger:focus-visible{color:var(--red);border-bottom-color:var(--red);}
+.info-trigger:hover .info-btn,.info-trigger:focus-visible .info-btn{border-color:var(--red);color:var(--red);}
+.info-trigger:active{opacity:.7;}
 
 /* Upload compatto: riga cliccabile con anteprima piccola */
 .upload-compact{position:relative;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--brd);background:var(--bg-2);cursor:pointer;transition:border-color .18s,background .18s;min-height:64px;}
@@ -1712,11 +1712,14 @@ function ApplicationForm({onBack, testMode=false}){
               </Field>
             </div>
 
-            {/* ── INSIGHT: TITOLO + ICONA INFORMATIVA ── */}
-            <div style={{marginTop:22,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:12}}>
-              <span className="label-xs" style={{margin:0}}>Insight degli ultimi 30 giorni</span>
+            {/* ── INSIGHT: TITOLO + DESCRIZIONE + LINK INFORMATIVO ── */}
+            <div style={{marginTop:22,marginBottom:12}}>
+              <div className="label-xs" style={{marginBottom:6}}>Insight degli ultimi 30 giorni</div>
+              <p className="body-sm" style={{fontSize:13,color:"var(--t3)",marginBottom:6,lineHeight:1.5}}>
+                Visualizzazioni, follower netti, interazioni e account raggiunti.
+              </p>
               <button type="button" className="info-trigger" onClick={()=>setShowInfoModal(true)}
-                aria-label="Come trovare gli Insight Instagram">
+                aria-label="Come trovare i dati Instagram">
                 <span className="info-btn" aria-hidden="true">i</span>
                 <span className="info-trigger-label">Come trovare questi dati</span>
               </button>
