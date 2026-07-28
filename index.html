@@ -211,6 +211,13 @@ select option{background:var(--surf-2);color:var(--t1);}
 .pick.on span{color:var(--t1);}
 .kv a{color:var(--info);text-decoration:none;word-break:break-word;}
 .kv a:hover{text-decoration:underline;}
+.modal-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeUp .2s ease both;}
+.modal{background:var(--bg);border:1px solid var(--brd-hi);width:100%;max-width:520px;max-height:85vh;overflow-y:auto;padding:28px 24px;position:relative;animation:fadeUp .25s ease both;}
+.modal-close{position:absolute;top:12px;right:12px;width:36px;height:36px;background:none;border:1px solid var(--brd);color:var(--t3);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .18s,color .18s;}
+.modal-close:hover{border-color:var(--t3);color:var(--t1);}
+.info-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--brd-hi);color:var(--t3);font-family:var(--fh);font-size:12px;font-weight:700;cursor:pointer;background:none;transition:all .18s;flex-shrink:0;vertical-align:middle;margin-left:8px;}
+.info-btn:hover,.info-btn:focus{border-color:var(--red);color:var(--red);}
+@media(max-width:520px){.modal{padding:22px 18px;max-height:90vh;}}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 </style>
 </head>
@@ -1253,6 +1260,20 @@ function ApplicationForm({onBack, testMode=false}){
   const [ocr1,setOcr1] = useState({ state:"idle", msg:"", drag:false });
   const [ocr2,setOcr2] = useState({ state:"idle", msg:"", drag:false });
   const [insightConflicts,setInsightConflicts] = useState([]);
+  const [showInfoModal,setShowInfoModal] = useState(false);
+
+  // ESC globale + scroll bloccato quando il modal informativo è aperto.
+  useEffect(()=>{
+    if(!showInfoModal) return;
+    const onKey = e => { if(e.key === "Escape") setShowInfoModal(false); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [showInfoModal]);
   // Ultime letture per fondere quando arriva la seconda
   const parsedRef = useRef({ a:null, b:null });
   const [saving,setSaving]       = useState(false);
@@ -1627,8 +1648,39 @@ function ApplicationForm({onBack, testMode=false}){
         )}
 
         {/* ============ STEP 2 — SOCIAL ============ */}
+        {/* Modal informativo Insights */}
+        {showInfoModal && (
+          <div className="modal-overlay" onClick={()=>setShowInfoModal(false)}>
+            <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Come trovare i dati Instagram">
+              <button className="modal-close" onClick={()=>setShowInfoModal(false)} aria-label="Chiudi">✕</button>
+              <div className="h-sm" style={{marginBottom:14}}>Dove trovi questi dati?</div>
+              <p className="body-sm" style={{marginBottom:10}}>Apri Instagram e segui questo percorso:</p>
+              <p style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:15,color:"var(--t1)",lineHeight:1.5,marginBottom:14}}>
+                Profilo → Dashboard per professionisti → Visualizzazioni
+              </p>
+              <p className="body-sm" style={{marginBottom:12}}>
+                Assicurati che il periodo selezionato sia <strong style={{color:"var(--t1)"}}>30 giorni</strong>.
+              </p>
+              <p className="body-sm" style={{marginBottom:12}}>Nella schermata devono essere visibili:</p>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
+                  <div key={x} style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span className="dot" style={{background:"var(--red)"}}/>
+                    <span style={{fontFamily:"var(--fh)",fontWeight:600,fontSize:13,color:"var(--t1)"}}>{x}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="body-sm" style={{color:"var(--t3)"}}>
+                Se sul tuo dispositivo non riesci a visualizzare tutti i dati in un'unica schermata,
+                puoi caricare un secondo screenshot scorrendo leggermente verso il basso.
+              </p>
+            </div>
+          </div>
+        )}
+
         {step===1 && (
           <section style={{animation:"fadeUp .3s ease both"}}>
+            {/* ── INSTAGRAM ── */}
             <div className="eyebrow" style={{marginBottom:14}}>Instagram</div>
             <div className="g2-gap">
               <Field label="Username Instagram" required error={err("instagram")} htmlFor="f-ig">
@@ -1641,73 +1693,70 @@ function ApplicationForm({onBack, testMode=false}){
               </Field>
             </div>
 
-            {/* Box istruzioni */}
-            <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:"16px",marginBottom:18}}>
-              <div className="h-sm" style={{marginBottom:10}}>Dove trovi questa schermata?</div>
-              <p className="body-sm" style={{marginBottom:8}}>Apri Instagram e segui questo percorso:</p>
-              <p style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:14,color:"var(--t1)",lineHeight:1.5,marginBottom:12}}>
-                Profilo → Dashboard per professionisti → Visualizzazioni
-              </p>
-              <p className="body-sm" style={{marginBottom:10}}>
-                Assicurati che il periodo selezionato sia <strong style={{color:"var(--t1)"}}>30 giorni</strong>.
-                Carica uno screenshot in cui siano visibili:
-              </p>
-              <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:10}}>
-                {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
-                  <div key={x} style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span className="dot" style={{background:"var(--red)"}}/>
-                    <span className="body-sm" style={{color:"var(--t2)"}}>{x}</span>
-                  </div>
+            {/* ── DATI 30 GIORNI ── */}
+            <div style={{marginTop:22,padding:"16px",border:"1px solid var(--brd)",background:"var(--bg-2)"}}>
+              <div style={{display:"flex",alignItems:"center",marginBottom:14}}>
+                <span className="label-xs" style={{margin:0}}>Dati degli ultimi 30 giorni</span>
+                <button type="button" className="info-btn" onClick={()=>setShowInfoModal(true)}
+                  aria-label="Come trovare i dati Instagram">?</button>
+              </div>
+              <div className="g2-gap">
+                {[
+                  ["views","Visualizzazioni","28400",""],
+                  ["netFollowers","Follower netti","260","Può essere negativo"],
+                  ["interactions","Interazioni","1240",""],
+                  ["accountsReached","Account raggiunti","18400",""]
+                ].map(([k,l,ph,hint])=>(
+                  <Field key={k} label={l} required error={err(k)} hint={hint||undefined} htmlFor={"f-"+k}>
+                    <input id={"f-"+k} type="number" inputMode={k==="netFollowers"?"text":"numeric"}
+                      value={form[k]} aria-invalid={inv(k)}
+                      onChange={e=>set(k,e.target.value)} placeholder={ph}/>
+                  </Field>
                 ))}
               </div>
-              <p className="body-sm" style={{fontSize:12,color:"var(--t3)"}}>
-                Se sul tuo dispositivo non riesci a visualizzare tutti i dati in un'unica schermata,
-                puoi caricare un secondo screenshot scorrendo leggermente verso il basso.
-              </p>
             </div>
 
-            {/* Slot 1 — obbligatorio */}
-            <Field label="Screenshot 1 — obbligatorio" required error={err("screenshotData")}
-              hint="Il primo screenshot con i quattro dati visibili.">
-              <div
-                className={"drop"+(ocr1.drag?" over":"")+(err("screenshotData")?" err":"")}
-                onDragOver={e=>{e.preventDefault();setOcr1(s=>({...s,drag:true}));}}
-                onDragLeave={()=>setOcr1(s=>({...s,drag:false}))}
-                onDrop={e=>{e.preventDefault();setOcr1(s=>({...s,drag:false}));processFile(e.dataTransfer.files[0],1);}}>
-                {form.screenshotData ? (
-                  <img src={form.screenshotData} alt="Anteprima primo screenshot" style={{maxHeight:190,objectFit:"contain"}}/>
-                ) : (
-                  <>
-                    <div className="h-sm">Trascina qui lo screenshot</div>
-                    <div className="body-sm">I dati verranno compilati automaticamente</div>
-                    <div className="label-xs" style={{color:"var(--t4)"}}>JPG · PNG · WEBP</div>
-                  </>
-                )}
-              </div>
-              <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
-                <label className="file-btn" style={{flex:1,minWidth:180}}>
-                  {form.screenshotData ? "Sostituisci immagine" : "Scegli dal dispositivo"}
-                  <input type="file" accept="image/*" className="sr-only"
-                    onChange={e=>{ processFile(e.target.files[0],1); e.target.value=""; }}/>
-                </label>
-                {form.screenshotData && (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeScreenshot(1)}>Rimuovi</button>
-                )}
-              </div>
-            </Field>
-
-            {ocr1.state==="reading"   && <Spinner label="Preparazione immagine in corso…"/>}
-            {ocr1.state==="analyzing" && <Spinner label="Lettura automatica dei dati in corso…"/>}
-            {ocr1.state==="done" && (
-              <div className="status-box" style={{borderColor:"rgba(39,174,96,.45)"}}>
+            {/* ── MESSAGGI DI STATO OCR ── */}
+            {(ocr1.state==="done" || ocr2.state==="done") && insightConflicts.length===0 && (
+              <div className="status-box" style={{borderColor:"rgba(39,174,96,.45)",marginTop:12}}>
                 <div className="dot" style={{background:"var(--ok)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
-                  <strong style={{color:"var(--ok)"}}>Dati rilevati.</strong> Se qualche valore non è stato letto, aggiungi il secondo screenshot oppure correggilo a mano qui sotto.
+                  Dati rilevati automaticamente. Controllali prima di continuare.
                 </div>
               </div>
             )}
-            {ocr1.state==="failed" && (
-              <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)"}}>
+            {(ocr1.state==="done" || ocr1.state==="failed") && !(ocr2.state==="done") && (
+              (form.views==="" || form.netFollowers==="" || form.interactions==="" || form.accountsReached==="") && (
+                <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:12}}>
+                  <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+                  <div className="body-sm" style={{color:"var(--t2)"}}>
+                    Alcuni valori non sono stati rilevati. Puoi aggiungere un secondo screenshot oppure inserirli manualmente.
+                  </div>
+                </div>
+              )
+            )}
+            {insightConflicts.length>0 && (
+              <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:12}}>
+                <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+                <div className="body-sm" style={{color:"var(--t2)"}}>
+                  <strong style={{color:"var(--warn)"}}>Abbiamo rilevato valori differenti tra i due screenshot.</strong>{" "}
+                  Controlla e conferma manualmente i dati corretti.
+                  <div style={{marginTop:8}}>
+                    {insightConflicts.map(c=>(
+                      <div key={c.key} style={{fontSize:12,color:"var(--t3)",marginTop:4}}>
+                        {{views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"}[c.key]}:
+                        {" screenshot 1 → "}<strong style={{color:"var(--t1)"}}>{c.valueA}</strong>
+                        {" · screenshot 2 → "}<strong style={{color:"var(--t1)"}}>{c.valueB}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            {ocr1.state==="reading"   && <Spinner label="Preparazione immagine in corso…"/>}
+            {ocr1.state==="analyzing" && <Spinner label="Lettura automatica dei dati in corso…"/>}
+            {ocr1.state==="failed" && insightConflicts.length===0 && (
+              <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:12}}>
                 <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
                   <strong style={{color:"var(--warn)"}}>{ocr1.msg||"Lettura non riuscita."}</strong>{" "}
@@ -1716,10 +1765,41 @@ function ApplicationForm({onBack, testMode=false}){
               </div>
             )}
 
-            {/* Slot 2 — facoltativo */}
-            <div style={{marginTop:22,paddingTop:22,borderTop:"1px solid var(--brd)"}}>
-              <div className="label-xs" style={{marginBottom:6}}>Secondo screenshot facoltativo</div>
-              <p className="body-sm" style={{fontSize:12,marginBottom:12}}>
+            {/* ── SCREENSHOT 1 — obbligatorio ── */}
+            <div style={{marginTop:22}}>
+              <Field label="Screenshot 1 — obbligatorio" required error={err("screenshotData")}
+                hint="Carica lo screenshot principale degli Insights.">
+                <div
+                  className={"drop"+(ocr1.drag?" over":"")+(err("screenshotData")?" err":"")}
+                  onDragOver={e=>{e.preventDefault();setOcr1(s=>({...s,drag:true}));}}
+                  onDragLeave={()=>setOcr1(s=>({...s,drag:false}))}
+                  onDrop={e=>{e.preventDefault();setOcr1(s=>({...s,drag:false}));processFile(e.dataTransfer.files[0],1);}}>
+                  {form.screenshotData ? (
+                    <img src={form.screenshotData} alt="Anteprima primo screenshot" style={{maxHeight:180,objectFit:"contain"}}/>
+                  ) : (
+                    <>
+                      <div className="h-sm">Trascina qui lo screenshot</div>
+                      <div className="label-xs" style={{color:"var(--t4)"}}>JPG · PNG · WEBP</div>
+                    </>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                  <label className="file-btn" style={{flex:1,minWidth:180}}>
+                    {form.screenshotData ? "Sostituisci immagine" : "Scegli dal dispositivo"}
+                    <input type="file" accept="image/*" className="sr-only"
+                      onChange={e=>{ processFile(e.target.files[0],1); e.target.value=""; }}/>
+                  </label>
+                  {form.screenshotData && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeScreenshot(1)}>Rimuovi</button>
+                  )}
+                </div>
+              </Field>
+            </div>
+
+            {/* ── SCREENSHOT 2 — facoltativo ── */}
+            <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid var(--brd)"}}>
+              <div className="label-xs" style={{marginBottom:6}}>Screenshot 2 — facoltativo</div>
+              <p className="body-sm" style={{fontSize:12,marginBottom:10,color:"var(--t3)"}}>
                 Usalo solo se alcuni dati non sono visibili nella prima immagine.
               </p>
               <div
@@ -1728,7 +1808,7 @@ function ApplicationForm({onBack, testMode=false}){
                 onDragLeave={()=>setOcr2(s=>({...s,drag:false}))}
                 onDrop={e=>{e.preventDefault();setOcr2(s=>({...s,drag:false}));processFile(e.dataTransfer.files[0],2);}}>
                 {form.screenshotData2 ? (
-                  <img src={form.screenshotData2} alt="Anteprima secondo screenshot" style={{maxHeight:190,objectFit:"contain"}}/>
+                  <img src={form.screenshotData2} alt="Anteprima secondo screenshot" style={{maxHeight:180,objectFit:"contain"}}/>
                 ) : (
                   <>
                     <div className="body-sm">Trascina qui il secondo screenshot</div>
@@ -1762,44 +1842,7 @@ function ApplicationForm({onBack, testMode=false}){
               )}
             </div>
 
-            {/* Conflitti tra i due screenshot */}
-            {insightConflicts.length>0 && (
-              <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:14}}>
-                <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
-                <div className="body-sm" style={{color:"var(--t2)"}}>
-                  <strong style={{color:"var(--warn)"}}>Abbiamo rilevato valori differenti tra i due screenshot.</strong>{" "}
-                  Controlla i dati e conferma manualmente quelli corretti.
-                  <div style={{marginTop:8}}>
-                    {insightConflicts.map(c=>(
-                      <div key={c.key} style={{fontSize:12,color:"var(--t3)",marginTop:4}}>
-                        {{views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"}[c.key]}:
-                        {" screenshot 1 → "}<strong style={{color:"var(--t1)"}}>{c.valueA}</strong>
-                        {" · screenshot 2 → "}<strong style={{color:"var(--t1)"}}>{c.valueB}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div style={{marginTop:18,padding:"16px",border:"1px solid var(--brd)",background:"var(--bg-2)"}}>
-              <div className="label-xs" style={{marginBottom:14}}>Dati degli ultimi 30 giorni</div>
-              <div className="g2-gap">
-                {[
-                  ["views","Visualizzazioni","28400",""],
-                  ["netFollowers","Follower netti","260","Può essere negativo"],
-                  ["interactions","Interazioni","1240",""],
-                  ["accountsReached","Account raggiunti","18400",""]
-                ].map(([k,l,ph,hint])=>(
-                  <Field key={k} label={l} required error={err(k)} hint={hint||undefined} htmlFor={"f-"+k}>
-                    <input id={"f-"+k} type="number" inputMode={k==="netFollowers"?"text":"numeric"}
-                      value={form[k]} aria-invalid={inv(k)}
-                      onChange={e=>set(k,e.target.value)} placeholder={ph}/>
-                  </Field>
-                ))}
-              </div>
-            </div>
-
+            {/* ── TIKTOK ── */}
             <div className="eyebrow" style={{margin:"30px 0 14px",color:"var(--t3)"}}>TikTok · facoltativo</div>
             <div className="g2-gap">
               <Field label="Username TikTok" htmlFor="f-tt">
@@ -1811,6 +1854,7 @@ function ApplicationForm({onBack, testMode=false}){
               </Field>
             </div>
 
+            {/* ── CONTENUTI ── */}
             <div className="eyebrow" style={{margin:"30px 0 14px",color:"var(--t3)"}}>Contenuti rappresentativi · facoltativo</div>
             <p className="body-sm" style={{marginBottom:16}}>
               Condividi fino a tre contenuti che rappresentano meglio il tuo modo di comunicare.
