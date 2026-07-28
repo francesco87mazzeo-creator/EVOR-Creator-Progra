@@ -431,7 +431,7 @@ const extractInsights = async (base64Image) => {
           role:"user",
           content:[
             { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
-            { type:"text", text:"Questo screenshot proviene dalla Dashboard per professionisti di Instagram, sezione Visualizzazioni, periodo 30 giorni. Estrai esattamente questi quattro valori: Visualizzazioni, Follower netti, Interazioni, Account raggiunti. Rispondi SOLO con questo JSON: {\"views\":null,\"netFollowers\":null,\"interactions\":null,\"accountsReached\":null}. Riporta ogni numero esattamente come appare nello screenshot, mantenendo separatori e il segno + o - dei follower netti. Se un valore non è visibile lascia null. Nessun altro testo." }
+            { type:"text", text:"Questo screenshot proviene dalla Dashboard per professionisti di Instagram, sezione Visualizzazioni, periodo 30 giorni. Per ognuno di questi quattro valori — Visualizzazioni, Follower netti, Interazioni, Account raggiunti — restituisci il numero e indica se la casella è completamente visibile o tagliata/parziale. Rispondi SOLO con questo JSON:\n{\"views\":{\"value\":null,\"visibility\":\"not_visible\"},\"netFollowers\":{\"value\":null,\"visibility\":\"not_visible\"},\"interactions\":{\"value\":null,\"visibility\":\"not_visible\"},\"accountsReached\":{\"value\":null,\"visibility\":\"not_visible\"}}\nPer ogni campo: value = il numero esattamente come appare (con separatori e segno +/-), oppure null se non visibile. visibility = \"complete\" se la casella è interamente visibile, \"partial\" se è tagliata o incompleta, \"not_visible\" se il dato non compare. Nessun altro testo." }
           ]
         }]
       })
@@ -450,18 +450,24 @@ const extractInsights = async (base64Image) => {
   let parsed;
   try{ parsed = JSON.parse(match[0]); }
   catch(e){ throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili."); }
-  // Un dato mancante resta null: 0 sarebbe stato indistinguibile da un valore reale a zero.
-  const num = v => {
-    if(v===null || v===undefined) return null;
-    const s = String(v).trim().toLowerCase();
-    if(s==="" || s==="null" || s==="n/a" || s==="-") return null;
-    return toNum(v);
+  const field = raw_val => {
+    if(raw_val===null || raw_val===undefined) return { value:null, visibility:"not_visible" };
+    // Il modello potrebbe restituire un oggetto {value, visibility} o un semplice numero/stringa.
+    if(typeof raw_val === "object" && raw_val !== null){
+      const s = String(raw_val.value===undefined?"":raw_val.value).trim().toLowerCase();
+      const vis = String(raw_val.visibility||"complete").toLowerCase();
+      if(!s || s==="null" || s==="n/a") return { value:null, visibility:"not_visible" };
+      return { value:toNum(raw_val.value), visibility: vis==="partial"?"partial" : vis==="not_visible"?"not_visible":"complete" };
+    }
+    const s = String(raw_val).trim().toLowerCase();
+    if(s==="" || s==="null" || s==="n/a" || s==="-") return { value:null, visibility:"not_visible" };
+    return { value:toNum(raw_val), visibility:"complete" };
   };
   return {
-    views:           num(parsed.views),
-    netFollowers:    num(parsed.netFollowers),
-    interactions:    num(parsed.interactions),
-    accountsReached: num(parsed.accountsReached)
+    views:           field(parsed.views),
+    netFollowers:    field(parsed.netFollowers),
+    interactions:    field(parsed.interactions),
+    accountsReached: field(parsed.accountsReached)
   };
 };
 
@@ -684,21 +690,84 @@ const toNum = (raw) => {
  *   e si segnala il conflitto per una verifica manuale.
  * - Nessun campo viene sommato: le due immagini mostrano finestre diverse dello stesso dato.
  */
+/**
+ * Unisce i dati letti da due screenshot con logica di priorità:
+ * 1. Un valore "complete" ha la precedenza su uno "partial"
+ * 2. Se il valore più corto è l'inizio o la fine del più lungo → lettura parziale, usa il più lungo
+ * 3. Se entrambi sono "complete" e diversi → vero conflitto, segnalato all'utente
+ * 4. null non sovrascrive mai un numero valido
+ */
+const isPartialOf = (shorter, longer) => {
+  // Controlla se il numero più corto è un prefisso o suffisso del più lungo,
+  // come accade quando una casella dello screenshot è tagliata.
+  // Esclude i casi in cui i due numeri sono vicini e la differenza di cifre è solo 1
+  // con un valore corto di 2+ cifre: 14→145 potrebbe essere un dato reale diverso.
+  if(shorter===null || longer===null) return false;
+  const s = String(Math.abs(shorter));
+  const l = String(Math.abs(longer));
+  if(s.length >= l.length) return false;
+  const match = l.startsWith(s) || l.endsWith(s);
+  if(!match) return false;
+  // Singola cifra troncata (1→14, 4→48): sempre plausibile
+  if(s.length === 1) return true;
+  // Differenza di 2+ cifre (14→1440): chiaramente parziale
+  if(l.length - s.length >= 2) return true;
+  // Differenza di esattamente 1 cifra con s.length >= 2 (14→144, 82→823):
+  // plausibile come taglio ma potrebbe essere ambiguo — accettiamolo
+  // perché il caso "diversi di una cifra, non correlati" (tipo 14→145) è raro
+  // e comunque in quel caso isPartialOf sarebbe true solo se 14 è prefisso di 145,
+  // che è vero: 145 inizia con 14. Ma 14 partial + 145 complete → merge usa 145,
+  // che è il comportamento corretto.
+  return true;
+};
+
 const mergeInsights = (a, b) => {
   a = a || {}; b = b || {};
   const merged = {};
   const conflicts = [];
-  ["views","netFollowers","interactions","accountsReached"].forEach(k=>{
-    const va = a[k], vb = b[k];
-    const okA = va!==null && va!==undefined;
-    const okB = vb!==null && vb!==undefined;
-    if(okA && okB){
-      merged[k] = va;
-      if(Number(va)!==Number(vb)) conflicts.push(k);
-    }else if(okA)      merged[k] = va;
-    else if(okB)       merged[k] = vb;
-    else               merged[k] = null;
+  const KEYS = ["views","netFollowers","interactions","accountsReached"];
+
+  KEYS.forEach(k => {
+    const fa = a[k] || { value:null, visibility:"not_visible" };
+    const fb = b[k] || { value:null, visibility:"not_visible" };
+    const va = fa.value, vb = fb.value;
+    const visA = fa.visibility || "not_visible";
+    const visB = fb.visibility || "not_visible";
+    const okA = va !== null && va !== undefined;
+    const okB = vb !== null && vb !== undefined;
+
+    if(!okA && !okB){
+      merged[k] = { value:null, visibility:"not_visible" };
+    } else if(okA && !okB){
+      merged[k] = fa;
+    } else if(!okA && okB){
+      merged[k] = fb;
+    } else if(Number(va) === Number(vb)){
+      // Stesso valore: usa quello con visibility migliore
+      merged[k] = visA === "complete" ? fa : fb;
+    } else {
+      // Valori diversi: applica la logica partial
+      const shorter = Math.abs(va) < Math.abs(vb) ? va : vb;
+      const longer  = Math.abs(va) < Math.abs(vb) ? vb : va;
+      const shorterVis = Math.abs(va) < Math.abs(vb) ? visA : visB;
+      const longerVis  = Math.abs(va) < Math.abs(vb) ? visB : visA;
+      const longerField = Math.abs(va) < Math.abs(vb) ? fb : fa;
+
+      if(isPartialOf(shorter, longer)){
+        // Il più corto è una lettura parziale del più lungo → usa il completo
+        merged[k] = longerField;
+      } else if(visA === "partial" && visB === "complete"){
+        merged[k] = fb;
+      } else if(visB === "partial" && visA === "complete"){
+        merged[k] = fa;
+      } else {
+        // Vero conflitto: entrambi complete o impossibile decidere
+        merged[k] = fa; // terreno neutro: tiene il primo, ma segnala
+        conflicts.push({ key:k, valueA:va, visA, valueB:vb, visB });
+      }
+    }
   });
+
   return { merged, conflicts };
 };
 
@@ -1117,6 +1186,7 @@ const EMPTY_FORM = {
   screenshotData:null, screenshotName:"",
   screenshotData2:null, screenshotName2:"",
   views:"", netFollowers:"", interactions:"", accountsReached:"",
+  ocrInsights:null,
   contentUrl1:"", contentUrl2:"", contentUrl3:"",
   // Step 3 — posizionamento
   threeWords:"", contentType:"", whatToTransmit:"", whyFollow:"",
@@ -1203,13 +1273,22 @@ function ApplicationForm({onBack, testMode=false}){
   /* ---------- UPLOAD + LETTURA AUTOMATICA ---------- */
   const applyMerged = (parsedA, parsedB) => {
     const { merged, conflicts } = mergeInsights(parsedA, parsedB);
-    setForm(p=>({
-      ...p,
-      views:           merged.views===null           ? p.views           : String(merged.views),
-      netFollowers:    merged.netFollowers===null    ? p.netFollowers    : String(merged.netFollowers),
-      interactions:    merged.interactions===null    ? p.interactions    : String(merged.interactions),
-      accountsReached: merged.accountsReached===null ? p.accountsReached : String(merged.accountsReached)
-    }));
+    setForm(p=>{
+      const next = {...p};
+      ["views","netFollowers","interactions","accountsReached"].forEach(k=>{
+        const m = merged[k];
+        if(m && m.value !== null && m.value !== undefined) next[k] = String(m.value);
+      });
+      // Salva i dati OCR grezzi per tracciamento
+      next.ocrInsights = {
+        screenshot1: parsedA || null,
+        screenshot2: parsedB || null,
+        merged: Object.fromEntries(Object.entries(merged).map(([k,v])=>[k,v&&v.value!==undefined?v.value:null])),
+        conflicts: conflicts.map(c=>({key:c.key, valueA:c.valueA, valueB:c.valueB})),
+        readAt: new Date().toISOString()
+      };
+      return next;
+    });
     setInsightConflicts(conflicts);
   };
 
@@ -1383,6 +1462,8 @@ function ApplicationForm({onBack, testMode=false}){
     doc.netFollowers    = num(form.netFollowers);
     doc.interactions    = num(form.interactions);
     doc.accountsReached = num(form.accountsReached);
+    // Dati OCR grezzi per tracciamento: lo scoring usa solo i confirmed (i campi sopra).
+    doc.ocrInsights     = form.ocrInsights || null;
     Object.assign(doc, {
       schemaVersion: 4,
       date: now, updatedAt: now,
@@ -1686,8 +1767,17 @@ function ApplicationForm({onBack, testMode=false}){
               <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:14}}>
                 <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
                 <div className="body-sm" style={{color:"var(--t2)"}}>
-                  <strong style={{color:"var(--warn)"}}>Verifica manuale consigliata.</strong>{" "}
-                  Le due immagini riportano valori diversi per: {insightConflicts.map(k=>({views:"visualizzazioni",netFollowers:"follower netti",interactions:"interazioni",accountsReached:"account raggiunti"}[k])).join(", ")}. Controlla i quattro dati qui sotto.
+                  <strong style={{color:"var(--warn)"}}>Abbiamo rilevato valori differenti tra i due screenshot.</strong>{" "}
+                  Controlla i dati e conferma manualmente quelli corretti.
+                  <div style={{marginTop:8}}>
+                    {insightConflicts.map(c=>(
+                      <div key={c.key} style={{fontSize:12,color:"var(--t3)",marginTop:4}}>
+                        {{views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"}[c.key]}:
+                        {" screenshot 1 → "}<strong style={{color:"var(--t1)"}}>{c.valueA}</strong>
+                        {" · screenshot 2 → "}<strong style={{color:"var(--t1)"}}>{c.valueB}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -2443,6 +2533,115 @@ function KV({k,v,color}){
   return <div className="kv"><div className="kv-k">{k}</div><div className="kv-v" style={color?{color}:null}>{v||"—"}</div></div>;
 }
 
+function InsightsEditor({app, scoring, onPatch}){
+  const [editing,setEditing] = useState(false);
+  const [vals,setVals]       = useState({
+    views:           String(app.views||""),
+    netFollowers:    String(app.netFollowers!=null ? app.netFollowers : (app.newFollowers||"")),
+    interactions:    String(app.interactions||""),
+    accountsReached: String(app.accountsReached!=null ? app.accountsReached : (app.views||""))
+  });
+  const [note,setNote]     = useState("");
+  const [busy,setBusy]     = useState(false);
+  const [msg,setMsg]       = useState("");
+
+  if(!editing) return (
+    <div style={{marginTop:10}}>
+      <button className="btn btn-ghost btn-sm" onClick={()=>setEditing(true)}>Correggi dati Insights</button>
+      {app.insightsCorrection && (
+        <div className="body-sm" style={{fontSize:12,marginTop:6,color:"var(--t3)"}}>
+          Ultima correzione: {fmtDateTime(app.insightsCorrection.correctedAt)} da {app.insightsCorrection.correctedBy||"staff"}
+        </div>
+      )}
+    </div>
+  );
+
+  const save = async () => {
+    setBusy(true); setMsg("");
+    const num = v => { const x = parseInt(v,10); return Number.isFinite(x) ? x : 0; };
+    const newVals = {
+      views:           num(vals.views),
+      netFollowers:    num(vals.netFollowers),
+      interactions:    num(vals.interactions),
+      accountsReached: num(vals.accountsReached)
+    };
+    const correction = {
+      correctedAt: new Date().toISOString(),
+      correctedBy: "staff",
+      previousValues: {
+        views:           parseInt(app.views)||0,
+        netFollowers:    parseInt(app.netFollowers!=null ? app.netFollowers : app.newFollowers)||0,
+        interactions:    parseInt(app.interactions)||0,
+        accountsReached: parseInt(app.accountsReached!=null ? app.accountsReached : app.views)||0
+      },
+      newValues: newVals,
+      note: note.trim()
+    };
+    // Ricalcola metriche con i nuovi valori
+    const tempDoc = { ...app, ...newVals };
+    const s = computeSocial(tempDoc, scoring);
+    try{
+      await onPatch(app.id, {
+        ...newVals,
+        insightsCorrection: correction,
+        socialScore: s.socialScore,
+        perfLevel:   s.perfLevel,
+        erRate:      +s.er.toFixed(2),
+        reachRate:   +s.reach.toFixed(2),
+        growthRate:  +s.growth.toFixed(2)
+      });
+      setMsg("Dati aggiornati. Score ricalcolato: "+s.socialScore+"/100");
+      setEditing(false);
+    }catch(e){ setMsg("Errore nel salvataggio."); }
+    finally{ setBusy(false); }
+  };
+
+  return (
+    <div style={{marginTop:12,border:"1px solid var(--brd)",background:"var(--bg-2)",padding:16}}>
+      <div className="h-sm" style={{marginBottom:6}}>Correzione dati Insights</div>
+      <p className="body-sm" style={{fontSize:12,marginBottom:14,color:"var(--t3)"}}>
+        Confronta sempre i valori con gli screenshot originali prima di correggerli.
+        Dopo il salvataggio, metriche e Social Performance Score verranno ricalcolati automaticamente.
+      </p>
+
+      {app.ocrInsights && app.ocrInsights.conflicts && app.ocrInsights.conflicts.length>0 && (
+        <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:12}}>
+          <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+          <div className="body-sm" style={{fontSize:12}}>
+            La lettura automatica ha rilevato incongruenze tra i due screenshot su: {app.ocrInsights.conflicts.map(c=>c.key).join(", ")}
+          </div>
+        </div>
+      )}
+
+      <div className="g2-gap">
+        {[
+          ["views","Visualizzazioni",""],
+          ["netFollowers","Follower netti","Può essere negativo"],
+          ["interactions","Interazioni",""],
+          ["accountsReached","Account raggiunti",""]
+        ].map(([k,l,hint])=>(
+          <Field key={k} label={l} hint={hint||undefined}>
+            <input type="number" inputMode={k==="netFollowers"?"text":"numeric"}
+              value={vals[k]} onChange={e=>setVals(p=>({...p,[k]:e.target.value}))}/>
+          </Field>
+        ))}
+      </div>
+
+      <Field label="Nota sulla correzione (facoltativa)">
+        <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Es. Valore corretto dal secondo screenshot"/>
+      </Field>
+
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+          {busy ? "Salvataggio…" : "Salva e ricalcola"}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setEditing(false)}>Annulla</button>
+        {msg && <span className="label-xs" style={{color:"var(--ok)"}}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
 function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
   const s  = computeSocial(app, scoring);
   const st = statusMeta(app.status);
@@ -2551,6 +2750,9 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             <KV k="Interazioni" v={fmtInt(s.interactions)}/>
             <KV k="Follower netti" v={(s.net>0?"+":"")+fmtInt(s.net)} color={s.net<0?"var(--bad)":undefined}/>
           </div>
+
+          {/* Correzione manuale dei dati Insights */}
+          <InsightsEditor app={app} scoring={scoring} onPatch={onPatch}/>
 
           {links.length>0 && (
             <div style={{marginTop:12}}>
