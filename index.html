@@ -1036,36 +1036,19 @@ function Landing({onApply}){
       {/* ---------- IL PROGETTO ---------- */}
       <section className="section" id="progetto">
         <div className="wrap">
-          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:34,maxWidth:900,margin:"0 auto"}}>
-            <div>
-              <div className="eyebrow">Il progetto</div>
-              <h2 className="h-lg" style={{margin:"14px 0 16px"}}>Una collaborazione, non uno scambio di prodotti.</h2>
-              <div className="rule" style={{marginBottom:20}}/>
-              <p className="body" style={{marginBottom:14}}>
-                EVORΛ Collective non nasce per distribuire codici sconto o campioni gratuiti.
-                Nasce per costruire rapporti continuativi con persone che hanno qualcosa da portare
-                al brand e che vogliono crescere insieme a esso.
-              </p>
-              <p className="body">
-                Chi entra nel programma contribuisce con contenuti, credibilità e presenza reale nel settore.
-                In cambio riceve un percorso costruito su misura, non una collaborazione usa e getta.
-              </p>
-            </div>
-            <div className="g3-gap">
-              {[
-                ["Contenuti","Materiale autentico, prodotto con uno standard costante."],
-                ["Credibilità","Una reputazione costruita nel tempo, non comprata."],
-                ["Community","Un pubblico che ascolta davvero ciò che racconti."],
-                ["Presenza","Attività reale nel settore, online e fuori."],
-                ["Valore commerciale","Capacità di generare interesse concreto sui prodotti."],
-                ["Crescita","Volontà di costruire qualcosa che duri nel tempo."]
-              ].map(([t,d])=>(
-                <div className="card card-hover" key={t}>
-                  <div className="h-sm" style={{color:"var(--red)",marginBottom:8}}>{t}</div>
-                  <div className="body-sm">{d}</div>
-                </div>
-              ))}
-            </div>
+          <div style={{maxWidth:820,margin:"0 auto"}}>
+            <div className="eyebrow">Il progetto</div>
+            <h2 className="h-lg" style={{margin:"14px 0 16px"}}>Una collaborazione, non uno scambio di prodotti.</h2>
+            <div className="rule" style={{marginBottom:20}}/>
+            <p className="body" style={{marginBottom:14}}>
+              EVORΛ Collective non nasce per distribuire codici sconto o campioni gratuiti.
+              Nasce per costruire rapporti continuativi con persone che hanno qualcosa da portare
+              al brand e che vogliono crescere insieme a esso.
+            </p>
+            <p className="body">
+              Chi entra nel programma contribuisce con contenuti, credibilità e presenza reale nel settore.
+              In cambio riceve un'opportunità costruita su misura, non una collaborazione usa e getta.
+            </p>
           </div>
         </div>
       </section>
@@ -1427,15 +1410,9 @@ function ApplicationForm({onBack, testMode=false}){
       req("motivation","Campo obbligatorio");
       req("brandLike","Campo obbligatorio");
       req("contentIntegration","Campo obbligatorio");
-      req("athleteImage","Campo obbligatorio");
-      req("valueBeyondContent","Campo obbligatorio");
-      req("howWouldTell","Campo obbligatorio");
     }
     if(s===4){
-      req("scenarioBrandContent","Campo obbligatorio");
       req("buildWithoutEarnings","Seleziona un'opzione");
-      req("badContentReaction","Campo obbligatorio");
-      req("analysisElements","Campo obbligatorio");
       req("brandMeaning","Campo obbligatorio");
     }
     if(s===5){
@@ -1945,32 +1922,12 @@ function ApplicationForm({onBack, testMode=false}){
               <CharField id="f-ci" value={form.contentIntegration} onChange={v=>set("contentIntegration",v)} max={LIMITS.long} rows={5}
                 invalid={!!err("contentIntegration")} placeholder="Descrivi concretamente formati e contesti…"/>
             </Field>
-            <Field label="Come racconteresti EVORΛ al tuo pubblico senza realizzare una pubblicità diretta?"
-              required error={err("howWouldTell")} htmlFor="f-hwt">
-              <CharField id="f-hwt" value={form.howWouldTell} onChange={v=>set("howWouldTell",v)} max={LIMITS.long} rows={4}
-                invalid={!!err("howWouldTell")} placeholder="Il tono, l'angolo, la storia che useresti…"/>
-            </Field>
-            <Field label="Quale valore potresti portare a EVORΛ oltre alla semplice pubblicazione di contenuti?"
-              required error={err("valueBeyondContent")} htmlFor="f-vbc">
-              <CharField id="f-vbc" value={form.valueBeyondContent} onChange={v=>set("valueBeyondContent",v)} max={LIMITS.long} rows={4}
-                invalid={!!err("valueBeyondContent")} placeholder="Competenze, rete, eventi, feedback prodotto…"/>
-            </Field>
-            <Field label="Quale immagine dovrebbe trasmettere una persona che rappresenta EVORΛ?"
-              required error={err("athleteImage")} htmlFor="f-ai">
-              <CharField id="f-ai" value={form.athleteImage} onChange={v=>set("athleteImage",v)} max={LIMITS.medium}
-                invalid={!!err("athleteImage")} placeholder="Come la immagini…"/>
-            </Field>
           </section>
         )}
 
         {/* ============ STEP 5 — MENTALITÀ ============ */}
         {step===4 && (
           <section style={{animation:"fadeUp .3s ease both"}}>
-            <Field label="EVORΛ ti propone un contenuto molto coerente con il brand, ma probabilmente meno performante di una promozione diretta. Come lo gestiresti?"
-              required error={err("scenarioBrandContent")} htmlFor="f-scb">
-              <CharField id="f-scb" value={form.scenarioBrandContent} onChange={v=>set("scenarioBrandContent",v)} max={LIMITS.long} rows={5}
-                invalid={!!err("scenarioBrandContent")} placeholder="Racconta come affronteresti concretamente la situazione…"/>
-            </Field>
             <Field label="Saresti disponibile a iniziare con un periodo in cui entrambe le parti valutano la qualità della collaborazione, senza una garanzia di risultati economici immediati?"
               required error={err("buildWithoutEarnings")}>
               <ChipGroup name="trial" value={form.buildWithoutEarnings} onChange={v=>set("buildWithoutEarnings",v)}
@@ -1980,16 +1937,6 @@ function ApplicationForm({onBack, testMode=false}){
                   {v:"depends",l:"Dipende dal progetto"},
                   {v:"paid_only",l:"Preferisco compenso garantito"}
                 ]}/>
-            </Field>
-            <Field label="Come reagisci quando un contenuto non raggiunge i risultati attesi?"
-              required error={err("badContentReaction")} htmlFor="f-bcr">
-              <CharField id="f-bcr" value={form.badContentReaction} onChange={v=>set("badContentReaction",v)} max={LIMITS.medium}
-                invalid={!!err("badContentReaction")} placeholder="Il tuo processo…"/>
-            </Field>
-            <Field label="Quali elementi analizzeresti prima di decidere cosa cambiare?"
-              required error={err("analysisElements")} htmlFor="f-ae">
-              <CharField id="f-ae" value={form.analysisElements} onChange={v=>set("analysisElements",v)} max={LIMITS.medium}
-                invalid={!!err("analysisElements")} placeholder="Dati, formato, contesto, tempistiche…"/>
             </Field>
             <Field label="Che cosa significa per te rappresentare un brand?"
               required error={err("brandMeaning")} htmlFor="f-bm">
@@ -3376,4 +3323,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
