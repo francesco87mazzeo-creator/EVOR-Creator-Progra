@@ -260,7 +260,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 // La sessione non sopravvive alla chiusura della scheda.
-auth.setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(()=>{});
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 </script>
 
 <script type="text/babel">
@@ -407,7 +407,8 @@ const AUTH = {
       await auth.signOut();
       throw new Error("Ruolo non valido.");
     }
-    sessionStorage.setItem("evora_login_at", String(Date.now()));
+    localStorage.setItem("evora_login_at", String(Date.now()));
+    sessionStorage.setItem("evora_last_role", role);
     return role;
   },
 
@@ -415,7 +416,7 @@ const AUTH = {
   async currentRole(){
     const u = auth.currentUser;
     if(!u) return null;
-    const started = parseInt(sessionStorage.getItem("evora_login_at")||"0",10);
+    const started = parseInt(localStorage.getItem("evora_login_at")||"0",10);
     if(!started || Date.now()-started > SESSION_HOURS*3600*1000){
       await AUTH.logout();
       return null;
@@ -424,11 +425,16 @@ const AUTH = {
       const t = await u.getIdTokenResult();
       const r = t.claims.role;
       return (r==="admin"||r==="manager") ? r : null;
-    }catch(e){ return null; }
+    }catch(e){
+      // Errore di rete o refresh: non sloggo. Il claim precedente resta valido finché il timer non scade.
+      console.warn("Verifica ruolo non riuscita, mantengo la sessione:", e);
+      return sessionStorage.getItem("evora_last_role") || null;
+    }
   },
 
   async logout(){
-    sessionStorage.removeItem("evora_login_at");
+    localStorage.removeItem("evora_login_at");
+    sessionStorage.removeItem("evora_last_role");
     try{ await auth.signOut(); }catch(e){}
   }
 };
@@ -2880,30 +2886,30 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
 
         {/* POSIZIONAMENTO */}
         <Section title="Posizionamento">
-          <QA q="Tre parole" a={app.threeWords}/>
-          <QA q="Tipo di contenuti" a={app.contentType}/>
-          <QA q="Cosa vuole trasmettere" a={app.whatToTransmit}/>
-          <QA q="Perché le persone lo seguono" a={app.whyFollow}/>
-          <QA q="Dettagli collaborazioni precedenti" a={app.brandCollabDetails}/>
+          <QA q="Tre parole che ti descrivono come creator" a={app.threeWords}/>
+          <QA q="Che tipo di contenuti pubblichi principalmente?" a={app.contentType}/>
+          <QA q="Cosa vuoi trasmettere al tuo pubblico?" a={app.whatToTransmit}/>
+          <QA q="Per quale motivo le persone scelgono di seguirti e continuano a farlo?" a={app.whyFollow}/>
+          <QA q="Con quali brand e in che forma?" a={app.brandCollabDetails}/>
         </Section>
 
         {/* COMPATIBILITÀ */}
         <Section title="Compatibilità con EVORΛ">
-          <QA q="Perché una collaborazione credibile" a={app.motivation}/>
-          <QA q="Cosa apprezza di EVORΛ" a={app.brandLike}/>
-          <QA q="Come integrerebbe il brand" a={app.contentIntegration}/>
-          <QA q="Come racconterebbe EVORΛ" a={app.howWouldTell}/>
-          <QA q="Valore oltre i contenuti" a={app.valueBeyondContent}/>
-          <QA q="Immagine di chi rappresenta EVORΛ" a={app.athleteImage}/>
+          <QA q="Perché ritieni che possa esistere una collaborazione credibile tra il tuo percorso ed EVORΛ?" a={app.motivation}/>
+          <QA q="Cosa apprezzi di EVORΛ?" a={app.brandLike}/>
+          <QA q="Come integreresti EVORΛ nei tuoi contenuti senza renderli una pubblicità forzata?" a={app.contentIntegration}/>
+          <QA q="Come racconteresti EVORΛ al tuo pubblico senza realizzare una pubblicità diretta?" a={app.howWouldTell}/>
+          <QA q="Quale valore potresti portare a EVORΛ oltre alla semplice pubblicazione di contenuti?" a={app.valueBeyondContent}/>
+          <QA q="Quale immagine dovrebbe trasmettere una persona che rappresenta EVORΛ?" a={app.athleteImage}/>
         </Section>
 
         {/* MENTALITÀ */}
         <Section title="Mentalità">
-          <QA q="Scenario · contenuto coerente ma meno performante" a={app.scenarioBrandContent}/>
-          <QA q="Disponibilità a un periodo di valutazione reciproca" a={enumLabel(app.buildWithoutEarnings)}/>
-          <QA q="Reazione a un contenuto sotto le attese" a={app.badContentReaction}/>
-          <QA q="Elementi analizzati prima di cambiare" a={app.analysisElements}/>
-          <QA q="Cosa significa rappresentare un brand" a={app.brandMeaning}/>
+          <QA q="EVORΛ ti propone un contenuto molto coerente con il brand, ma probabilmente meno performante di una promozione diretta. Come lo gestiresti?" a={app.scenarioBrandContent}/>
+          <QA q="Saresti disponibile a iniziare con un periodo in cui entrambe le parti valutano la qualità della collaborazione, senza una garanzia di risultati economici immediati?" a={enumLabel(app.buildWithoutEarnings)}/>
+          <QA q="Come reagisci quando un contenuto non raggiunge i risultati attesi?" a={app.badContentReaction}/>
+          <QA q="Quali elementi analizzeresti prima di decidere cosa cambiare?" a={app.analysisElements}/>
+          <QA q="Che cosa significa per te rappresentare un brand?" a={app.brandMeaning}/>
         </Section>
 
         {/* DISPONIBILITÀ */}
@@ -2922,9 +2928,9 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             <KV k="File originali" v={enumLabel(app.availRawFiles)}/>
           </div>
           <div style={{marginTop:8}}>
-            <QA q="Prodotti EVORΛ acquistati" a={app.boughtProducts}/>
-            <QA q="Cosa migliorerebbe del brand" a={app.improvements}/>
-            <QA q="Nota finale" a={app.extra}/>
+            <QA q="Hai già acquistato prodotti EVORΛ?" a={app.boughtProducts}/>
+            <QA q="C'è qualcosa che miglioreresti del brand?" a={app.improvements}/>
+            <QA q="Vuoi aggiungere qualcosa?" a={app.extra}/>
           </div>
         </Section>
 
@@ -3285,7 +3291,7 @@ function AdminPanel({onBack, onTestForm}){
     const t = setInterval(async ()=>{
       const r = await AUTH.currentRole();
       if(!r){ setRole(null); setErr("Sessione scaduta. Inserisci di nuovo il codice."); }
-    }, 60000);
+    }, 300000);
     return ()=>clearInterval(t);
   },[role]);
 
