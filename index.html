@@ -249,6 +249,9 @@ select option{background:var(--surf-2);color:var(--t1);}
 .thumb-btn{display:block;border:1px solid var(--brd);background:var(--bg);padding:0;cursor:pointer;overflow:hidden;transition:border-color .18s;width:100%;}
 .thumb-btn:hover,.thumb-btn:focus-visible{border-color:var(--brd-hi);}
 .thumb-btn img{display:block;width:100%;height:auto;}
+/* Miniature di riferimento (esempio profilo / esempio Insight): stessa dimensione, stesso stile per entrambe. */
+.thumb-btn.example{width:64px;height:64px;flex-shrink:0;}
+.thumb-btn.example img{width:100%;height:100%;object-fit:contain;background:var(--bg-2);}
 
 /* Lightbox per ingrandire le immagini esempio o gli screenshot caricati */
 .lightbox-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:200;padding:24px;}
@@ -547,18 +550,15 @@ const extractProfile = async (base64Image) => {
   try{
     res = await fetch(OCR_PROXY, {
       method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "anthropic-version":"2023-06-01"
-      },
+      headers:{ "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
       body: JSON.stringify({
         model: OCR_MODEL,
-        max_tokens: 200,
+        max_tokens: 220,
         messages:[{
           role:"user",
           content:[
             { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
-            { type:"text", text:"Analizza questo screenshot e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"profile_ok\",\"displayName\":{\"value\":null,\"visibility\":\"not_visible\"},\"username\":{\"value\":null,\"visibility\":\"not_visible\"},\"followers\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"profile_ok\" se la schermata è la pagina principale di un profilo Instagram: mostra in alto lo username, e più sotto i conteggi di post/follower/seguiti, ed eventualmente nome, bio, pulsanti Modifica profilo/Segui.\n- \"wrong_screen\" se la schermata è chiaramente qualcos'altro (una chat, un feed, una pagina Insight, impostazioni, un altro social, una schermata di ricerca).\n- \"uncertain\" se non è possibile decidere con sufficiente sicurezza.\n\nPer i tre valori — displayName (il nome visualizzato sopra la bio, es. 'Mario Rossi'), username (senza la @, in alto sopra i conteggi), followers (il numero dei follower, NON i post né i seguiti) — value = testo/numero esatto come appare, null se non visibile. visibility = \"complete\" se il dato è interamente leggibile, \"partial\" se è tagliato o ambiguo, \"not_visible\" se non compare o se screen_type non è profile_ok.\n\nBasati solo sul testo che leggi, non sui colori: l'app può essere in light o dark mode, su iPhone o Android." }
+            { type:"text", text:"Analizza questo screenshot e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"profile_ok\",\"displayName\":{\"value\":null,\"visibility\":\"not_visible\",\"truncated\":false},\"username\":{\"value\":null,\"visibility\":\"not_visible\"},\"followers\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"profile_ok\" se la schermata è la pagina principale di un profilo Instagram: mostra in alto lo username, e più sotto i conteggi di post/follower/seguiti, ed eventualmente nome, bio, pulsanti Modifica profilo/Segui.\n- \"wrong_screen\" se la schermata è chiaramente qualcos'altro (una chat, un feed, una pagina Insight, impostazioni, un altro social, una schermata di ricerca).\n- \"uncertain\" se non è possibile decidere con sufficiente sicurezza.\n\nusername (senza la @, in alto sopra i conteggi) e followers (il numero dei follower, NON i post né i seguiti): value = testo/numero esatto come appare, null se non visibile. visibility = \"complete\" se il dato è interamente leggibile, \"partial\" se è tagliato o ambiguo, \"not_visible\" se non compare o se screen_type non è profile_ok.\n\ndisplayName (il nome visualizzato sopra la bio, es. 'Mario Rossi'): value = il testo esatto come appare, incluso un eventuale '...' finale se il nome è troncato graficamente da Instagram; null se non presente o non leggibile. visibility = \"complete\" se il nome è leggibile per intero e non termina con puntini di troncamento, \"partial\" se termina con '...' o è chiaramente tagliato, \"not_visible\" se assente o illeggibile. truncated = true SOLO se il nome mostrato termina con puntini di troncamento ('...') aggiunti dall'interfaccia di Instagram, false altrimenti.\n\nBasati solo sul testo che leggi, non sui colori: l'app può essere in light o dark mode, su iPhone o Android.\n\nIMPORTANTE: la validità della schermata dipende SOLO da username e followers leggibili. Il nome visualizzato non è mai un requisito." }
           ]
         }]
       })
@@ -591,14 +591,79 @@ const extractProfile = async (base64Image) => {
     return { value: isNumeric ? toNum(raw_val) : s, visibility:"complete" };
   };
 
+  // Nome visualizzato: gestione dedicata per il troncamento con "...".
+  // Il nome non deve MAI condizionare la validità dello screenshot: al massimo
+  // risulta "truncated" o "not_visible", ma non fa fallire lo screen_type.
+  const nameField = (raw_val) => {
+    const f = field(raw_val, false);
+    let truncated = false;
+    if(typeof raw_val === "object" && raw_val !== null && raw_val.truncated === true) truncated = true;
+    if(f.value && /\.\.\.\s*$/.test(String(f.value))) truncated = true;
+    if(f.value && truncated){
+      return { value: String(f.value).replace(/\.\.\.\s*$/,"").trim(), visibility:"partial", truncated:true };
+    }
+    if(f.visibility === "partial"){
+      // Nome tagliato/ambiguo ma senza puntini espliciti: non abbastanza affidabile, meglio lasciarlo vuoto.
+      return { value:null, visibility:"not_visible", truncated:false };
+    }
+    return { value:f.value, visibility:f.visibility, truncated:false };
+  };
+
   const st = String(parsed.screen_type||"").toLowerCase();
   const screenType = (st==="profile_ok" || st==="wrong_screen" || st==="uncertain") ? st : "uncertain";
   return {
     screenType:  screenType,
-    displayName: field(parsed.displayName, false),
+    displayName: nameField(parsed.displayName),
     username:    field(parsed.username, false),
     followers:   field(parsed.followers, true)
   };
+};
+
+/**
+ * Verifica un singolo valore numerico contro una foto di conferma caricata
+ * dal candidato quando modifica un dato già letto dall'OCR principale.
+ * Ritorna { outcome: "match" | "mismatch" | "unreadable", foundValue }.
+ * Non va mai usata per il nome visualizzato: solo per dati numerici.
+ */
+const verifyFieldValue = async (base64Image, fieldLabel, expectedValue) => {
+  const parts = base64Image.split(",");
+  const base64Data = parts[1];
+  const mediaType = parts[0].split(":")[1].split(";")[0];
+
+  let res;
+  try{
+    res = await fetch(OCR_PROXY, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
+      body: JSON.stringify({
+        model: OCR_MODEL,
+        max_tokens: 100,
+        messages:[{
+          role:"user",
+          content:[
+            { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
+            { type:"text", text:"In questo screenshot cerca il dato \""+fieldLabel+"\". Rispondi SOLO con questo JSON, senza altro testo:\n{\"readable\":true,\"value\":null}\nreadable = false se il dato non è leggibile, il box è tagliato o non è presente nell'immagine. Altrimenti true, e value = il numero esatto come appare (con eventuale separatore delle migliaia e segno +/-)." }
+          ]
+        }]
+      })
+    });
+  }catch(e){ throw new Error("Connessione non riuscita"); }
+
+  if(!res.ok) throw new Error("Servizio non disponibile");
+  const data = await res.json();
+  const raw = data.content[0].text.trim();
+  const match = raw.match(/\{[\s\S]*\}/);
+  if(!match) return { outcome:"unreadable", foundValue:null };
+  let parsed;
+  try{ parsed = JSON.parse(match[0]); } catch(e){ return { outcome:"unreadable", foundValue:null }; }
+
+  if(!parsed.readable || parsed.value===null || parsed.value===undefined || String(parsed.value).trim()===""){
+    return { outcome:"unreadable", foundValue:null };
+  }
+  const found = toNum(parsed.value);
+  if(found === null) return { outcome:"unreadable", foundValue:null };
+  if(Number(found) === Number(expectedValue)) return { outcome:"match", foundValue:found };
+  return { outcome:"mismatch", foundValue:found };
 };
 
 /* ============================================================================
@@ -827,31 +892,12 @@ const toNum = (raw) => {
  * 3. Se entrambi sono "complete" e diversi → vero conflitto, segnalato all'utente
  * 4. null non sovrascrive mai un numero valido
  */
-const isPartialOf = (shorter, longer) => {
-  // Controlla se il numero più corto è un prefisso o suffisso del più lungo,
-  // come accade quando una casella dello screenshot è tagliata.
-  // Esclude i casi in cui i due numeri sono vicini e la differenza di cifre è solo 1
-  // con un valore corto di 2+ cifre: 14→145 potrebbe essere un dato reale diverso.
-  if(shorter===null || longer===null) return false;
-  const s = String(Math.abs(shorter));
-  const l = String(Math.abs(longer));
-  if(s.length >= l.length) return false;
-  const match = l.startsWith(s) || l.endsWith(s);
-  if(!match) return false;
-  // Singola cifra troncata (1→14, 4→48): sempre plausibile
-  if(s.length === 1) return true;
-  // Differenza di 2+ cifre (14→1440): chiaramente parziale
-  if(l.length - s.length >= 2) return true;
-  // Differenza di esattamente 1 cifra con s.length >= 2 (14→144, 82→823):
-  // plausibile come taglio ma potrebbe essere ambiguo — accettiamolo
-  // perché il caso "diversi di una cifra, non correlati" (tipo 14→145) è raro
-  // e comunque in quel caso isPartialOf sarebbe true solo se 14 è prefisso di 145,
-  // che è vero: 145 inizia con 14. Ma 14 partial + 145 complete → merge usa 145,
-  // che è il comportamento corretto.
-  return true;
-};
-
 const mergeInsights = (a, b) => {
+  // Regola principale: vince sempre il valore proveniente dal box completamente visibile.
+  // Un box tagliato/incerto non deve mai sovrascrivere un valore già completo,
+  // né generare una falsa discrepanza: viene semplicemente ignorato per quel dato.
+  // Una discrepanza viene segnalata SOLO quando entrambi gli screenshot mostrano
+  // lo stesso box come completamente visibile ma con valori diversi.
   a = a || {}; b = b || {};
   const merged = {};
   const conflicts = [];
@@ -861,40 +907,31 @@ const mergeInsights = (a, b) => {
     const fa = a[k] || { value:null, visibility:"not_visible" };
     const fb = b[k] || { value:null, visibility:"not_visible" };
     const va = fa.value, vb = fb.value;
-    const visA = fa.visibility || "not_visible";
-    const visB = fb.visibility || "not_visible";
-    const okA = va !== null && va !== undefined;
-    const okB = vb !== null && vb !== undefined;
+    const completeA = fa.visibility === "complete" && va !== null && va !== undefined;
+    const completeB = fb.visibility === "complete" && vb !== null && vb !== undefined;
 
-    if(!okA && !okB){
-      merged[k] = { value:null, visibility:"not_visible" };
-    } else if(okA && !okB){
-      merged[k] = fa;
-    } else if(!okA && okB){
-      merged[k] = fb;
-    } else if(Number(va) === Number(vb)){
-      // Stesso valore: usa quello con visibility migliore
-      merged[k] = visA === "complete" ? fa : fb;
-    } else {
-      // Valori diversi: applica la logica partial
-      const shorter = Math.abs(va) < Math.abs(vb) ? va : vb;
-      const longer  = Math.abs(va) < Math.abs(vb) ? vb : va;
-      const shorterVis = Math.abs(va) < Math.abs(vb) ? visA : visB;
-      const longerVis  = Math.abs(va) < Math.abs(vb) ? visB : visA;
-      const longerField = Math.abs(va) < Math.abs(vb) ? fb : fa;
-
-      if(isPartialOf(shorter, longer)){
-        // Il più corto è una lettura parziale del più lungo → usa il completo
-        merged[k] = longerField;
-      } else if(visA === "partial" && visB === "complete"){
-        merged[k] = fb;
-      } else if(visB === "partial" && visA === "complete"){
+    if(completeA && completeB){
+      if(Number(va) === Number(vb)){
+        // Stesso dato, box completo in entrambi gli screenshot: nessun problema.
         merged[k] = fa;
       } else {
-        // Vero conflitto: entrambi complete o impossibile decidere
-        merged[k] = fa; // terreno neutro: tiene il primo, ma segnala
-        conflicts.push({ key:k, valueA:va, visA, valueB:vb, visB });
+        // Vero conflitto: entrambi i box sono interi ma il valore letto è diverso.
+        merged[k] = fa;
+        conflicts.push({ key:k, valueA:va, valueB:vb });
       }
+    } else if(completeA && !completeB){
+      // Il secondo screenshot ha il box tagliato per questo dato: si ignora,
+      // il valore completo del primo resta valido così com'è.
+      merged[k] = fa;
+    } else if(!completeA && completeB){
+      // Nel secondo screenshot il box è finalmente visibile per intero: lo adottiamo.
+      merged[k] = fb;
+    } else {
+      // Nessuno dei due box è completamente visibile per questo dato:
+      // se disponibile teniamo un valore di riferimento, ma resta uncertain/missing.
+      if(va !== null && va !== undefined) merged[k] = fa;
+      else if(vb !== null && vb !== undefined) merged[k] = fb;
+      else merged[k] = { value:null, visibility:"not_visible" };
     }
   });
 
@@ -1448,15 +1485,17 @@ function InstagramPreCheck({ onComplete, onBack }){
   };
 
   /* ---------- STATO DERIVATO ---------- */
-  const { merged: insightsMerged } = mergeInsights(ins1.result, ins2.result);
+  const { merged: insightsMerged, conflicts: insightsConflicts } = mergeInsights(ins1.result, ins2.result);
   const insightsAttempted = !!(ins1.result && ins1.result.screenType !== "dashboard_wrong");
   const insightsComplete = insightsAttempted
     && fieldIsComplete(insightsMerged.views) && fieldIsComplete(insightsMerged.netFollowers)
     && fieldIsComplete(insightsMerged.interactions) && fieldIsComplete(insightsMerged.accountsReached);
   const insightsNeedSecond = insightsAttempted && !insightsComplete;
 
+  // Il nome visualizzato non è mai un requisito: il profilo è valido se lo screen_type
+  // è corretto e username + follower sono leggibili per intero.
   const profileComplete = !!(profile.result && profile.result.screenType === "profile_ok"
-    && fieldIsComplete(profile.result.displayName) && fieldIsComplete(profile.result.username) && fieldIsComplete(profile.result.followers));
+    && fieldIsComplete(profile.result.username) && fieldIsComplete(profile.result.followers));
   const profileDataIncomplete = !!(profile.result && profile.result.screenType === "profile_ok" && !profileComplete);
   const profileUncertain = !!(profile.result && profile.result.screenType === "uncertain");
 
@@ -1465,12 +1504,18 @@ function InstagramPreCheck({ onComplete, onBack }){
   const handleContinue = () => {
     if(!canContinue) return;
     const ig = parseSocial(profile.result.username.value, "instagram");
+    const name = profile.result.displayName || { value:null, visibility:"not_visible", truncated:false };
+    // Nome completo e leggibile → precompilato. Nome troncato con "..." → lasciato da
+    // completare manualmente, con solo un riferimento a quanto letto. Nome ambiguo/illeggibile → vuoto.
+    const fullNameGuess     = (name.visibility === "complete" && name.value) ? name.value : "";
+    const fullNameTruncated = (name.truncated && name.value) ? name.value + "..." : "";
     onComplete({
       instagram: ig.handle ? "@"+ig.handle : "",
       instagramHandle: ig.handle,
       instagramUrl: ig.url,
       followers: String(profile.result.followers.value),
-      fullNameGuess: profile.result.displayName.value || "",
+      fullNameGuess,
+      fullNameTruncated,
       views:           String(insightsMerged.views.value),
       netFollowers:    String(insightsMerged.netFollowers.value),
       interactions:    String(insightsMerged.interactions.value),
@@ -1486,7 +1531,7 @@ function InstagramPreCheck({ onComplete, onBack }){
           views: insightsMerged.views.value, netFollowers: insightsMerged.netFollowers.value,
           interactions: insightsMerged.interactions.value, accountsReached: insightsMerged.accountsReached.value
         },
-        conflicts: [], readAt: new Date().toISOString()
+        conflicts: insightsConflicts, readAt: new Date().toISOString()
       },
       ocrProfile: { result: profile.result, readAt: new Date().toISOString() }
     });
@@ -1494,7 +1539,7 @@ function InstagramPreCheck({ onComplete, onBack }){
 
   const wrongExampleSrc = wrongScreen === "profile" ? BRAND.profileExampleSrc : BRAND.insightsExampleSrc;
   const wrongCopy = wrongScreen === "profile"
-    ? { title:"Schermata non corretta", text:"Carica la schermata principale del tuo profilo Instagram, quella in cui sono visibili nome, username e numero di follower." }
+    ? { title:"Schermata non corretta", text:"Carica la schermata principale del tuo profilo Instagram, quella in cui sono visibili username e numero di follower." }
     : { title:"Schermata non corretta", text:"Hai caricato una schermata diversa da quella richiesta." };
 
   return (
@@ -1520,12 +1565,12 @@ function InstagramPreCheck({ onComplete, onBack }){
           <p className="body-sm" style={{marginBottom:12}}>Carica uno screenshot della pagina principale del tuo profilo.</p>
 
           <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:14}}>
-            <button type="button" className="thumb-btn" style={{width:58,flexShrink:0}}
+            <button type="button" className="thumb-btn example"
               onClick={()=>setLightbox(BRAND.profileExampleSrc)} aria-label="Ingrandisci esempio profilo">
               <img src={BRAND.profileExampleSrc} alt="Esempio schermata profilo Instagram"/>
             </button>
             <div className="body-sm" style={{fontSize:12,color:"var(--t3)",paddingTop:4}}>
-              Devono essere visibili nome, username e follower.
+              Devono essere visibili username e follower.
             </div>
           </div>
 
@@ -1555,7 +1600,7 @@ function InstagramPreCheck({ onComplete, onBack }){
             <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
               <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
               <div className="body-sm">
-                Non riusciamo a leggere correttamente tutti i dati del profilo. Assicurati che nome, username
+                Non riusciamo a leggere correttamente tutti i dati del profilo. Assicurati che username
                 e follower siano completamente visibili.
               </div>
             </div>
@@ -1570,7 +1615,7 @@ function InstagramPreCheck({ onComplete, onBack }){
             evidenziati in rosso nell'immagine di esempio.
           </p>
 
-          <button type="button" className="thumb-btn" style={{maxWidth:230,marginBottom:12}}
+          <button type="button" className="thumb-btn example" style={{marginBottom:12}}
             onClick={()=>setLightbox(BRAND.insightsExampleSrc)} aria-label="Ingrandisci esempio Insight">
             <img src={BRAND.insightsExampleSrc} alt="Esempio schermata Insight con dati evidenziati in rosso"/>
           </button>
@@ -1744,6 +1789,9 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   // Se l'utente arriva dallo step di verifica screenshot, i dati Instagram sono già pronti:
   // niente upload da rifare, solo conferma dei quattro valori.
   const [prefilled] = useState(() => !!precheckData);
+  // Se lo screenshot profilo mostrava un nome troncato ("Francesco Maz..."), lo teniamo
+  // solo come riferimento: il candidato deve completarlo di persona nel campo Nome e cognome.
+  const [nameHint] = useState(() => (precheckData && precheckData.fullNameTruncated) || "");
   const [form,setForm]           = useState(() => precheckData ? {
     ...EMPTY_FORM,
     ...precheckData,
@@ -2215,6 +2263,11 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
               <input id="f-name" value={form.fullName} aria-invalid={inv("fullName")}
                 onChange={e=>set("fullName",e.target.value)} placeholder="Mario Rossi" autoComplete="name"/>
             </Field>
+            {nameHint && !form.fullName && (
+              <p className="body-sm" style={{fontSize:12,color:"var(--t4)",marginTop:-10,marginBottom:14}}>
+                Rilevato dallo screenshot: “{nameHint}” — il nome era troncato, completalo qui per intero.
+              </p>
+            )}
             <div className="g2-gap">
               <Field label="Età" required error={err("age")} htmlFor="f-age">
                 <input id="f-age" type="number" inputMode="numeric" value={form.age} aria-invalid={inv("age")}
