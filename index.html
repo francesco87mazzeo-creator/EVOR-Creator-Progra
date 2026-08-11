@@ -1491,6 +1491,12 @@ function InstagramPreCheck({ onComplete, onBack }){
     && fieldIsComplete(insightsMerged.views) && fieldIsComplete(insightsMerged.netFollowers)
     && fieldIsComplete(insightsMerged.interactions) && fieldIsComplete(insightsMerged.accountsReached);
   const insightsNeedSecond = insightsAttempted && !insightsComplete;
+  // Elenco leggibile dei soli dati non ancora completi, per dire con precisione cosa manca
+  // invece di un generico "alcuni dati" — utile sia al candidato sia per capire dove interviene l'OCR.
+  const insightFieldLabels = { views:"Visualizzazioni", netFollowers:"Follower netti", interactions:"Interazioni", accountsReached:"Account raggiunti" };
+  const missingInsightFields = insightsAttempted
+    ? Object.keys(insightFieldLabels).filter(k => !fieldIsComplete(insightsMerged[k])).map(k => insightFieldLabels[k])
+    : [];
 
   // Il nome visualizzato non è mai un requisito: il profilo è valido se lo screen_type
   // è corretto e username + follower sono leggibili per intero.
@@ -1665,8 +1671,13 @@ function InstagramPreCheck({ onComplete, onBack }){
             <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:12}}>
               <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
               <div className="body-sm">
-                Lo screenshot è corretto, ma alcuni dati non sono completamente visibili. Scorri leggermente
-                la schermata degli Insight e carica un secondo screenshot in cui siano visibili i dati mancanti.
+                Lo screenshot è corretto, ma alcuni dati non sono completamente visibili
+                {missingInsightFields.length>0 && (
+                  <> — <strong style={{color:"var(--t1)"}}>{missingInsightFields.join(", ")}</strong></>
+                )}
+                . Scorri leggermente la schermata degli Insight e carica un secondo screenshot in cui
+                {missingInsightFields.length>0 ? " sia visibile per intero" : " siano visibili"}
+                {missingInsightFields.length===1 ? " questo dato." : " questi dati."}
               </div>
             </div>
           )}
@@ -1697,8 +1708,11 @@ function InstagramPreCheck({ onComplete, onBack }){
                 <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
                   <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
                   <div className="body-sm">
-                    Non riusciamo ancora a verificare tutti i dati richiesti. Assicurati che siano completamente
-                    visibili: Visualizzazioni, Follower netti, Interazioni, Account raggiunti.
+                    Non riusciamo ancora a verificare
+                    {missingInsightFields.length>0
+                      ? <> <strong style={{color:"var(--t1)"}}>{missingInsightFields.join(", ")}</strong></>
+                      : " tutti i dati richiesti"}
+                    . Assicurati che {missingInsightFields.length===1 ? "sia" : "siano"} completamente visibili.
                   </div>
                 </div>
               )}
