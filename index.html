@@ -558,7 +558,7 @@ const extractProfile = async (base64Image) => {
           role:"user",
           content:[
             { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
-            { type:"text", text:"Analizza questo screenshot e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"profile_ok\",\"displayName\":{\"value\":null,\"visibility\":\"not_visible\",\"truncated\":false},\"username\":{\"value\":null,\"visibility\":\"not_visible\"},\"followers\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"profile_ok\" se la schermata è la pagina principale di un profilo Instagram: mostra in alto lo username, e più sotto i conteggi di post/follower/seguiti, ed eventualmente nome, bio, pulsanti Modifica profilo/Segui.\n- \"wrong_screen\" se la schermata è chiaramente qualcos'altro (una chat, un feed, una pagina Insight, impostazioni, un altro social, una schermata di ricerca).\n- \"uncertain\" se non è possibile decidere con sufficiente sicurezza.\n\nusername (senza la @, in alto sopra i conteggi) e followers (il numero dei follower, NON i post né i seguiti): value = testo/numero esatto come appare, null se non visibile. visibility = \"complete\" se il dato è interamente leggibile, \"partial\" se è tagliato o ambiguo, \"not_visible\" se non compare o se screen_type non è profile_ok.\n\ndisplayName (il nome visualizzato sopra la bio, es. 'Mario Rossi'): value = il testo esatto come appare, incluso un eventuale '...' finale se il nome è troncato graficamente da Instagram; null se non presente o non leggibile. visibility = \"complete\" se il nome è leggibile per intero e non termina con puntini di troncamento, \"partial\" se termina con '...' o è chiaramente tagliato, \"not_visible\" se assente o illeggibile. truncated = true SOLO se il nome mostrato termina con puntini di troncamento ('...') aggiunti dall'interfaccia di Instagram, false altrimenti.\n\nBasati solo sul testo che leggi, non sui colori: l'app può essere in light o dark mode, su iPhone o Android.\n\nIMPORTANTE: la validità della schermata dipende SOLO da username e followers leggibili. Il nome visualizzato non è mai un requisito." }
+            { type:"text", text:"Analizza questo screenshot e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"profile_ok\",\"displayName\":{\"value\":null,\"visibility\":\"not_visible\",\"truncated\":false},\"username\":{\"value\":null,\"visibility\":\"not_visible\",\"truncated\":false},\"followers\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"profile_ok\" se la schermata è la pagina principale di un profilo Instagram: mostra in alto lo username, e più sotto i conteggi di post/follower/seguiti, ed eventualmente nome, bio, pulsanti Modifica profilo/Segui.\n- \"wrong_screen\" se la schermata è chiaramente qualcos'altro (una chat, un feed, una pagina Insight, impostazioni, un altro social, una schermata di ricerca).\n- \"uncertain\" se non è possibile decidere con sufficiente sicurezza.\n\nATTENZIONE SULLO USERNAME: nella barra in alto, vicino ai conteggi, Instagram spesso mostra lo username TRONCATO con \'...\' quando è lungo (es. \'francesco___...\'). Non esiste sempre un\'altra posizione nello schermo dove leggerlo per intero: quel testo in alto è spesso l\'UNICA fonte disponibile. Leggilo comunque, riportando anche i puntini finali se presenti: non inventare né completare le lettere mancanti.\n\nusername (senza la @, in alto vicino ai conteggi): value = il testo esatto come appare, inclusi eventuali puntini di troncamento finali \'...\' se Instagram tronca lo username; null se non visibile. followers (il numero dei follower, NON i post né i seguiti): value = testo/numero esatto come appare, null se non visibile. Per entrambi, visibility = \"complete\" se il dato è interamente leggibile senza puntini di troncamento, \"partial\" se è tagliato, troncato con \'...\', o ambiguo, \"not_visible\" se non compare o se screen_type non è profile_ok. truncated (solo per username) = true SOLO se il testo mostrato termina con puntini di troncamento \'...\' aggiunti dall\'interfaccia, false altrimenti.\n\ndisplayName (il nome visualizzato sopra la bio, es. 'Mario Rossi'): value = il testo esatto come appare, incluso un eventuale '...' finale se il nome è troncato graficamente da Instagram; null se non presente o non leggibile. visibility = \"complete\" se il nome è leggibile per intero e non termina con puntini di troncamento, \"partial\" se termina con '...' o è chiaramente tagliato, \"not_visible\" se assente o illeggibile. truncated = true SOLO se il nome mostrato termina con puntini di troncamento ('...') aggiunti dall'interfaccia di Instagram, false altrimenti.\n\nBasati solo sul testo che leggi, non sui colori: l'app può essere in light o dark mode, su iPhone o Android.\n\nIMPORTANTE: la validità della schermata dipende SOLO da username e followers leggibili. Il nome visualizzato non è mai un requisito." }
           ]
         }]
       })
@@ -594,27 +594,30 @@ const extractProfile = async (base64Image) => {
   // Nome visualizzato: gestione dedicata per il troncamento con "...".
   // Il nome non deve MAI condizionare la validità dello screenshot: al massimo
   // risulta "truncated" o "not_visible", ma non fa fallire lo screen_type.
-  const nameField = (raw_val) => {
+  // Usata sia per il nome visualizzato sia per lo username: in entrambi i casi Instagram può
+  // troncare il testo con "..." quando è lungo, e in entrambi i casi vogliamo comunque prendere
+  // la parte letta invece di scartarla, segnalando solo che va completata a mano più avanti.
+  const truncatableTextField = (raw_val) => {
     const f = field(raw_val, false);
+    if(!f.value) return { value:null, visibility:"not_visible", truncated:false };
     let truncated = false;
     if(typeof raw_val === "object" && raw_val !== null && raw_val.truncated === true) truncated = true;
-    if(f.value && /\.\.\.\s*$/.test(String(f.value))) truncated = true;
-    if(f.value && truncated){
+    if(/\.\.\.\s*$/.test(String(f.value))) truncated = true;
+    if(truncated){
+      // Con i puntini: si prende comunque la parte letta (senza puntini), ma il dato
+      // resta "partial" — verrà precompilato e segnalato da completare più avanti nel form.
       return { value: String(f.value).replace(/\.\.\.\s*$/,"").trim(), visibility:"partial", truncated:true };
     }
-    if(f.visibility === "partial"){
-      // Nome tagliato/ambiguo ma senza puntini espliciti: non abbastanza affidabile, meglio lasciarlo vuoto.
-      return { value:null, visibility:"not_visible", truncated:false };
-    }
-    return { value:f.value, visibility:f.visibility, truncated:false };
+    // Senza puntini: il testo letto si considera valido e si inserisce così com'è.
+    return { value:f.value, visibility:"complete", truncated:false };
   };
 
   const st = String(parsed.screen_type||"").toLowerCase();
   const screenType = (st==="profile_ok" || st==="wrong_screen" || st==="uncertain") ? st : "uncertain";
   return {
     screenType:  screenType,
-    displayName: nameField(parsed.displayName),
-    username:    field(parsed.username, false),
+    displayName: truncatableTextField(parsed.displayName),
+    username:    truncatableTextField(parsed.username),
     followers:   field(parsed.followers, true)
   };
 };
@@ -1513,10 +1516,15 @@ function InstagramPreCheck({ onComplete, onBack }){
     ? Object.keys(insightFieldLabels).filter(k => hasValue(insightsMerged[k]) && !fieldIsComplete(insightsMerged[k])).map(k => insightFieldLabels[k])
     : [];
 
-  // Il nome visualizzato non è mai un requisito: il profilo è valido se lo screen_type
-  // è corretto e username + follower sono leggibili per intero.
+  // Il nome visualizzato non è mai un requisito. Lo username può risultare troncato da
+  // Instagram stesso ("francesco___...") senza che esista un'altra fonte nello schermo per
+  // completarlo: in questo caso lo prendiamo comunque (senza i puntini) e lo segnaliamo da
+  // completare più avanti nel form, invece di bloccare la verifica del profilo.
+  const usernameField = (profile.result && profile.result.username) || { value:null, visibility:"not_visible", truncated:false };
+  const usernameReadable = !!usernameField.value;
+  const usernameNeedsCompletion = !!(usernameField.truncated && usernameField.value);
   const profileComplete = !!(profile.result && profile.result.screenType === "profile_ok"
-    && fieldIsComplete(profile.result.username) && fieldIsComplete(profile.result.followers));
+    && usernameReadable && fieldIsComplete(profile.result.followers));
   const profileDataIncomplete = !!(profile.result && profile.result.screenType === "profile_ok" && !profileComplete);
   const profileUncertain = !!(profile.result && profile.result.screenType === "uncertain");
 
@@ -1524,19 +1532,23 @@ function InstagramPreCheck({ onComplete, onBack }){
 
   const handleContinue = () => {
     if(!canContinue) return;
-    const ig = parseSocial(profile.result.username.value, "instagram");
+    const ig = parseSocial(usernameField.value, "instagram");
     const name = profile.result.displayName || { value:null, visibility:"not_visible", truncated:false };
-    // Nome completo e leggibile → precompilato. Nome troncato con "..." → lasciato da
-    // completare manualmente, con solo un riferimento a quanto letto. Nome ambiguo/illeggibile → vuoto.
-    const fullNameGuess     = (name.visibility === "complete" && name.value) ? name.value : "";
-    const fullNameTruncated = (name.truncated && name.value) ? name.value + "..." : "";
+    // Nome completo e leggibile → precompilato normalmente.
+    // Nome troncato con "..." → precompilato comunque con la sola parte letta (senza i puntini),
+    // ma segnalato come incompleto: nello step successivo il campo va evidenziato ed è il
+    // candidato a doverlo completare per intero.
+    // Nome ambiguo/illeggibile → campo vuoto, nessun precompilamento.
+    const fullNameGuess = name.value ? name.value : "";
+    const fullNameNeedsCompletion = !!(name.truncated && name.value);
     onComplete({
       instagram: ig.handle ? "@"+ig.handle : "",
       instagramHandle: ig.handle,
       instagramUrl: ig.url,
+      usernameNeedsCompletion,
       followers: String(profile.result.followers.value),
       fullNameGuess,
-      fullNameTruncated,
+      fullNameNeedsCompletion,
       views:           String(insightsMerged.views.value),
       netFollowers:    String(insightsMerged.netFollowers.value),
       interactions:    String(insightsMerged.interactions.value),
@@ -1834,9 +1846,13 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   // Se l'utente arriva dallo step di verifica screenshot, i dati Instagram sono già pronti:
   // niente upload da rifare, solo conferma dei quattro valori.
   const [prefilled] = useState(() => !!precheckData);
-  // Se lo screenshot profilo mostrava un nome troncato ("Francesco Maz..."), lo teniamo
-  // solo come riferimento: il candidato deve completarlo di persona nel campo Nome e cognome.
-  const [nameHint] = useState(() => (precheckData && precheckData.fullNameTruncated) || "");
+  // Se lo screenshot profilo mostrava un nome troncato ("Francesco Maz..."), il campo Nome
+  // e cognome viene precompilato con la sola parte letta (senza i puntini), ma segnalato in
+  // rosso: il candidato deve completarlo di persona. Il flag sparisce appena tocca il campo.
+  const [nameNeedsCompletion,setNameNeedsCompletion] = useState(() => !!(precheckData && precheckData.fullNameNeedsCompletion));
+  // Stesso meccanismo per lo username Instagram: Instagram stesso può troncarlo con "..."
+  // senza che nello screenshot esista un'altra fonte da cui completarlo.
+  const [usernameNeedsCompletion,setUsernameNeedsCompletion] = useState(() => !!(precheckData && precheckData.usernameNeedsCompletion));
   const [form,setForm]           = useState(() => precheckData ? {
     ...EMPTY_FORM,
     ...precheckData,
@@ -2304,15 +2320,14 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
         {/* ============ STEP 1 — PROFILO ============ */}
         {step===0 && (
           <section style={{animation:"fadeUp .3s ease both"}}>
-            <Field label="Nome e cognome" required error={err("fullName")} htmlFor="f-name">
-              <input id="f-name" value={form.fullName} aria-invalid={inv("fullName")}
-                onChange={e=>set("fullName",e.target.value)} placeholder="Mario Rossi" autoComplete="name"/>
+            <Field label="Nome e cognome" required
+              error={nameNeedsCompletion ? "Il nome letto dallo screenshot era troncato: completalo per intero." : err("fullName")}
+              htmlFor="f-name">
+              <input id="f-name" value={form.fullName}
+                aria-invalid={nameNeedsCompletion ? "true" : inv("fullName")}
+                onChange={e=>{ set("fullName",e.target.value); if(nameNeedsCompletion) setNameNeedsCompletion(false); }}
+                placeholder="Mario Rossi" autoComplete="name"/>
             </Field>
-            {nameHint && !form.fullName && (
-              <p className="body-sm" style={{fontSize:12,color:"var(--t4)",marginTop:-10,marginBottom:14}}>
-                Rilevato dallo screenshot: “{nameHint}” — il nome era troncato, completalo qui per intero.
-              </p>
-            )}
             <div className="g2-gap">
               <Field label="Età" required error={err("age")} htmlFor="f-age">
                 <input id="f-age" type="number" inputMode="numeric" value={form.age} aria-invalid={inv("age")}
@@ -2453,9 +2468,13 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
             {/* ── INSTAGRAM ── */}
             <div className="eyebrow" style={{marginBottom:14}}>Instagram</div>
             <div className="g2-gap">
-              <Field label="Username Instagram" required error={err("instagram")} htmlFor="f-ig">
-                <input id="f-ig" value={form.instagram} aria-invalid={inv("instagram")}
-                  onChange={e=>set("instagram",e.target.value)} placeholder="@username"/>
+              <Field label="Username Instagram" required
+                error={usernameNeedsCompletion ? "Lo username letto dallo screenshot era troncato: completalo per intero." : err("instagram")}
+                htmlFor="f-ig">
+                <input id="f-ig" value={form.instagram}
+                  aria-invalid={usernameNeedsCompletion ? "true" : inv("instagram")}
+                  onChange={e=>{ set("instagram",e.target.value); if(usernameNeedsCompletion) setUsernameNeedsCompletion(false); }}
+                  placeholder="@username"/>
               </Field>
               <Field label="Follower" required error={err("followers")} htmlFor="f-fol">
                 <input id="f-fol" type="number" inputMode="numeric" value={form.followers} aria-invalid={inv("followers")}
