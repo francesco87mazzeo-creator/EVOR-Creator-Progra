@@ -493,7 +493,7 @@ const extractInsights = async (base64Image) => {
           role:"user",
           content:[
             { type:"image", source:{ type:"base64", media_type:mediaType, data:base64Data } },
-            { type:"text", text:"Analizza questo screenshot Instagram e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"insights_ok\",\"views\":{\"value\":null,\"visibility\":\"not_visible\"},\"netFollowers\":{\"value\":null,\"visibility\":\"not_visible\"},\"interactions\":{\"value\":null,\"visibility\":\"not_visible\"},\"accountsReached\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"insights_ok\" se la schermata mostra i marker della pagina Insight corretta: titolo \"Insight\" con tabs \"Generale/Contenuti/Pubblico\", oppure \"Tutti i contenuti\", oppure box con \"Follower netti\" e \"Interazioni\", oppure \"Account raggiunti\" o \"Account che hanno visualizzato\" o \"Visualizzazioni per tipo di contenuto\". Basta uno o più di questi marker in combinazione coerente.\n- \"dashboard_wrong\" se la schermata mostra il titolo \"Dashboard per professionisti\" insieme a marker come \"Nuovi follower\", \"Contenuti che hai condiviso\", \"I tuoi strumenti\", \"Best practice\", \"Riepilogo mensile\". Questa è la Dashboard iniziale, NON gli Insight dettagliati.\n- \"uncertain\" solo se non ci sono marker sufficienti per decidere (es. schermata generica, ritaglio troppo piccolo).\n\nBasati esclusivamente sul testo che leggi, non sul colore di sfondo (l'app può essere in light o dark mode).\n\nPer i quattro valori numerici — Visualizzazioni, Follower netti, Interazioni, Account raggiunti — value = numero esatto come appare (con separatori e segno +/-), null se non visibile.\n\nIMPORTANTE — \"Account raggiunti\" e \"Account che hanno visualizzato\" sono la STESSA metrica in versioni diverse di Instagram: qualunque delle due etichette trovi, il valore va comunque messo nel campo accountsReached.\n\nIMPORTANTE — la visibility si valuta sul NUMERO, non sul contenitore grafico che lo racchiude: non serve che l'intero box/casella sia visibile, conta solo che il valore numerico sia leggibile per intero. Il fatto che il bordo colorato, lo sfondo o l'angolo arrotondato della card che contiene il numero escano dall'inquadratura NON è di per sé motivo di incertezza: se le cifre del numero sono tutte leggibili, il dato è comunque complete.\n\nREGOLA ZERO, LA PIÙ IMPORTANTE — L'ETICHETTA NON CONTA MAI: Visualizzazioni / Follower netti / Interazioni sono tre riquadri affiancati in fila orizzontale, ciascuno con una piccola etichetta in alto e un numero grande sotto. Quando il telefono taglia il riquadro più a destra, l'etichetta sopra risulta spesso troncata (es. vedi \"Interazi\" invece di \"Interazioni\", oppure l'etichetta manca del tutto). QUESTO NON HA NESSUNA RILEVANZA per decidere la visibility del numero sottostante. Anche se l'etichetta è tagliata a metà o assente, valuta il numero SOLO in base alle due condizioni seguenti, riferite unicamente alle cifre del numero stesso, mai al testo dell'etichetta.\n\nvisibility = \"complete\" richiede ENTRAMBE queste condizioni sul numero (mai sull'etichetta):\n1) ogni cifra ha una forma piena e riconoscibile: nessuna cifra mostra solo una fetta verticale di sé stessa, come accadrebbe se un bordo la tagliasse a metà; il segno +/- e l'eventuale virgola sono leggibili per intero.\n2) dopo l'ultima cifra è visibile ALMENO UN PICCOLO spazio libero (di sfondo, del riquadro o della pagina) prima che intervenga qualunque taglio: il bordo del riquadro stesso, oppure il bordo reale della foto. Anche pochi pixel di spazio bastano, ma deve essercene: l'ultima cifra non deve toccare né essere accostata direttamente al punto in cui l'immagine o il riquadro vengono tagliati.\n\nSe entrambe sono vere sul numero, il dato è complete — indipendentemente da cosa succede all'etichetta sopra di esso o al bordo del riquadro.\n\nvisibility = \"partial\" in questi casi (sempre riferiti al numero, mai all'etichetta):\n- una cifra mostra solo una porzione di sé stessa (segno concreto di taglio a metà carattere);\n- il numero termina con una virgola delle migliaia senza le cifre successive;\n- una cifra è coperta o sovrapposta da altro elemento grafico;\n- la lettura OCR sulle cifre stesse è incerta;\n- oppure, anche se le cifre sembrano tutte intere, l'ULTIMA CIFRA TOCCA DIRETTAMENTE il punto di taglio (bordo del riquadro o bordo reale della foto) SENZA alcuno spazio libero dopo di essa.\n\nNon usare mai come motivo di partial: l'etichetta sopra il numero troncata o assente, il bordo colorato del riquadro tagliato, lo sfondo del riquadro non interamente visibile.\n\nvisibility = \"not_visible\" se il dato non è presente, non viene letto, o l'area relativa alla metrica non è visibile, oppure se screen_type è dashboard_wrong." }
+            { type:"text", text:"Analizza questo screenshot Instagram e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"insights_ok\",\"views\":{\"value\":null,\"visibility\":\"not_visible\"},\"netFollowers\":{\"value\":null,\"visibility\":\"not_visible\"},\"interactions\":{\"value\":null,\"visibility\":\"not_visible\"},\"accountsReached\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"insights_ok\" se la schermata mostra i marker della pagina Insight corretta: titolo \"Insight\" con tabs \"Generale/Contenuti/Pubblico\", oppure \"Tutti i contenuti\", oppure box con \"Follower netti\" e \"Interazioni\", oppure \"Account raggiunti\" o \"Account che hanno visualizzato\" o \"Visualizzazioni per tipo di contenuto\". Basta uno o più di questi marker in combinazione coerente.\n- \"dashboard_wrong\" se la schermata mostra il titolo \"Dashboard per professionisti\" insieme a marker come \"Nuovi follower\", \"Contenuti che hai condiviso\", \"I tuoi strumenti\", \"Best practice\", \"Riepilogo mensile\". Questa è la Dashboard iniziale, NON gli Insight dettagliati.\n- \"uncertain\" solo se non ci sono marker sufficienti per decidere (es. schermata generica, ritaglio troppo piccolo).\n\nBasati esclusivamente sul testo che leggi, non sul colore di sfondo (l'app può essere in light o dark mode).\n\nPer i quattro valori numerici — Visualizzazioni, Follower netti, Interazioni, Account raggiunti — value = numero esatto come appare (con separatori e segno +/-), null se non visibile.\n\nIMPORTANTE — \"Account raggiunti\" e \"Account che hanno visualizzato\" sono la STESSA metrica in versioni diverse di Instagram: qualunque delle due etichette trovi, il valore va comunque messo nel campo accountsReached.\n\nIMPORTANTE — la visibility si valuta sul NUMERO, non sul contenitore grafico che lo racchiude: non serve che l'intero box/casella sia visibile, conta solo che il valore numerico sia leggibile per intero. Il fatto che il bordo colorato, lo sfondo o l'angolo arrotondato della card che contiene il numero escano dall'inquadratura NON è di per sé motivo di incertezza: se le cifre del numero sono tutte leggibili, il dato è comunque complete.\n\nCRITERIO DECISIVO, DA APPLICARE COME UN CALCOLO E NON A SENTIMENTO: l'etichetta sopra il numero (troncata, es. \"Interazi\" invece di \"Interazioni\", oppure assente) NON influenza MAI la lettura del numero. Per decidere, confronta due larghezze:\n(a) la larghezza di una singola cifra del numero;\n(b) la larghezza dello spazio vuoto tra l'ultima cifra e il punto di taglio (bordo del riquadro o bordo reale della foto).\nSe (b) è grande quanto o più di (a), allora un'altra cifra non sarebbe potuta stare lì senza lasciarsi vedere almeno in parte: il numero è finito, quindi \"complete\". Questo vale anche se il riquadro grigio prosegue fino al bordo della foto e l'etichetta sopra è tagliata.\nSe invece (b) è più piccolo di (a), oppure l'ultima cifra tocca direttamente il taglio senza spazio, allora \"partial\".\nAltri casi di \"partial\": una cifra visibilmente mozzata a metà (se ne vede solo una fetta verticale), una virgola delle migliaia seguita dal nulla, una cifra coperta da un altro elemento grafico.\nNon deliberare a lungo: fai il confronto tra (a) e (b) e rispondi.\n\nvisibility = \"not_visible\" se il dato non è presente, non viene letto, o l'area relativa alla metrica non è visibile, oppure se screen_type è dashboard_wrong." }
           ]
         }]
       })
@@ -1487,15 +1487,30 @@ function InstagramPreCheck({ onComplete, onBack }){
   /* ---------- STATO DERIVATO ---------- */
   const { merged: insightsMerged, conflicts: insightsConflicts } = mergeInsights(ins1.result, ins2.result);
   const insightsAttempted = !!(ins1.result && ins1.result.screenType !== "dashboard_wrong");
+  // Un dato serve davvero solo se NON è stato letto affatto. Se un valore è stato letto ma
+  // l'OCR lo ha marcato "partial" (dubbio sul possibile troncamento), non blocchiamo il
+  // candidato: lo lasciamo proseguire e glielo facciamo confermare esplicitamente più avanti,
+  // nella sezione "Controlla i dati rilevati", dove può correggerlo e allegare una foto di verifica.
+  // Chiedere un secondo screenshot per un dato che si legge benissimo era la causa dei blocchi.
+  const hasValue = f => !!(f && f.value !== null && f.value !== undefined);
+  const insightsReadable = insightsAttempted
+    && hasValue(insightsMerged.views) && hasValue(insightsMerged.netFollowers)
+    && hasValue(insightsMerged.interactions) && hasValue(insightsMerged.accountsReached);
   const insightsComplete = insightsAttempted
     && fieldIsComplete(insightsMerged.views) && fieldIsComplete(insightsMerged.netFollowers)
     && fieldIsComplete(insightsMerged.interactions) && fieldIsComplete(insightsMerged.accountsReached);
-  const insightsNeedSecond = insightsAttempted && !insightsComplete;
+  // Il secondo screenshot si chiede SOLO se manca davvero un valore, non per un semplice dubbio.
+  const insightsNeedSecond = insightsAttempted && !insightsReadable;
+  // Dati letti ma con qualche riserva: si prosegue, segnalando di ricontrollarli dopo.
+  const insightsToDoubleCheck = insightsReadable && !insightsComplete;
   // Elenco leggibile dei soli dati non ancora completi, per dire con precisione cosa manca
   // invece di un generico "alcuni dati" — utile sia al candidato sia per capire dove interviene l'OCR.
   const insightFieldLabels = { views:"Visualizzazioni", netFollowers:"Follower netti", interactions:"Interazioni", accountsReached:"Account raggiunti" };
   const missingInsightFields = insightsAttempted
-    ? Object.keys(insightFieldLabels).filter(k => !fieldIsComplete(insightsMerged[k])).map(k => insightFieldLabels[k])
+    ? Object.keys(insightFieldLabels).filter(k => !hasValue(insightsMerged[k])).map(k => insightFieldLabels[k])
+    : [];
+  const doubtfulInsightFields = insightsAttempted
+    ? Object.keys(insightFieldLabels).filter(k => hasValue(insightsMerged[k]) && !fieldIsComplete(insightsMerged[k])).map(k => insightFieldLabels[k])
     : [];
 
   // Il nome visualizzato non è mai un requisito: il profilo è valido se lo screen_type
@@ -1505,7 +1520,7 @@ function InstagramPreCheck({ onComplete, onBack }){
   const profileDataIncomplete = !!(profile.result && profile.result.screenType === "profile_ok" && !profileComplete);
   const profileUncertain = !!(profile.result && profile.result.screenType === "uncertain");
 
-  const canContinue = profileComplete && insightsComplete;
+  const canContinue = profileComplete && insightsReadable;
 
   const handleContinue = () => {
     if(!canContinue) return;
@@ -1659,7 +1674,7 @@ function InstagramPreCheck({ onComplete, onBack }){
                   : "+ Carica screenshot"}
               </div>
             </div>
-            {insightsComplete && <span className="u-check" aria-hidden="true">✓</span>}
+            {insightsReadable && <span className="u-check" aria-hidden="true">✓</span>}
             <input type="file" accept="image/*" className="sr-only" aria-label="Carica primo screenshot Insight"
               onChange={e=>{ processInsight(e.target.files[0],1); e.target.value=""; }}/>
           </label>
@@ -1682,8 +1697,8 @@ function InstagramPreCheck({ onComplete, onBack }){
             </div>
           )}
 
-          {/* Slot 2 — compare solo quando serve */}
-          {insightsNeedSecond && (
+          {/* Slot 2 — obbligatorio se manca un dato, facoltativo se un dato è solo dubbio */}
+          {(insightsNeedSecond || insightsToDoubleCheck) && (
             <div style={{marginTop:12}}>
               <label className={"upload-compact"+(ins2.data?" done":"")}>
                 {ins2.data
@@ -1720,6 +1735,22 @@ function InstagramPreCheck({ onComplete, onBack }){
           )}
 
           {insightsComplete && <div className="verify-pill ok">✓ Insight verificati</div>}
+          {insightsToDoubleCheck && (
+            <>
+              <div className="verify-pill warn">✓ Dati letti · da ricontrollare</div>
+              <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
+                <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+                <div className="body-sm">
+                  Abbiamo letto tutti i dati, ma su
+                  {doubtfulInsightFields.length>0
+                    ? <> <strong style={{color:"var(--t1)"}}>{doubtfulInsightFields.join(", ")}</strong></>
+                    : " qualche valore"} non siamo del tutto sicuri che il numero fosse per intero nello screenshot.
+                  Puoi proseguire: al passo successivo ti chiederemo di controllare i valori e potrai correggerli.
+                  Se preferisci, puoi anche caricare un secondo screenshot più largo.
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <button type="button" className="btn btn-primary" disabled={!canContinue} onClick={handleContinue}
