@@ -7,16 +7,18 @@ service cloud.firestore {
     // Viewer reads applications but never receives management write permissions.
     function reader() { return request.auth != null && request.auth.token.get('role', '') in ['admin', 'manager', 'viewer']; }
     function admin() { return request.auth != null && request.auth.token.get('role', '') == 'admin'; }
-    function exact(d, keys) { return d is map && d.keys().hasOnly(keys) && d.keys().hasAll(keys); }
+    // A subset with the same cardinality is exactly the expected key set.
+    // Literal counts avoid evaluating each allowed-key list a second time.
+    function exact(d, keys, count) { return d is map && d.size() == count && d.keys().hasOnly(keys); }
     function str(v, max) { return v is string && v.size() <= max; }
-    function required(v, max) { return str(v, max) && v.matches('(?s).*[^ \t\r\n].*'); }
+    function required(v, max) { return v is string && v.size() <= max && v.matches('(?s).*[^ \t\r\n].*'); }
     function iso(v) { return v is string && v.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z'); }
     function integer(v) { return v is int && v >= 0 && v <= 1000000000000; }
     function signed(v) { return v is int && v >= -1000000000000 && v <= 1000000000000; }
     function metric(v) { return v is number && v >= 0 && v <= 100000000000000; }
     function signedMetric(v) { return v is number && v >= -100000000000000 && v <= 100000000000000; }
-    function url(v) { return str(v, 2048) && (v == '' || v.matches('https?://[^ \t\r\n]+')); }
-    function image(v) { return str(v, 700000) && (v == '' || v.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+')); }
+    function url(v) { return v is string && v.size() <= 2048 && (v == '' || v.matches('https?://[^ \t\r\n]+')); }
+    function image(v) { return v is string && v.size() <= 700000 && (v == '' || v.matches('data:image/jpeg;base64,[A-Za-z0-9+/=]+')); }
     function status(v) { return v in ['new','review','shortlist','watchlist','more_info','approved','rejected','archived']; }
     function performance(v) { return v in ['HIGH','GOOD','AVERAGE','LOW']; }
     function derived(d) {
@@ -33,27 +35,27 @@ service cloud.firestore {
         && iso(e.updatedAt);
     }
     function metrics(d) {
-      return exact(d,['views','netFollowers','interactions','accountsReached'])
+      return exact(d, ['views','netFollowers','interactions','accountsReached'], 4)
         && integer(d.views) && signed(d.netFollowers) && integer(d.interactions) && integer(d.accountsReached);
     }
     function nullableNumber(v) { return v == null || (v is number && v >= -1000000000000 && v <= 1000000000000); }
     function ocrNumber(f) {
-      return exact(f,['value','visibility']) && nullableNumber(f.value)
+      return exact(f, ['value','visibility'], 2) && nullableNumber(f.value)
         && f.visibility in ['complete','partial','not_visible'];
     }
     function ocrText(f) {
-      return exact(f,['value','visibility','truncated'])
+      return exact(f, ['value','visibility','truncated'], 3)
         && (f.value == null || str(f.value,200))
         && f.visibility in ['complete','partial','not_visible'] && f.truncated is bool;
     }
     function insight(s) {
-      return s == null || (exact(s,['screenType','views','netFollowers','interactions','accountsReached'])
+      return s == null || (exact(s, ['screenType','views','netFollowers','interactions','accountsReached'], 5)
         && s.screenType in ['insights_ok','dashboard_wrong','uncertain']
         && ocrNumber(s.views) && ocrNumber(s.netFollowers)
         && ocrNumber(s.interactions) && ocrNumber(s.accountsReached));
     }
     function conflict(c) {
-      return exact(c,['key','valueA','valueB'])
+      return exact(c, ['key','valueA','valueB'], 3)
         && c.key in ['views','netFollowers','interactions','accountsReached']
         && nullableNumber(c.valueA) && nullableNumber(c.valueB);
     }
@@ -63,20 +65,20 @@ service cloud.firestore {
         && (c.size() < 3 || conflict(c[2])) && (c.size() < 4 || conflict(c[3]));
     }
     function ocrInsights(o) {
-      return o == null || (exact(o,['screenshot1','screenshot2','merged','conflicts','readAt'])
+      return o == null || (exact(o, ['screenshot1','screenshot2','merged','conflicts','readAt'], 5)
         && insight(o.screenshot1) && insight(o.screenshot2)
-        && exact(o.merged,['views','netFollowers','interactions','accountsReached'])
+        && exact(o.merged, ['views','netFollowers','interactions','accountsReached'], 4)
         && nullableNumber(o.merged.views) && nullableNumber(o.merged.netFollowers)
         && nullableNumber(o.merged.interactions) && nullableNumber(o.merged.accountsReached)
         && conflicts(o.conflicts) && iso(o.readAt));
     }
     function ocrProfile(o) {
-      return o == null || (exact(o,['result','readAt']) && iso(o.readAt)
-        && exact(o.result,['screenType','displayName','username','followers'])
+      return o == null || (exact(o, ['result','readAt'], 2) && iso(o.readAt)
+        && exact(o.result, ['screenType','displayName','username','followers'], 4)
         && o.result.screenType in ['profile_ok','wrong_screen','uncertain']
         && ocrText(o.result.displayName) && ocrText(o.result.username) && ocrNumber(o.result.followers));
     }
-    function applicationKeys(d) { return exact(d, ["fullName", "email", "city", "country", "otherProfileCategory", "instagram", "tiktok", "screenshotName", "screenshotName2", "contentUrl1", "contentUrl2", "contentUrl3", "threeWords", "contentType", "whatToTransmit", "whyFollow", "brandCollabDetails", "motivation", "brandLike", "contentIntegration", "athleteImage", "valueBeyondContent", "howWouldTell", "scenarioBrandContent", "badContentReaction", "analysisElements", "brandMeaning", "boughtProducts", "improvements", "extra", "instagramHandle", "instagramUrl", "tiktokHandle", "tiktokUrl", "hasBrandCollabs", "buildWithoutEarnings", "contentPerMonth", "hasRoutine", "followsGuidelines", "availEvents", "availShooting", "availUgc", "availRawFiles", "age", "isAdult", "privacyConsent", "profileCategories", "followers", "tiktokFollowers", "views", "netFollowers", "interactions", "accountsReached", "screenshotData", "screenshotData2", "profileScreenshotData", "ocrInsights", "ocrProfile", "schemaVersion", "date", "updatedAt", "status", "notes", "creatorCode", "evaluation", "socialScore", "perfLevel", "bandLabel", "erRate", "reachRate", "growthRate"]); }
+    function applicationKeys(d) { return exact(d, ["fullName", "email", "city", "country", "otherProfileCategory", "instagram", "tiktok", "screenshotName", "screenshotName2", "contentUrl1", "contentUrl2", "contentUrl3", "threeWords", "contentType", "whatToTransmit", "whyFollow", "brandCollabDetails", "motivation", "brandLike", "contentIntegration", "athleteImage", "valueBeyondContent", "howWouldTell", "scenarioBrandContent", "badContentReaction", "analysisElements", "brandMeaning", "boughtProducts", "improvements", "extra", "instagramHandle", "instagramUrl", "tiktokHandle", "tiktokUrl", "hasBrandCollabs", "buildWithoutEarnings", "contentPerMonth", "hasRoutine", "followsGuidelines", "availEvents", "availShooting", "availUgc", "availRawFiles", "age", "isAdult", "privacyConsent", "profileCategories", "followers", "tiktokFollowers", "views", "netFollowers", "interactions", "accountsReached", "screenshotData", "screenshotData2", "profileScreenshotData", "ocrInsights", "ocrProfile", "schemaVersion", "date", "updatedAt", "status", "notes", "creatorCode", "evaluation", "socialScore", "perfLevel", "bandLabel", "erRate", "reachRate", "growthRate"], 71); }
     function texts0(d) { return required(d.fullName, 199)
       && required(d.email, 199)
       && required(d.city, 200)
@@ -143,7 +145,7 @@ service cloud.firestore {
     // Preserve original application and OCR evidence, including on legacy documents.
     // Validate only changed management fields; do not force a legacy migration.
     function correction(c, d) {
-      return exact(c,['correctedAt','correctedBy','previousValues','newValues','note'])
+      return exact(c, ['correctedAt','correctedBy','previousValues','newValues','note'], 5)
         && iso(c.correctedAt) && c.correctedBy == 'staff'
         && metrics(c.previousValues) && metrics(c.newValues) && str(c.note,2000)
         && c.newValues.views == d.views && c.newValues.netFollowers == d.netFollowers
@@ -169,24 +171,28 @@ service cloud.firestore {
         && (!c.hasAny(['insightsCorrection']) || correction(d.insightsCorrection,d));
     }
     function thresholds(t) {
-      return exact(t,['avg','good','excellent']) && metric(t.avg) && metric(t.good) && metric(t.excellent)
-        && t.avg > 0 && t.avg < t.good && t.good < t.excellent;
+      // Strict ordering implies positivity of good/excellent; the final upper bound
+      // also bounds avg/good. Types and finite accepted ranges are unchanged.
+      return exact(t, ['avg','good','excellent'], 3)
+        && t.avg is number && t.good is number && t.excellent is number
+        && t.avg > 0 && t.avg < t.good && t.good < t.excellent
+        && t.excellent <= 100000000000000;
     }
     function band(b) {
-      return exact(b,['label','max','er','reach','growth']) && required(b.label,120)
+      return exact(b, ['label','max','er','reach','growth'], 5) && required(b.label,120)
         && thresholds(b.er) && thresholds(b.reach) && thresholds(b.growth);
     }
     function level(l, v) {
-      return exact(l,['v','l','min','c']) && l.v == v && required(l.l,120)
+      return exact(l, ['v','l','min','c'], 4) && l.v == v && required(l.l,120)
         && l.min is int && l.min >= 0 && l.min <= 100
         && l.c is string && l.c.matches('#[A-Fa-f0-9]{6}');
     }
     function scoring(d) {
-      return exact(d,['version','weights','levels','bands']) && d.version == 2
-        && exact(d.weights,['er','reach','growth'])
-        && metric(d.weights.er) && d.weights.er <= 100
-        && metric(d.weights.reach) && d.weights.reach <= 100
-        && metric(d.weights.growth) && d.weights.growth <= 100
+      return exact(d, ['version','weights','levels','bands'], 4) && d.version == 2
+        && exact(d.weights, ['er','reach','growth'], 3)
+        && d.weights.er is number && d.weights.er >= 0 && d.weights.er <= 100
+        && d.weights.reach is number && d.weights.reach >= 0 && d.weights.reach <= 100
+        && d.weights.growth is number && d.weights.growth >= 0 && d.weights.growth <= 100
         && d.weights.er+d.weights.reach+d.weights.growth > 0
         && d.levels is list && d.levels.size() == 4
         && level(d.levels[0],'HIGH') && level(d.levels[1],'GOOD')
@@ -195,10 +201,13 @@ service cloud.firestore {
         && d.levels[2].min > d.levels[3].min && d.levels[3].min == 0
         && d.bands is list && d.bands.size() == 5
         && band(d.bands[0]) && band(d.bands[1]) && band(d.bands[2]) && band(d.bands[3]) && band(d.bands[4])
-        && integer(d.bands[0].max) && d.bands[0].max > 0
-        && integer(d.bands[1].max) && d.bands[1].max > d.bands[0].max
-        && integer(d.bands[2].max) && d.bands[2].max > d.bands[1].max
-        && integer(d.bands[3].max) && d.bands[3].max > d.bands[2].max
+        // Increasing integer maxima: the first lower bound and last upper
+        // bound imply the original range check for every intermediate band.
+        && d.bands[0].max is int && d.bands[1].max is int
+        && d.bands[2].max is int && d.bands[3].max is int
+        && d.bands[0].max > 0 && d.bands[1].max > d.bands[0].max
+        && d.bands[2].max > d.bands[1].max && d.bands[3].max > d.bands[2].max
+        && d.bands[3].max <= 1000000000000
         && d.bands[4].max == null;
     }
     match /candidature/{id} {

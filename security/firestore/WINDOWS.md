@@ -59,15 +59,19 @@ C:\evora-firestore-test\
       README.md
       SCHEMA.md
       WINDOWS.md
+      A1.md
       scripts\run-emulator.mjs
+      scripts\emulator-diagnostics.mjs
       test\frontend-fixture.mjs
       test\frontend-contract.test.mjs
       test\rules.test.mjs
+      test\emulator-diagnostics.test.mjs
 ```
 
-Il branch cloud è `security/firestore-rules-emulator`; i file preparati non sono
-stati pubblicati con commit/push. Un nuovo clone da GitHub non li include: occorre
-trasferire questa cartella dall'ambiente di lavoro. Non cambiare branch e non
+Il branch cloud è `security/firestore-rules-emulator`. La versione base è su
+GitHub, mentre le modifiche A1 attuali sono soltanto locali: un nuovo clone
+non contiene la correzione A1. Occorre trasferire la cartella aggiornata dall’ambiente
+di lavoro o attendere una successiva pubblicazione autorizzata. Non cambiare branch e non
 eseguire commit dalla tua cartella Windows per questa prova.
 
 **Non copiare** `.git`, il file legacy `html ` (ha uno spazio finale),
@@ -92,13 +96,17 @@ Se l'installazione fallisce, fermati e conserva l'errore. Se termina correttamen
 npm.cmd run test:contract
 ```
 
-Sono attesi **6 test di contratto superati**. Questi controlli non certificano le
+Sono attesi **7 test di contratto superati**. Questi controlli non certificano le
 Security Rules. Se passano, esegui i test dell'Emulator:
 
 ```powershell
 npm.cmd test
 $LASTEXITCODE
 ```
+
+Usare `npm.cmd test`, non direttamente `npm.cmd run test:rules`: il runner abilita
+il controllo obbligatorio dei log. Un superamento del budget causa fallimento
+globale anche se i singoli `assertFails` risultano soddisfatti.
 
 Il comando scarica l'Emulator ufficiale al primo avvio, verifica il download,
 avvia Firestore su `127.0.0.1:8089`, esegue i test e lo arresta alla fine.
@@ -109,8 +117,9 @@ La macchina deve avere la porta 8089 libera. Non servono Firebase CLI globale,
 **Risultato corretto:** riepilogo con tutti i test passati, zero fallimenti e
 `$LASTEXITCODE` uguale a **0**. Il numero totale della suite Emulator va letto dal
 riepilogo effettivo: comprende anche i casi anonimo, viewer, manager e admin.
-Quella suite non è ancora stata eseguita nell'ambiente cloud perché il proxy
-blocca il download. Non assumere in anticipo che le regole compilino o che i test
+La versione base è stata eseguita su Windows: 191 test, 179 passati e 12 falliti
+per superamento del budget. La correzione A1 locale non è ancora stata eseguita
+nell'Emulator, assente nella cache cloud. Non assumere in anticipo che le regole compilino o che i test
 passino: gli eventuali errori sono informazioni necessarie alla revisione.
 
 ## 4. Se qualcosa non funziona

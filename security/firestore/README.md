@@ -1,6 +1,9 @@
 # COLLECTIVE — preparazione sicurezza Firestore
 
-Stato: **candidato per revisione, non pubblicato e non ancora validato nell'Emulator**.
+Stato: **correzione A1 candidata; non validata nell'Emulator**.
+La versione base delle regole è pubblicata nel commit
+`fc7690ce1d5adee3c1d77566f111dfbef26ec21a`. Le modifiche A1 sono
+soltanto locali, senza commit o push: [dettagli A1](A1.md).
 Branch: `security/firestore-rules-emulator`, base `479213ab45cdee057f7c2d8c8e733eb64cc3c8b7`.
 Nessuna modifica a `index.html`, al file legacy `html `, a Firebase o Cloudflare.
 
@@ -20,7 +23,10 @@ npm test
 
 `npm test` avvia **solo Firestore Emulator** su `127.0.0.1:8089`, con progetto
 `demo-evora-security`, ed esegue la suite Node con concorrenza 1. Nessun login richiesto.
-Il runner rimuove i selettori standard di credenziali dal processo figlio e usa un
+Il runner intercetta errori di budget dagli stream e dai log della singola esecuzione,
+anche quando un test negativo risulta passato; richiede log Firestore aggiornati
+per accettare un esito globale positivo. Rimuove i selettori standard di credenziali
+dal processo figlio e usa un
 progetto demo esplicito. I test rifiutano un endpoint diverso da quello locale.
 Non esistono script di deploy. Non usare dati di produzione come fixture.
 Il binario ufficiale viene scaricato dal CLI con verifica dimensione/checksum;
@@ -31,6 +37,10 @@ Rete di installazione: `registry.npmjs.org` e, per il binario ufficiale,
 HTTP 403 al CONNECT del proxy: `npm test` è terminato prima dell'avvio dei test.
 Una nuova esecuzione è necessaria dopo l'abilitazione del dominio nelle impostazioni
 dell'ambiente. Non confondere i test di contratto con una compilazione delle Rules.
+Per il controllo completo usare `npm test`, non direttamente `npm run test:rules`: il
+runner imposta il guard diagnostico obbligatorio. In questo ambiente non tentare
+nuovi download: `EVORA_EMULATOR_OFFLINE=1 npm test` verifica solo la disponibilità
+della cache e termina con codice 2 se manca il binario.
 
 ## Ultimo tentativo e istruzioni per esecuzione locale
 
@@ -76,8 +86,11 @@ senza includere credenziali. Non eseguire alcun comando `deploy`.
 
 ## Esiti attuali
 
-- **6 test di contratto frontend passati**, nessun fallimento.
-- **Suite Security Rules non eseguita**: download Emulator bloccato da rete.
+- **20 test locali passati**: 7 contratto/schema e 13 diagnostica, nessun fallimento.
+- **Versione base eseguita da Claude Code su Windows, secondo il rapporto ricevuto:**
+  191 test, 179 passati e 12 falliti per budget espressioni; alcuni dinieghi non conclusivi.
+- **Versione A1 non eseguita nell'Emulator**: binario assente nella cache; prova in
+  modalità offline terminata con codice 2 senza tentare download.
 - Compilazione Rules, budget di espressioni (in particolare OCR completo), autorizzazioni
   e compatibilità SDK/Emulator **non confermati** finché `npm test` non passa.
 - Nessun test sul Worker, su custom token reali o sulle regole online.

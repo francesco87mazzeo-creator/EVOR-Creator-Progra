@@ -1,11 +1,33 @@
 import { before, after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {initializeTestEnvironment, assertSucceeds, assertFails} from '@firebase/rules-unit-testing';
+import {initializeTestEnvironment, assertSucceeds, assertFails as firebaseAssertFails} from '@firebase/rules-unit-testing';
 import {doc,collection,query,orderBy,getDoc,getDocs,setDoc,updateDoc,deleteDoc,deleteField,writeBatch} from 'firebase/firestore';
 import {submission,defaultScoring,completeOcr,stamp} from './frontend-fixture.mjs';
+import {expressionBudgetExceeded} from '../scripts/emulator-diagnostics.mjs';
+async function assertFails(promise) {
+ const error=await firebaseAssertFails(promise);
+ assert.ok(!expressionBudgetExceeded(error.message), 'Budget exhaustion is not an expected authorization denial');
+ return error;
+}
+let witnessId=0;
+async function rejectedCreate(baseline, mutate) {
+ const id=++witnessId;
+ await assertSucceeds(setDoc(app('anonymous',`witness-${id}`),baseline));
+ const invalid=clone(baseline); mutate(invalid);
+ await assertFails(setDoc(app('anonymous',`invalid-${id}`),invalid));
+ await assertSucceeds(setDoc(app('anonymous',`repaired-${id}`),baseline));
+}
+async function rejectedScoring(mutate) {
+ const baseline=defaultScoring();
+ await assertSucceeds(setDoc(settings('admin'),baseline));
+ const invalid=clone(baseline);mutate(invalid);
+ await assertFails(setDoc(settings('admin'),invalid));
+ await assertSucceeds(setDoc(settings('admin'),baseline));
+}
 // Refuse to run against a remote service even if configuration is inherited.
 assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8089');
+assert.equal(process.env.EVORA_DIAGNOSTICS_GUARD,'1','Use npm test: the emulator log guard is required for conclusive denials');
 let env, original;
 const db = role => role === 'anonymous' ? env.unauthenticatedContext().firestore() : env.authenticatedContext(`synthetic-${role}`,role==='unprivileged'?{}:{role}).firestore();
 const app = (role,id='existing')=>doc(db(role),'candidature',id);
@@ -14,6 +36,17 @@ const clone = v=>structuredClone(v);
 before(async()=>{
  env=await initializeTestEnvironment({projectId:'demo-evora-security',firestore:{host:'127.0.0.1',port:8089,rules:await readFile(new URL('../firestore.rules',import.meta.url),'utf8')}});
  original=await submission();
+ // Fail the suite prerequisites rather than reporting false security successes
+ // against a payload which can never be written through the real rules.
+ const full=await submission(completeOcr());
+ const worst=clone(full);
+ worst.ocrInsights.conflicts=['views','netFollowers','interactions','accountsReached'].map(key=>({key,valueA:1,valueB:2}));
+ for (const [name,data] of [['simple',original],['full-ocr',full],['four-conflicts',worst]]) {
+  try { await assertSucceeds(setDoc(app('anonymous',`prerequisite-${name}`),data)); }
+  catch(cause) { throw new Error(`Positive prerequisite failed: ${name}. Negative denials are not conclusive.`,{cause}); }
+ }
+ try { await assertSucceeds(setDoc(settings('admin'),defaultScoring())); }
+ catch(cause) { throw new Error('Positive prerequisite failed: admin scoring. Negative denials are not conclusive.',{cause}); }
 });
 beforeEach(async()=>{
  await env.clearFirestore();
@@ -101,14 +134,14 @@ const invalid=[
  ['OCR conflict',d=>{d.ocrInsights=completeOcr().ocrInsights;d.ocrInsights.conflicts=[{key:'invalid',valueA:1,valueB:2}];}],
  ['OCR oversized list',d=>{d.ocrInsights=completeOcr().ocrInsights;d.ocrInsights.conflicts=Array(5).fill({key:'views',valueA:1,valueB:2});}]
 ];
-for(const [name,mutate] of invalid) test(`Reject public payload: ${name}`,async()=>{const d=clone(original);mutate(d);await assertFails(setDoc(app('anonymous','invalid'),d));});
+for(const [name,mutate] of invalid) test(`Reject public payload: ${name}`,async()=>rejectedCreate(await submission(completeOcr()),mutate));
 for(const [name,mutate] of [
  ['unknown key',d=>{d.secret='not allowed';}],['weight zero',d=>{d.weights={er:0,reach:0,growth:0};}],
  ['weight negative',d=>{d.weights.er=-1;}],['weight type',d=>{d.weights.er='45';}],
  ['level order',d=>{d.levels[1].min=90;}],['level key',d=>{d.levels[0].extra=true;}],
  ['threshold order',d=>{d.bands[0].er.good=1;}],['threshold key',d=>{d.bands[0].er.extra=1;}],
  ['band order',d=>{d.bands[1].max=1;}],['last max',d=>{d.bands[4].max=1000000;}],['band count',d=>{d.bands.pop();}]
-]) test(`Reject malformed admin scoring: ${name}`,async()=>{const d=defaultScoring();mutate(d);await assertFails(setDoc(settings('admin'),d));});
+]) test(`Reject malformed admin scoring: ${name}`,async()=>rejectedScoring(mutate));
 for(const [name,patch] of [
  ['unknown status',{status:'bogus'}],['notes type',{notes:{x:1}}],['notes length',{notes:'x'.repeat(10001)}],
  ['rating range',{evaluation:{brandFit:6,updatedAt:stamp}}],['rating field',{evaluation:{secret:1,updatedAt:stamp}}],
@@ -136,8 +169,7 @@ test('Public score is declared data; staff display recomputes it',async()=>{
 // For OCR fields it is an invalid map, rather than null (which is supported).
 const allFields=Object.keys(await submission());
 for(const field of allFields) test(`Reject wrong type/shape for public field: ${field}`,async()=>{
- const d=clone(original);d[field]={unexpected:'synthetic'};
- await assertFails(setDoc(app('anonymous','bad-field'),d));
+ await rejectedCreate(await submission(completeOcr()),d=>{d[field]={unexpected:'synthetic'};});
 });
 test('Combined image size rejected below individual image caps',async()=>{
  const d=await submission(completeOcr());
@@ -201,3 +233,42 @@ test('Viewer batch cannot combine public create with a management update',async(
  await assertFails(batch.commit());
  assert.equal((await getDoc(app('admin','viewer-batch'))).exists(),false);
 });
+
+// A1 must preserve exact schemas, including a missing+extra key of the same size.
+test('Exact cardinality cannot replace one public field with an unknown field',async()=>{
+ await rejectedCreate(await submission(completeOcr()),d=>{delete d.extra;d.unexpected='synthetic';});
+});
+test('Exact cardinality cannot replace an OCR field with an unknown field',async()=>{
+ await rejectedCreate(await submission(completeOcr()),d=>{
+  delete d.ocrInsights.screenshot1.views.value;
+  d.ocrInsights.screenshot1.views.unexpected=24800;
+ });
+});
+test('Exact cardinality cannot replace a scoring field with an unknown field',async()=>{
+ await rejectedScoring(d=>{delete d.bands[0].er.good;d.bands[0].er.unexpected=6;});
+});
+for(const value of [-1,0,NaN,Infinity,-Infinity,'3',null]) {
+ test(`Threshold minimum rejects invalid boundary ${String(value)}`,async()=>{
+  await rejectedScoring(d=>{d.bands[0].er.avg=value;});
+ });
+}
+for(const value of [-1,0,NaN,Infinity,-Infinity,'10',null,100000000000001]) {
+ test(`Threshold maximum rejects invalid boundary ${String(value)}`,async()=>{
+  await rejectedScoring(d=>{d.bands[0].er.excellent=value;});
+ });
+}
+test('Threshold upper bound remains inclusive',async()=>{
+ const d=defaultScoring();d.bands[0].er={avg:1,good:2,excellent:100000000000000};
+ await assertSucceeds(setDoc(settings('admin'),d));
+});
+test('Increasing band maxima preserve the original inclusive upper bound',async()=>{
+ const d=defaultScoring();d.bands[3].max=1000000000000;
+ await assertSucceeds(setDoc(settings('admin'),d));
+ await assertFails(setDoc(settings('admin'),{...d,bands:d.bands.map((b,i)=>i===3?{...b,max:1000000000001}:b)}));
+ await assertSucceeds(setDoc(settings('admin'),d));
+});
+for(const value of [NaN,Infinity,-Infinity,-1,100.01,'45',null]) {
+ test(`Scoring weight retains its original finite numeric range: ${String(value)}`,async()=>{
+  await rejectedScoring(d=>{d.weights.er=value;});
+ });
+}

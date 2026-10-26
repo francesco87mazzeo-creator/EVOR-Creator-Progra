@@ -45,3 +45,12 @@ test('Schema review document inventories every submitted field exactly once',asy
  const fields=[...schema.matchAll(/^\| `([^`]+)` \|/gm)].map(m=>m[1]);
  assert.deepEqual(fields.sort(),Object.keys(await submission()).sort());
 });
+test('Every exact-key guard has a unique key list and matching literal cardinality',()=>{
+ const guards=[...rules.matchAll(/exact\([^,()]+,\s*(\[[^\]]*\]),\s*(\d+)\)/g)];
+ assert.ok(guards.length >= 10,'Expected all top-level and nested schemas');
+ for(const [,literal,count] of guards) {
+  const keys=JSON.parse(literal.replace(/'/g,'"'));
+  assert.equal(new Set(keys).size,keys.length,'Duplicate schema keys');
+  assert.equal(Number(count),keys.length,`Incorrect cardinality: ${literal}`);
+ }
+});
