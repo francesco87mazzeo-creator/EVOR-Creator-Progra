@@ -7,6 +7,8 @@
 <meta name="description" content="EVORΛ COLLECTIVE — il Partner Program EVORΛ dedicato a creator, coach e personalità del mondo fitness.">
 <title>EVORΛ COLLECTIVE — Partner Program</title>
 
+<script src="public/applications-client.js"></script>
+<script src="public/admin-scoring-client.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -312,6 +314,8 @@ const BRAND = {
 // Endpoint invariati — non modificare senza aggiornare il servizio corrispondente.
 const WORKER_BASE = "https://throbbing-feather-957f.francesco87-mazzeo.workers.dev";
 const OCR_PROXY   = WORKER_BASE;              // compatibilità: la radice resta l'endpoint OCR
+const APPLICATIONS_URL = WORKER_BASE + "/applications";
+const ADMIN_SCORING_URL = WORKER_BASE + "/admin/scoring";
 const AUTH_URL    = WORKER_BASE + "/auth";    // verifica del codice, lato server
 const NOTIFY_URL  = WORKER_BASE + "/notify";  // notifica Telegram, token lato server
 const OCR_MODEL   = "claude-sonnet-4-5";
@@ -377,10 +381,6 @@ const FB = {
     const snap = await db.collection("candidature").orderBy("date","desc").get();
     return snap.docs.map(d=>({ id:d.id, ...d.data() }));
   },
-  async saveApp(app){
-    const {id, ...data} = app;
-    await db.collection("candidature").doc(String(id)).set(data);
-  },
   async updateApp(id, patch){
     await db.collection("candidature").doc(String(id)).update({ ...patch, updatedAt:new Date().toISOString() });
   },
@@ -399,7 +399,7 @@ const FB = {
     return doc.exists ? doc.data() : null;
   },
   async saveScoring(cfg){
-    await db.collection("settings").doc("scoring").set(cfg);
+    await CollectiveAdminScoring.saveScoring({endpoint:ADMIN_SCORING_URL,auth,config:cfg});
   }
 };
 
@@ -1168,6 +1168,7 @@ function Landing({onApply}){
             EVORΛ Collective è il programma dedicato a creator, coach e personalità del mondo fitness
             che condividono la nostra visione e vogliono costruire una collaborazione credibile e continuativa con il brand.
           </p>
+          <p className="body-sm" style={{marginBottom:18}}>Candidature riservate a persone maggiorenni (18+).</p>
           <button className="btn btn-primary" onClick={onApply} style={{padding:"18px 38px"}}>
             Presenta la tua candidatura
           </button>
@@ -1326,6 +1327,16 @@ const STEPS = [
   "Riepilogo"
 ];
 
+const FORM_STEP_FIELDS=[
+          ["fullName","age","email","city","country","isAdult","profileCategories","otherProfileCategory"],
+          ["instagram","followers","tiktok","tiktokFollowers","screenshotData","screenshotData2","profileScreenshotData","views","netFollowers","interactions","accountsReached","ocrInsights","ocrProfile","contentUrl1","contentUrl2","contentUrl3"],
+          ["threeWords","contentType","whatToTransmit","whyFollow","hasBrandCollabs","brandCollabDetails"],
+          ["motivation","brandLike","contentIntegration","athleteImage","valueBeyondContent","howWouldTell"],
+          ["scenarioBrandContent","buildWithoutEarnings","badContentReaction","analysisElements","brandMeaning"],
+          ["contentPerMonth","hasRoutine","followsGuidelines","availEvents","availShooting","availUgc","availRawFiles","boughtProducts","improvements","extra"],
+          ["privacyConsent"]
+ ];
+
 const LIMITS = { short:120, medium:600, long:900 };
 
 const EMPTY_FORM = {
@@ -1368,33 +1379,6 @@ function CharField({id, value, onChange, max, rows=4, placeholder, error, invali
 }
 
 /** Notifica al team. Volutamente separata dall'invio: non deve mai bloccarlo. */
-const notifyTelegram = async (doc, s) => {
-  const cats = Array.isArray(doc.profileCategories) && doc.profileCategories.length
-    ? doc.profileCategories.map(catLabel).join(", ")
-    : (doc.category ? catLabel(doc.category) : "—");
-  const igLine = doc.instagramUrl
-    ? "📱 Instagram: <a href=\""+escTg(doc.instagramUrl)+"\">@"+escTg(doc.instagramHandle||cleanHandle(doc.instagram))+"</a>"
-    : (doc.instagram ? "📱 Instagram: "+escTg(doc.instagram) : "");
-  const ttLine = doc.tiktokUrl
-    ? "🎵 TikTok: <a href=\""+escTg(doc.tiktokUrl)+"\">@"+escTg(doc.tiktokHandle||cleanHandle(doc.tiktok))+"</a>"
-    : "";
-  const msg =
-    "🔔 <b>"+escTg(BRAND.program)+"</b>\nNuova candidatura\n\n"+
-    "👤 <b>"+escTg(doc.fullName)+"</b>\n"+
-    (igLine ? igLine+"\n" : "")+
-    (ttLine ? ttLine+"\n" : "")+
-    "🏷 "+escTg(cats)+"\n"+
-    "👥 "+fmtInt(doc.followers)+" follower · fascia "+escTg(s.bandLabel)+"\n\n"+
-    "👁 Visualizzazioni: "+fmtInt(doc.views)+"\n"+
-    "🎯 Account raggiunti: "+fmtInt(doc.accountsReached)+"\n"+
-    "💬 Interazioni: "+fmtInt(doc.interactions)+"\n"+
-    "📈 Follower netti: "+(doc.netFollowers>0?"+":"")+fmtInt(doc.netFollowers)+"\n\n"+
-    "ER "+s.er.toFixed(2)+"% · Reach "+s.reach.toFixed(1)+"% · Growth "+s.growth.toFixed(2)+"%\n"+
-    "📊 Social Performance Score: <b>"+s.socialScore+"/100</b> · "+escTg(s.perfLabel);
-  const r = await sendTelegram(msg);
-  if(!r.ok) console.error("Notifica non inviata:", r.description);
-};
-
 /* ============================================================================
    STEP INIZIALE — VERIFICA SCREENSHOT INSTAGRAM (prima del form vero e proprio)
    ========================================================================== */
@@ -1587,6 +1571,7 @@ function InstagramPreCheck({ onComplete, onBack }){
       <div className="precheck-wrap" style={{flex:1}}>
         <div className="eyebrow" style={{marginBottom:10}}>{BRAND.program}</div>
         <h1 className="h-md" style={{marginBottom:12}}>Prepara i tuoi dati Instagram</h1>
+        <p className="body-sm" style={{marginBottom:12}}>La candidatura è riservata a chi ha compiuto 18 anni.</p>
         <p className="body-sm" style={{marginBottom:26,color:"var(--t3)"}}>
           Prima di iniziare, carica gli screenshot richiesti. Useremo questi dati per compilare
           automaticamente la sezione Instagram della candidatura.
@@ -1881,6 +1866,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   const fieldLabelIt = {views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"};
 
   const uploadVerifyPhoto = async (key, file) => {
+    if(testMode){ setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:"Lettura automatica disattivata in modalità prova."}})); return; }
     if(!file) return;
     if(!ALLOWED_IMAGE.includes(file.type) || file.size > MAX_UPLOAD_BYTES){
       setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:"Formato non valido, riprova."}})); return;
@@ -2005,6 +1991,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   const [saving,setSaving]       = useState(false);
   const [done,setDone]           = useState(false);
   const [saveErr,setSaveErr]     = useState("");
+  const submissionRef = useRef(null);
   const topRef = useRef(null);
 
   const set = useCallback((k,v)=>{
@@ -2040,6 +2027,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   };
 
   const processFile = async (file, slot) => {
+    if(testMode){ (slot===1 ? setOcr1 : setOcr2)(s=>({...s,state:"failed",msg:"Lettura automatica disattivata in modalità prova."})); return; }
     if(!file) return;
     const setSlot = slot===1 ? setOcr1 : setOcr2;
     if(!ALLOWED_IMAGE.includes(file.type)){
@@ -2104,7 +2092,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     if(s===0){
       req("fullName","Inserisci nome e cognome");
       if(!String(form.age).trim()) e.age="Inserisci la tua età";
-      else if(isNaN(form.age) || +form.age<14 || +form.age>99) e.age="Inserisci un'età valida";
+      else if(!Number.isInteger(Number(form.age)) || +form.age<18 || +form.age>99) e.age="Inserisci un'età intera compresa tra 18 e 99 anni. Le candidature sono riservate ai maggiorenni.";
       if(!String(form.email).trim()) e.email="Inserisci la tua email";
       else if(!isEmail(form.email)) e.email="Indirizzo email non valido";
       req("city","Inserisci la città");
@@ -2113,7 +2101,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
         e.profileCategories = "Seleziona almeno una categoria";
       if(Array.isArray(form.profileCategories) && form.profileCategories.includes("altro") && !String(form.otherProfileCategory||"").trim())
         e.otherProfileCategory = "Specifica la tua categoria";
-      if(!form.isAdult) e.isAdult="Devi confermare di essere maggiorenne";
+      if(!form.isAdult) e.isAdult="Devi confermare di aver compiuto 18 anni";
     }
     if(s===1){
       req("instagram","Inserisci il tuo username Instagram");
@@ -2173,89 +2161,31 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
 
   /* ---------- INVIO ---------- */
   const submit = async () => {
-    if(saving) return;                                  // blocca il doppio invio
-    const e = validate(6);
-    if(Object.keys(e).length){ setErrors(e); scrollTop(); return; }
-
+    if(saving) return;
+    // Local simulation: no API, Firestore, OCR or Telegram calls.
+    if(testMode){
+      const profileErrors=validate(0);
+      const ageErrors=Object.fromEntries(Object.entries(profileErrors).filter(([key])=>key==="age"||key==="isAdult"));
+      if(Object.keys(ageErrors).length){ setErrors(ageErrors); setSaveErr("Anche la simulazione richiede un'età di 18–99 anni e la dichiarazione di maggiore età."); setStep(0); scrollTop(); return; }
+      setSaveErr(""); setDone(true); window.scrollTo({top:0}); return;
+    }
+    const e = Object.assign({}, ...STEPS.map((_,i)=>validate(i)));
+    if(Object.keys(e).length){ setErrors(e); setSaveErr("Controlla i campi evidenziati prima di inviare.");
+      const target=FORM_STEP_FIELDS.findIndex(keys=>keys.some(key=>e[key]));
+      setStep(target>=0?target:0); scrollTop(); return; }
     setSaving(true); setSaveErr("");
-
-    // 1 · preparazione documento — nessun campo undefined, nessun NaN
-    const num = v => { const x = parseInt(v,10); return Number.isFinite(x) ? x : 0; };
-    const now = new Date().toISOString();
-    const id  = Date.now();
-
-    let scoring = DEFAULT_SCORING;
-    try{ scoring = normalizeScoring(await FB.getScoring()); }
-    catch(err){ console.warn("Configurazione scoring non raggiungibile, uso i valori predefiniti:", err); }
-    const s = computeSocial(form, scoring);
-
-    const doc = {};
-    Object.keys(EMPTY_FORM).forEach(k=>{
-      const v = form[k];
-      doc[k] = (v===undefined || v===null) ? (typeof EMPTY_FORM[k]==="boolean" ? false : "") : v;
-    });
-    doc.screenshotData  = form.screenshotData  || "";
-    doc.screenshotData2 = form.screenshotData2 || "";
-    const ig = parseSocial(form.instagram, "instagram");
-    const tt = parseSocial(form.tiktok,    "tiktok");
-    doc.instagram        = ig.handle ? "@"+ig.handle : "";
-    doc.instagramHandle  = ig.handle;
-    doc.instagramUrl     = ig.url;
-    doc.tiktok           = tt.handle ? "@"+tt.handle : "";
-    doc.tiktokHandle     = tt.handle;
-    doc.tiktokUrl        = tt.url;
-    doc.profileCategories    = Array.isArray(form.profileCategories) ? form.profileCategories : [];
-    doc.otherProfileCategory = String(form.otherProfileCategory||"").trim();
-    doc.age             = num(form.age);
-    doc.followers       = num(form.followers);
-    doc.tiktokFollowers = num(form.tiktokFollowers);
-    doc.views           = num(form.views);
-    doc.netFollowers    = num(form.netFollowers);
-    doc.interactions    = num(form.interactions);
-    doc.accountsReached = num(form.accountsReached);
-    // Dati OCR grezzi per tracciamento: lo scoring usa solo i confirmed (i campi sopra).
-    doc.ocrInsights     = form.ocrInsights || null;
-    // Presenti solo se la candidatura è passata dallo step iniziale di verifica screenshot.
-    doc.profileScreenshotData = form.profileScreenshotData || "";
-    doc.ocrProfile            = form.ocrProfile || null;
-    Object.assign(doc, {
-      schemaVersion: 4,
-      date: now, updatedAt: now,
-      status: "new", notes: "", creatorCode: "", evaluation: {},
-      socialScore: s.socialScore,
-      perfLevel:   s.perfLevel,
-      bandLabel:   s.bandLabel,
-      erRate:      +s.er.toFixed(2),
-      reachRate:   +s.reach.toFixed(2),
-      growthRate:  +s.growth.toFixed(2)
-    });
-
-    // Salvaguardia: il documento Firestore non può superare 1 MiB
-    const totalImgBytes = (doc.screenshotData||"").length + (doc.screenshotData2||"").length + (doc.profileScreenshotData||"").length;
-    if(totalImgBytes > 900000){
-      console.error("Screenshot oltre il limite consentito");
-      setSaving(false);
-      setSaveErr("Gli screenshot sono troppo pesanti per essere salvati. Riprova ricaricandoli.");
-      return;
-    }
-
-    // 2 · salvataggio su Firestore — è questo il passaggio che determina l'esito
     try{
-      await FB.saveApp({ id, ...doc });
-    }catch(err){
-      console.error("Salvataggio candidatura non riuscito:", err);
-      setSaving(false);
-      setSaveErr("Non siamo riusciti a salvare la candidatura"+(err && err.code ? " ("+err.code+")" : "")+". I dati inseriti non sono andati persi: riprova.");
-      return;
-    }
-
-    // 3 · conferma immediata all'utente
-    setSaving(false);
-    setDone(true);
-    window.scrollTo({top:0});
-
-    // 4 · notifica Telegram separata: un errore qui non influisce sulla candidatura
-    notifyTelegram(doc, s).catch(err => console.error("Notifica Telegram non inviata:", err));
+      if(!submissionRef.current) submissionRef.current = CollectiveApplications.createSubmissionClient({endpoint:APPLICATIONS_URL});
+      await submissionRef.current.send(form);
+      setDone(true); window.scrollTo({top:0});
+    }catch(error){
+      setSaveErr(error instanceof CollectiveApplications.SubmissionError ? error.message : "Invio non disponibile. Riprova più tardi.");
+      if(error.field){
+        setErrors(p=>({...p,[error.field]:"Controlla il valore inserito."}));
+        const target=FORM_STEP_FIELDS.findIndex(keys=>keys.includes(error.field));
+        if(target>=0) setStep(target);
+      }
+    }finally{setSaving(false);}
   };
 
   /* ---------- SCHERMATA DI CONFERMA ---------- */
@@ -2268,16 +2198,16 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
             <div style={{width:64,height:64,border:"2px solid var(--ok)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 26px"}}>
               <span style={{color:"var(--ok)",fontSize:30,lineHeight:1}}>✓</span>
             </div>
-            <h1 className="h-lg" style={{marginBottom:18}}>Candidatura ricevuta</h1>
+            <h1 className="h-lg" style={{marginBottom:18}}>{testMode ? "Simulazione completata" : "Candidatura ricevuta"}</h1>
             <p className="body" style={{marginBottom:16}}>
-              Grazie per aver presentato la tua candidatura a {BRAND.program}.
+              {testMode ? "Modalità prova: nessuna candidatura è stata salvata e nessuna notifica è stata inviata." : "Grazie per aver presentato la tua candidatura a "+BRAND.program+"."}
             </p>
-            <p className="body-sm" style={{marginBottom:32,maxWidth:520,marginLeft:"auto",marginRight:"auto"}}>
+            {!testMode && <p className="body-sm" style={{marginBottom:32,maxWidth:520,marginLeft:"auto",marginRight:"auto"}}>
               Il nostro team analizzerà il tuo profilo, i dati e le risposte fornite.
               L'invio della candidatura non garantisce l'accesso al programma.
               Se riterremo che esistano le condizioni per costruire una collaborazione,
               ti contatteremo utilizzando l'indirizzo email indicato.
-            </p>
+            </p>}
             <a className="btn btn-ghost" href={BRAND.siteUrl}>Torna a EVORΛ</a>
           </div>
         </div>
@@ -2307,6 +2237,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
       <div className="wrap-narrow" style={{padding:"32px 20px 90px",flex:1}} ref={topRef}>
         <div className="eyebrow" style={{marginBottom:10}}>{BRAND.program}</div>
         <h1 className="h-md" style={{marginBottom:22}}>Candidatura al Partner Program</h1>
+        {testMode && <div className="status-box" role="status">Modalità prova: invio e lettura automatica disattivati. Nessun dato verrà salvato.</div>}
 
         {/* PROGRESS */}
         <div className="steps" role="progressbar" aria-valuenow={step+1} aria-valuemin="1" aria-valuemax={STEPS.length}>
@@ -2329,8 +2260,8 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                 placeholder="Mario Rossi" autoComplete="name"/>
             </Field>
             <div className="g2-gap">
-              <Field label="Età" required error={err("age")} htmlFor="f-age">
-                <input id="f-age" type="number" inputMode="numeric" value={form.age} aria-invalid={inv("age")}
+              <Field label="Età" required error={err("age")} htmlFor="f-age" hint="Candidature riservate a chi ha compiuto 18 anni (età ammessa: 18–99 anni).">
+                <input id="f-age" type="number" inputMode="numeric" min="18" max="99" step="1" value={form.age} aria-invalid={inv("age")}
                   onChange={e=>set("age",e.target.value)} placeholder="26"/>
               </Field>
               <Field label="Email" required error={err("email")} hint="La useremo per ricontattarti." htmlFor="f-email">
@@ -2378,7 +2309,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
             <div className="field">
               <label className="check">
                 <input type="checkbox" checked={form.isAdult} onChange={e=>set("isAdult",e.target.checked)}/>
-                <span>Dichiaro di essere maggiorenne.</span>
+                <span>Dichiaro di aver compiuto 18 anni.</span>
               </label>
               {err("isAdult") && <span className="field-err" role="alert">{err("isAdult")}</span>}
             </div>
@@ -2908,14 +2839,11 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
               {err("privacyConsent") && <span className="field-err" role="alert">{err("privacyConsent")}</span>}
             </div>
 
-            {saveErr && (
-              <div className="status-box" style={{borderColor:"#B03A3A",marginTop:12}}>
-                <div className="dot" style={{background:"var(--bad)",marginTop:6}}/>
-                <div className="body-sm" style={{color:"var(--t2)"}}>{saveErr}</div>
-              </div>
-            )}
+
           </section>
         )}
+
+        {saveErr && <div className="status-box" role="alert" style={{borderColor:"#B03A3A",marginTop:12}}><div className="body-sm">{saveErr}</div></div>}
 
         {/* ============ NAVIGAZIONE ============ */}
         <div style={{display:"flex",gap:10,marginTop:34,paddingTop:22,borderTop:"1px solid var(--brd)"}}>
@@ -3796,7 +3724,7 @@ const BENCH_LEVELS = [
   {k:"excellent", l:"Eccellente da", c:"#3A7BD5", desc:b=>"Da "+b.good+"% a "+b.excellent+"% → Buono · oltre → Eccellente"}
 ];
 
-function ScoringPanel({scoring, onSaved}){
+function ScoringPanel({scoring, onSaved, onAuthRequired}){
   const [cfg,setCfg]   = useState(()=>JSON.parse(JSON.stringify(scoring)));
   const [tab,setTab]   = useState("er");
   const [busy,setBusy] = useState(false);
@@ -3822,13 +3750,18 @@ function ScoringPanel({scoring, onSaved}){
   };
 
   const save = async ()=>{
-    setBusy(true);
+    if(busy) return;
+    setBusy(true); setMsg("");
     try{
       const clean = { ...cfg, version: SCORING_VERSION, bands: cfg.bands.map(b=>({ ...b, max: b.max===Infinity ? null : b.max })) };
       await FB.saveScoring(clean);
       onSaved(normalizeScoring(clean));
       setMsg("Configurazione salvata"); setTimeout(()=>setMsg(""),2200);
-    }catch(e){ setMsg("Errore nel salvataggio"); }
+    }catch(e){
+      const known=e instanceof CollectiveAdminScoring.ScoringSaveError;
+      setMsg(known ? e.message : "Errore nel salvataggio. Riprova più tardi.");
+      if(known && e.code==="LOGIN_REQUIRED") await onAuthRequired(e.message);
+    }
     finally{ setBusy(false); }
   };
 
@@ -3926,7 +3859,7 @@ function ScoringPanel({scoring, onSaved}){
         <div style={{display:"flex",gap:10,marginTop:20,flexWrap:"wrap",alignItems:"center"}}>
           <button className="btn btn-primary" onClick={save} disabled={busy}>{busy?"Salvataggio…":"Salva configurazione"}</button>
           <button className="btn btn-ghost" onClick={()=>setCfg(JSON.parse(JSON.stringify(DEFAULT_SCORING)))}>Ripristina valori iniziali</button>
-          {msg && <span className="label-xs" style={{color:"var(--ok)"}}>{msg}</span>}
+          {msg && <span className="label-xs" role="status" style={{color:msg==="Configurazione salvata"?"var(--ok)":"var(--bad)"}}>{msg}</span>}
         </div>
       </div>
     </div>
@@ -4077,6 +4010,7 @@ function AdminPanel({onBack, onTestForm}){
   };
 
   const logout = async ()=>{ await AUTH.logout(); setRole(null); setTab("apps"); };
+  const requireLogin = async message=>{ await AUTH.logout(); setRole(null); setTab("apps"); setErr(message); };
 
   if(!ready) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -4133,7 +4067,7 @@ function AdminPanel({onBack, onTestForm}){
       </div>
 
       {tab==="apps"     && <ApplicationsPanel role={role} scoring={scoring}/>}
-      {tab==="scoring"  && isAdmin && <ScoringPanel scoring={scoring} onSaved={setScoring}/>}
+      {tab==="scoring"  && isAdmin && <ScoringPanel scoring={scoring} onSaved={setScoring} onAuthRequired={requireLogin}/>}
       {tab==="settings" && isAdmin && <SettingsPanel/>}
     </div>
   );

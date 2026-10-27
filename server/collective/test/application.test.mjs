@@ -8,7 +8,7 @@ const copy=()=>structuredClone(full);
 function denied(data,code,path) {
  assert.throws(()=>validatePublicApplication(data),error=>error instanceof ValidationError&&error.code===code&&(!path||error.path===path));
 }
-test('Server document matches all 71 fields of the actual frontend submit',async()=>{
+test('Server document matches all 71 fields of the historical frontend document',async()=>{
  const actual=prepareApplication(fixture,{now:NOW});
  assert.deepEqual(actual,await frontendDocument());assert.equal(Object.keys(actual).length,71);
 });

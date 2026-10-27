@@ -4,6 +4,10 @@ import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expressionBudgetExceeded, currentLogText } from './emulator-diagnostics.mjs';
 const cwd = fileURLToPath(new URL('../', import.meta.url));
+const profile=process.env.EVORA_RULES_PROFILE || 'original';
+if (!['original','migration'].includes(profile)) throw new Error('Invalid rules profile');
+const config=profile==='migration'?'firebase.migration.json':'firebase.json';
+const testCommand=profile==='migration'?'npm run test:migration':'npm run test:rules';
 const cache = process.env.FIREBASE_EMULATORS_PATH || `${cwd}.emulator-cache`;
 mkdirSync(cache, { recursive: true });
 const env = { ...process.env, FIREBASE_EMULATORS_PATH: cache, CI: 'true', EVORA_DIAGNOSTICS_GUARD: '1' };
@@ -24,7 +28,7 @@ function inspect(stream, chunk) {
   exhausted ||= expressionBudgetExceeded(text);
   tails[stream] = text.slice(-8192);
 }
-const child = spawn(process.execPath, ['node_modules/firebase-tools/lib/bin/firebase.js', 'emulators:exec', '--project', 'demo-evora-security', '--only', 'firestore', '--config', 'firebase.json', 'npm run test:rules'], { cwd, env, stdio: ['inherit', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, ['node_modules/firebase-tools/lib/bin/firebase.js', 'emulators:exec', '--project', 'demo-evora-security', '--only', 'firestore', '--config', config, testCommand], { cwd, env, stdio: ['inherit', 'pipe', 'pipe'] });
 child.stdout.on('data', chunk => { process.stdout.write(chunk); inspect('stdout', chunk); });
 child.stderr.on('data', chunk => { process.stderr.write(chunk); inspect('stderr', chunk); });
 child.on('error', error => { console.error(error.message); });

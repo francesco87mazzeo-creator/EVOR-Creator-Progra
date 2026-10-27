@@ -1,3 +1,5 @@
+// The 71-field persisted-document oracle is historical; current HTTP payloads are tested in test/frontend.
+import {legacySubmit} from '../../../test/frontend/legacy-submit-reference.mjs';
 // Evaluate only pure fragments from the checked-out frontend; no Firebase config,
 // no JSX, no Worker calls and no production credentials are evaluated.
 import {readFile} from 'node:fs/promises';
@@ -13,7 +15,7 @@ const scoring=extract('const SCORING_VERSION =','/* ============================
 const form=extract('const EMPTY_FORM =','const YESNO =');
 const example=extract('const TEST_FORM =','/* ============================================================================\n   10. EXPORT CSV');
 const social=extract('const parseSocial =','/** Sfugge');
-const submit=extract('  const submit = async () => {','  /* ---------- SCHERMATA DI CONFERMA');
+const submit=legacySubmit;
 export const NOW='2026-01-01T12:00:00.000Z';
 export const JPEG='data:image/jpeg;base64,/9j/2Q==';
 export async function frontendDocument(overrides={}) {

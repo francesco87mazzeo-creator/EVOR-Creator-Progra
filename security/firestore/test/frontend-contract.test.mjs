@@ -5,7 +5,7 @@ import {submission,defaultScoring,completeOcr} from './frontend-fixture.mjs';
 const rules=await readFile(new URL('../firestore.rules',import.meta.url),'utf8');
 const frontend=await readFile(new URL('../../../index.html',import.meta.url),'utf8');
 // Contract checks do not replace emulator compilation or authorization tests.
-test('Rules key set exactly matches actual frontend submission (71 fields)',async()=>{
+test('Original Rules key set matches historical persisted document (71 fields)',async()=>{
  const match=rules.match(/function applicationKeys\(d\) \{ return exact\(d, (\[[^\n]+\])/);
  assert.ok(match,'Explicit field schema missing');
  const fields=JSON.parse(match[1]);
@@ -38,7 +38,7 @@ test('Every top-level public payload field has a value-validation reference',asy
 });
 test('Current frontend Firestore operations are fully inventoried',()=>{
  const operations=[...frontend.matchAll(/db\.collection\("([^\"]+)"\)([^;]+);/g)].map(m=>[m[1],m[2].includes('.delete(')?'delete':m[2].includes('.update(')?'update':m[2].includes('.set(')?'set':'get']);
- assert.deepEqual(operations,[['candidature','get'],['candidature','set'],['candidature','update'],['candidature','delete'],['settings','get'],['settings','set'],['settings','get'],['settings','set']]);
+ assert.deepEqual(operations,[['candidature','get'],['candidature','update'],['candidature','delete'],['settings','get'],['settings','set'],['settings','get']]);
 });
 test('Schema review document inventories every submitted field exactly once',async()=>{
  const schema=await readFile(new URL('../SCHEMA.md',import.meta.url),'utf8');

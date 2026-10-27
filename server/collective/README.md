@@ -153,8 +153,9 @@ Il sito operativo non cambia in questo blocco. Prima di collegarlo al Worker:
 
 1. Inviare solo i 54 campi pubblici, con numeri JSON; oggi il frontend calcola anche
    campi server, mentre lo stato del form usa stringhe per i numeri.
-2. Allineare l'età minima: la UI attuale ammette 14–99 pur chiedendo maggiore età;
-   qui si mantiene il requisito 18–99 già previsto nel progetto di sicurezza.
+2. Requisito età confermato dal founder il 27 ottobre 2026: solo maggiorenni.
+   Il frontend preparato in `development/collective-applications-frontend` è stato
+   allineato a 18–99; nessuna modifica al validatore di questo blocco o alla produzione.
 3. Allineare limiti testuali e verifica dell'intero modulo alla conferma finale.
 4. Mostrare gli errori strutturati invece di convertire input numerici errati in zero.
 5. URL social estranei, link con credenziali, base64 malformato e date OCR impossibili

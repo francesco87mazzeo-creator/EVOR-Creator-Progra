@@ -4,6 +4,17 @@ Questa procedura esegue i test soltanto sul computer locale. Non richiede login
 Firebase, credenziali, un progetto reale, merge o deploy. Non avvia il sito e non
 chiama il Worker. Il progetto dei test è `demo-evora-security`.
 
+## Versione da verificare oggi
+
+Per le Rules candidate aggiornate usare il branch
+`development/collective-applications-frontend` e il profilo **migration**.
+Il default originale conserva A1, già fallita per budget: non usarlo per certificare
+la nuova candidata. La compilazione e il budget della candidata restano da verificare.
+
+Le fixture richiedono anche `test/frontend/legacy-submit-reference.mjs` nella radice
+della copia di prova; non basta più copiare soltanto index.html e security/firestore.
+Il file è un oracolo storico di test, mai caricato dalla pagina.
+
 ## 1. Controlla Node.js e Java
 
 Apri **PowerShell** dal menu Start ed esegui:
@@ -42,6 +53,7 @@ la policy PowerShell: in questa guida si usa `npm.cmd` per evitare il blocco di
 Crea una cartella di prova, per esempio `C:\evora-firestore-test`, e copia:
 
 - `index.html` della versione analizzata del repository;
+- il file `test\frontend\legacy-submit-reference.mjs`, mantenendone le cartelle;
 - l'intera cartella preparata `security\firestore`, con regole, test, documentazione,
   configurazione, `package.json` e **`package-lock.json`**.
 
@@ -50,9 +62,13 @@ La struttura deve essere:
 ```text
 C:\evora-firestore-test\
   index.html
+  test\frontend\legacy-submit-reference.mjs
   security\
     firestore\
       firebase.json
+      firebase.migration.json
+      migration\firestore.rules
+      migration\rules.test.mjs
       firestore.rules
       package.json
       package-lock.json
@@ -68,11 +84,11 @@ C:\evora-firestore-test\
       test\emulator-diagnostics.test.mjs
 ```
 
-Il branch cloud è `security/firestore-rules-emulator`. La versione base è su
-GitHub, mentre le modifiche A1 attuali sono soltanto locali: un nuovo clone
-non contiene la correzione A1. Occorre trasferire la cartella aggiornata dall’ambiente
-di lavoro o attendere una successiva pubblicazione autorizzata. Non cambiare branch e non
-eseguire commit dalla tua cartella Windows per questa prova.
+Il branch da leggere su GitHub è `development/collective-applications-frontend`.
+La condivisione non modifica main o il sito pubblicato. Prima di aggiornare una
+copia Windows preserva eventuali modifiche locali; non fare commit involontari
+per eliminare il file legacy con spazio finale. È possibile copiare i percorsi
+necessari in una cartella di prova separata, senza checkout completo del repository.
 
 **Non copiare** `.git`, il file legacy `html ` (ha uno spazio finale),
 `node_modules`, `.emulator-cache`, log, credenziali o dati di produzione.
@@ -100,8 +116,11 @@ Sono attesi **7 test di contratto superati**. Questi controlli non certificano l
 Security Rules. Se passano, esegui i test dell'Emulator:
 
 ```powershell
+$env:EVORA_RULES_PROFILE = 'migration'
 npm.cmd test
-$LASTEXITCODE
+$esitoRules = $LASTEXITCODE
+Remove-Item Env:EVORA_RULES_PROFILE
+"Codice uscita: $esitoRules"
 ```
 
 Usare `npm.cmd test`, non direttamente `npm.cmd run test:rules`: il runner abilita
@@ -117,6 +136,7 @@ La macchina deve avere la porta 8089 libera. Non servono Firebase CLI globale,
 **Risultato corretto:** riepilogo con tutti i test passati, zero fallimenti e
 `$LASTEXITCODE` uguale a **0**. Il numero totale della suite Emulator va letto dal
 riepilogo effettivo: comprende anche i casi anonimo, viewer, manager e admin.
+I dinieghi delle creazioni e scritture scoring dirette sono intenzionali nella migration.
 La versione base è stata eseguita su Windows: 191 test, 179 passati e 12 falliti
 per superamento del budget. La correzione A1 locale non è ancora stata eseguita
 nell'Emulator, assente nella cache cloud. Non assumere in anticipo che le regole compilino o che i test
@@ -138,8 +158,10 @@ passino: gli eventuali errori sono informazioni necessarie alla revisione.
 Per salvare l'output dell'Emulator in un file locale:
 
 ```powershell
+$env:EVORA_RULES_PROFILE = 'migration'
 npm.cmd test *> .\risultato-emulator.txt
 $esitoEmulator = $LASTEXITCODE
+Remove-Item Env:EVORA_RULES_PROFILE
 Get-Content .\risultato-emulator.txt -Tail 80
 "Codice uscita: $esitoEmulator"
 ```
