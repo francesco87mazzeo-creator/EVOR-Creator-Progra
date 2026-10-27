@@ -1,0 +1,19 @@
+{
+  "name": "evora-firestore-security",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/run-emulator.mjs",
+    "test:rules": "node --test --test-concurrency=1 test/*.test.mjs",
+    "test:contract": "node --test test/frontend-contract.test.mjs",
+    "test:migration": "node --test --test-concurrency=1 migration/*.test.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.1.0",
+    "firebase-tools": "15.34.1"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.6"
+  }
+}
