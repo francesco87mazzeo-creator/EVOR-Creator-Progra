@@ -16,6 +16,11 @@ for(const hostname of ['localhost','127.0.0.1','[::1]'])test(`Retired staging fa
 for(const hostname of ['collective.evorafitness.it','example.github.io'])test(`Public ${hostname} retains production`,()=>{
  const {current}=load(hostname,{protocol:'https:'}).CollectiveEnvironment;
  assert.equal(current.workerBase,production);assert.equal(current.firebase.projectId,'evora-athletes');
+ assert.equal(current.name,'production');assert.ok(Object.isFrozen(current)&&Object.isFrozen(current.firebase));
+});
+test('No retired staging service remains in the runtime configuration',()=>{
+ assert.doesNotMatch(source,/evora-collective-staging|984522935462|AIzaSyCLo1_iE5WlZJ0-GyGqNVtXNCiCGqgD_ls/);
+ assert.doesNotMatch(html,/evora-collective-staging/);
 });
 for(const hostname of ['localhost','collective.evorafitness.it'])test(`Worker-only override blocked on ${hostname}`,()=>{
  for(const override of [staging,production,'invalid',null])assert.throws(()=>load(hostname,{override}));

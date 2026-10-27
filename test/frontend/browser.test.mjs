@@ -23,22 +23,28 @@ const js={
 const firebaseStub=`(function(){
  const counters=window.testCounters=window.testCounters||{reads:0,writes:0};
  const candidate=__CANDIDATE__,allowWrites=__ALLOW_WRITES__;
- const auth={currentUser:{getIdToken:async()=> 'synthetic-firebase-id-token',getIdTokenResult:async()=>({claims:{role:'admin'}})},
- setPersistence:async()=>{},onAuthStateChanged(cb){Promise.resolve().then(cb);return()=>{};},signOut:async()=>{}};
- const read=async()=>{counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
+ const session=window.testSession={signIns:0,signOuts:0},listeners=[];
+ const user={uid:'staff-admin',getIdToken:async()=> 'synthetic-firebase-id-token',getIdTokenResult:async()=>({claims:{role:'admin'}})};
+ const notify=()=>listeners.forEach(cb=>cb(auth.currentUser));
+ const auth={currentUser:__SIGNED_IN__?user:null,setPersistence:async()=>{},
+ onAuthStateChanged(cb){listeners.push(cb);Promise.resolve().then(()=>cb(auth.currentUser));return()=>{const i=listeners.indexOf(cb);if(i>=0)listeners.splice(i,1);};},
+ async signInWithCustomToken(token){if(token!=='synthetic-custom-token')throw Error('Unexpected custom token');session.signIns++;auth.currentUser=user;notify();},
+ async signOut(){session.signOuts++;auth.currentUser=null;notify();}};
+ // Like the production Rules: reads without a signed-in staff user are denied.
+ const read=async()=>{if(!auth.currentUser)throw Object.assign(Error('Missing or insufficient permissions.'),{code:'permission-denied'});counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
  const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
  const db={collection(){return{doc(){return{get:read,set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
  window.firebase={initializeApp(config){if(config.projectId!=="evora-athletes")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
 })();`;
 let browser;
-before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});});
+before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--host-resolver-rules=MAP * ~NOTFOUND']});});
 after(async()=>browser?.close());
-async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false}={}) {
+async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
- const calls=[],errors=[];
+ const calls=[],errors=[],blocked=[];
  page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>localStorage.setItem('evora_login_at',String(Date.now())));
+ if(signedIn)await page.addInitScript(()=>localStorage.setItem('evora_login_at',String(Date.now())));
  await context.route('**/*',async route=>{
   const req=route.request(),url=req.url();
   const cors={'Access-Control-Allow-Origin':mockOrigin,'Access-Control-Allow-Headers':'Content-Type,Idempotency-Key,X-Turnstile-Token,Authorization','Access-Control-Allow-Methods':'POST,OPTIONS'};
@@ -48,11 +54,12 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
   if(url===mockOrigin+'/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
   if(url.startsWith(mockOrigin+'/'))return route.fulfill({contentType:'text/html',body:html});
   if(js[url])return route.fulfill({contentType:'text/javascript',body:js[url]});
-  if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites))});
+  if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites)).replace('__SIGNED_IN__',JSON.stringify(signedIn))});
   if(url.startsWith('https://fonts.'))return route.fulfill({contentType:'text/css',body:''});
   if(req.method()==='POST') {
    assert.equal(new URL(url).origin,mockWorker,'Every POST must be intercepted at the mocked Worker origin');
    calls.push({url,body:req.postDataJSON(),headers:req.headers()});
+   if(url===mockWorker+'/auth'&&req.postDataJSON()?.code==='synthetic-admin-code')return route.fulfill({status:200,headers:cors,contentType:'application/json',body:JSON.stringify({ok:true,role:'admin',token:'synthetic-custom-token'})});
    if(url===mockWorker+'/auth')return route.fulfill({status:401,headers:cors,contentType:'application/json',body:'{}'});
    if(url===mockWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
@@ -65,12 +72,14 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
     return route.fulfill({headers:cors,contentType:'application/json',body:JSON.stringify({content:[{text:JSON.stringify(result)}]})});
    }
   }
-  // No network escape: even unexpected requests are answered locally.
+  // No network escape: unexpected requests are aborted locally and fail the test.
+  blocked.push(req.method()+' '+url);
   return route.abort('blockedbyclient');
  });
  await page.goto(`${mockOrigin}/${admin?'#admin':''}`);
+ if(!expectBlocked)t.after(()=>assert.deepEqual(blocked,[],'No request may leave the test harness'));
  t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid production configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
- return{page,calls};
+ return{page,calls,blocked};
 }
 async function jpeg(page){return Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=30;c.height=30;c.getContext('2d').fillRect(0,0,30,30);return c.toDataURL('image/jpeg').split(',')[1];}),'base64');}
 async function fillPublic(page,{age='27',profileOnly=false}={}) {
@@ -229,4 +238,27 @@ test('Invalid configuration blocks SDK initialization and every POST',async t=>{
  assert.equal(await page.evaluate(()=>window.testFirebaseConfig),undefined);
  assert.equal(calls.length,0);
  assert.equal(await page.getByRole('button',{name:/Candidati|candidatura/i}).count(),0);
+});
+
+test('Admin login keeps the Firebase session and loads candidates (login race regression)',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Login'},{now:NOW});
+ const {page,calls}=await pageFor(t,{admin:true,signedIn:false,candidate});
+ await page.getByRole('heading',{name:'Accesso riservato',exact:true}).waitFor();
+ await page.locator('#access-code').fill('synthetic-admin-code');
+ await page.getByRole('button',{name:'Accedi',exact:true}).click();
+ await page.locator('button.row').filter({hasText:'Synthetic Login'}).waitFor();
+ assert.equal(await page.getByText('Impossibile caricare le candidature. Verifica la connessione.').count(),0);
+ assert.deepEqual(await page.evaluate(()=>({...window.testSession,user:firebase.auth().currentUser?.uid})),{signIns:1,signOuts:0,user:'staff-admin'});
+ assert.deepEqual(calls.map(c=>c.url),[mockWorker+'/auth']);
+});
+
+test('Unexpected requests and WebSockets never leave the harness',async t=>{
+ const {page,blocked}=await pageFor(t,{expectBlocked:true});
+ const result=await page.evaluate(async worker=>{
+  const attempt=async url=>{try{await fetch(url);return 'reached';}catch(e){return 'blocked';}};
+  const ws=await new Promise(resolve=>{try{const s=new WebSocket('wss://firestore.googleapis.com/');s.onopen=()=>resolve('open');s.onerror=()=>resolve('blocked');}catch(e){resolve('blocked');}});
+  return {external:await attempt('https://example.com/'),firestore:await attempt('https://firestore.googleapis.com/v1/projects/evora-athletes/databases/(default)/documents/candidature'),workerGet:await attempt(worker+'/'),ws};
+ },mockWorker);
+ assert.deepEqual(result,{external:'blocked',firestore:'blocked',workerGet:'blocked',ws:'blocked'});
+ assert.deepEqual(blocked.map(b=>b.split(' ')[0]),['GET','GET','GET']);
 });
