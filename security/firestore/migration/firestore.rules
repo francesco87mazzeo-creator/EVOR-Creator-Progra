@@ -61,7 +61,7 @@ service cloud.firestore {
       allow delete: if admin();
     }
     match /settings/scoring {
-      allow get: if true;
+      allow get: if reader();
       // Frontend saves through authenticated POST /admin/scoring, never client set.
       // IAM server writes bypass Rules; verify endpoint auth/CORS and staging before activation.
       allow create, update, delete: if false;

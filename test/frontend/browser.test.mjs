@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {validatePublicApplication} from '../../server/collective/application.mjs';
+import {validatePublicApplication,prepareApplication} from '../../server/collective/application.mjs';
+import {publicFixture,NOW} from '../../server/collective/test/frontend-reference.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
@@ -18,17 +19,18 @@ const js={
 };
 const firebaseStub=`(function(){
  const counters=window.testCounters=window.testCounters||{reads:0,writes:0};
+ const candidate=__CANDIDATE__,allowWrites=__ALLOW_WRITES__;
  const auth={currentUser:{getIdToken:async()=> 'synthetic-firebase-id-token',getIdTokenResult:async()=>({claims:{role:'admin'}})},
  setPersistence:async()=>{},onAuthStateChanged(cb){Promise.resolve().then(cb);return()=>{};},signOut:async()=>{}};
- const read=async()=>{counters.reads++;return{exists:false,docs:[]};};
- const write=()=>{counters.writes++;throw Error('Unexpected Firestore write');};
+ const read=async()=>{counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
+ const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
  const db={collection(){return{doc(){return{get:read,set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
  window.firebase={initializeApp(){},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
 })();`;
 let browser;
 before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});});
 after(async()=>browser?.close());
-async function pageFor(t,{admin=false,applicationResponse,scoringResponse}={}) {
+async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false}={}) {
  const page=await browser.newPage();t.after(()=>page.close());
  const calls=[],errors=[];
  page.on('pageerror',e=>errors.push(e.message));
@@ -41,7 +43,7 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse}={}) {
   if(url==='http://localhost:8043/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
   if(url.startsWith('http://localhost:8043/'))return route.fulfill({contentType:'text/html',body:html});
   if(js[url])return route.fulfill({contentType:'text/javascript',body:js[url]});
-  if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub});
+  if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites))});
   if(url.startsWith('https://fonts.'))return route.fulfill({contentType:'text/css',body:''});
   if(req.method()==='POST') {
    calls.push({url,body:req.postDataJSON(),headers:req.headers()});
@@ -163,4 +165,37 @@ test('Admin scoring HTTP 401 ends local session and requests a new login',{timeo
  await page.getByText('Sessione scaduta. Accedi nuovamente all’area riservata.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>localStorage.getItem('evora_login_at')),null);
  assert.equal(calls.filter(c=>c.url.endsWith('/admin/scoring')).length,1);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+test('Management input limits accept boundary-length values without altering save behavior',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Limits'},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate,allowWrites:true});
+ await page.locator('button.row').filter({hasText:'Synthetic Limits'}).click();
+ const notes=page.getByPlaceholder('Osservazioni, contatti effettuati, decisioni…',{exact:true});
+ const code=page.getByPlaceholder('ES. MARIO10',{exact:true});
+ assert.equal(await notes.getAttribute('maxlength'),'10000');assert.equal(await code.getAttribute('maxlength'),'120');
+ await notes.fill('x'.repeat(10000));await page.getByRole('button',{name:'Salva note',exact:true}).click();
+ await page.getByText('Note salvate',{exact:true}).waitFor();
+ assert.equal((await page.evaluate(()=>window.testCounters.lastWrite)).notes.length,10000);
+ await code.fill('a'.repeat(120));await page.getByRole('button',{name:'Salva',exact:true}).click();
+ await page.getByText('Codice salvato',{exact:true}).waitFor();
+ assert.equal((await page.evaluate(()=>window.testCounters.lastWrite)).creatorCode,'A'.repeat(120));
+ await page.getByRole('button',{name:'Correggi dati Insights',exact:true}).click();
+ const correction=page.getByPlaceholder('Es. Valore corretto dal secondo screenshot',{exact:true});
+ assert.equal(await correction.getAttribute('maxlength'),'2000');await correction.fill('n'.repeat(2000));
+ await page.getByRole('button',{name:'Salva e ricalcola',exact:true}).click();
+ await page.getByRole('button',{name:'Correggi dati Insights',exact:true}).waitFor();
+ assert.equal((await page.evaluate(()=>window.testCounters.lastWrite)).insightsCorrection.note.length,2000);
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),3);
+});
+test('Legacy overlong notes/code show clear errors and never trigger writes',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Legacy'},{now:NOW});
+ candidate.notes='x'.repeat(10001);candidate.creatorCode='A'.repeat(121);
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic Legacy'}).click();
+ await page.getByRole('button',{name:'Salva note',exact:true}).click();
+ await page.getByText('Le note interne possono contenere al massimo 10.000 caratteri. Riducile prima di salvare.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Salva',exact:true}).click();
+ await page.getByText('Il codice creator può contenere al massimo 120 caratteri, anche dopo la conversione in maiuscolo.',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
 });

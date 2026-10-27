@@ -115,10 +115,10 @@ un blocco anagrafico prima di ogni trattamento OCR.
 | Correzioni Insights e metriche | stesso update | Consentite a admin/manager con schema precedente preservato |
 | Eliminazione | delete candidatura | Solo admin, invariato rispetto alla proposta precedente |
 | Export CSV | trasformazione locale dei dati letti | Non è una scrittura; le Rules non lo distinguono dalla lettura |
-| Lettura scoring | get `settings/scoring` | Pubblica puntuale, invariata |
+| Lettura scoring | get `settings/scoring` | Solo admin/manager/viewer nelle Rules candidate |
 | Salvataggio scoring | FB.saveScoring → POST /admin/scoring con ID token | Compatibile lato frontend con il diniego delle scritture Firestore client; verifica integrata ancora necessaria |
 | Test notifica | Worker `/notify` | Fuori da Firestore Rules; verificare il contratto Worker aggiornato |
-| getSettings/saveSettings | settings/config | Helper senza chiamanti; accesso negato |
+| settings/config | Nessuna operazione frontend | Helper getSettings/saveSettings rimossi; accesso client negato |
 | Form di prova | simulazione locale | Nessuna scrittura da autorizzare |
 
 La sola distinzione create pubblico / update staff non rompe gli update esistenti:
@@ -177,7 +177,7 @@ La candidata:
 - nega create dirette alle candidature per qualunque client, anche staff;
 - conserva get/list per i claim correnti admin/manager/viewer;
 - conserva update staff limitati ai campi gestionali e delete solo admin;
-- mantiene get pubblico puntuale dello scoring, nega ogni scrittura client;
+- limita get dello scoring a admin/manager/viewer e nega ogni scrittura client;
 - non concede accesso client a idempotenza, sessioni o altri documenti privati;
 - non include più i costosi validatori di create/scoring: la validazione è del Worker;
 - non inventa claim owner o sessioni Google: la migrazione C1 resta separata.
@@ -249,14 +249,38 @@ compilata o sotto le 1.000 espressioni prima dell'esecuzione ufficiale.
 ## Risultati dell'esecuzione corrente
 
 - 58 test client HTTP/payload/idempotenza/Turnstile hook, inclusi limiti età: passati.
+- 12 test sui reali handler dei limiti gestionali (incluse soglie e maiuscolo): passati.
 - 16 test scoring amministrativo (ID token, HTTP, sessione e assenza scritture dirette): passati.
 - 22 test sui veri handler di validazione/invio, invocati direttamente: passati.
 - 208 test dei moduli server e della parità del documento storico: passati.
-- 20 test di contratto Rules originale e guard diagnostico: passati.
-- 8 test Chromium: percorso pubblico, form di prova, età, scoring/reset e gestione 400/401/403: passati.
-- **Totale locale: 332 passati, 0 falliti.** Tutti con dati sintetici e senza
+- 21 test di contratto Rules originale e guard diagnostico, inclusa assenza degli helper eliminati: passati.
+- 10 test Chromium: percorso pubblico, form di prova, età, scoring/reset, gestione 400/401/403 e limiti gestionali: passati.
+- **Totale locale: 347 passati, 0 falliti.** Tutti con dati sintetici e senza
   richieste ai servizi reali; i test browser intercettano ogni richiesta.
 - JSX compilato con Babel di prova; controlli sintattici JS e `git diff --check` passati.
 - Suite migration Firebase Emulator: **non eseguita**, uscita 2 in modalità offline
   per binario non in cache. Nessuna nuova prova del budget delle Rules è dichiarata.
 - I 320 test Worker riferiti dall'utente non sono inclusi nel totale locale.
+
+
+## Rifiniture finali: scoring riservato e limiti gestionali
+
+Le Rules candidate ora concedono il get di settings/scoring solo a reader()
+(admin/manager/viewer), senza aprire alcuna scrittura client. Il percorso pubblico
+non legge lo scoring; il Worker accede via service account/IAM. Nessuna modifica
+alle Rules online o al file storico A1.
+
+Aggiunti maxlength e indicazioni leggibili: note 10.000, nota correzione 2.000,
+codice creator 120. Gli handler ricontrollano i limiti prima di qualsiasi update,
+anche per dati legacy sovradimensionati o aggiramento degli attributi HTML.
+Il codice creator viene controllato anche DOPO trim/maiuscolo (es. ß → SS).
+I valori non vengono troncati silenziosamente e quelli validi restano invariati.
+
+getSettings e saveSettings sono rimossi da FB: nessun riferimento nel frontend
+operativo o nei client public/. Le fixture storiche sono esclusivamente oracoli di test.
+
+Il founder ha riferito **73 test Emulator ufficiali passati, zero fallimenti**, sulla
+candidata del commit cf063e4. È una conferma indipendente della versione precedente,
+non un'esecuzione locale di questa modifica. La lettura ora ristretta deve essere
+ricontrollata con la suite migration aggiornata. Il tentativo offline locale termina
+con codice 2 perché il binario non è in cache; non è stato tentato alcun download.

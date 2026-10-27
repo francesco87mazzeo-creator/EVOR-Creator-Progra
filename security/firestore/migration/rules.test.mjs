@@ -33,8 +33,8 @@ for(const role of ['anonymous','unprivileged','unknown','viewer','manager','admi
  });
  test(`${role}: notes update`,()=> (canEdit?assertSucceeds:denied)(updateDoc(ref(role),{notes:'Synthetic',updatedAt:stamp})));
  test(`${role}: delete`,()=> (role==='admin'?assertSucceeds:denied)(deleteDoc(ref(role))));
- test(`${role}: scoring public get, all client scoring writes denied`,async()=>{
-  await assertSucceeds(getDoc(ref(role,'settings/scoring')));
+ test(`${role}: scoring restricted get, all client scoring writes denied`,async()=>{
+  await (canRead?assertSucceeds:denied)(getDoc(ref(role,'settings/scoring')));
   await denied(setDoc(ref(role,'settings/scoring'),defaultScoring()));
   await denied(deleteDoc(ref(role,'settings/scoring')));
  });
