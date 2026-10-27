@@ -11,7 +11,8 @@ assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only
 const assetRequire=createRequire(`${assets}/package.json`);
 const html=await readFile(new URL('../../index.html',import.meta.url),'utf8');
 const workerConfig=await readFile(new URL('../../public/worker-config.js',import.meta.url),'utf8');
-const stagingWorker='https://evora-collective-staging.francesco87-mazzeo.workers.dev';
+const mockWorker='https://throbbing-feather-957f.francesco87-mazzeo.workers.dev';
+const mockOrigin='https://synthetic.collective.test';
 const client=await readFile(new URL('../../public/applications-client.js',import.meta.url),'utf8');
 const adminScoringClient=await readFile(new URL('../../public/admin-scoring-client.js',import.meta.url),'utf8');
 const js={
@@ -27,7 +28,7 @@ const firebaseStub=`(function(){
  const read=async()=>{counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
  const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
  const db={collection(){return{doc(){return{get:read,set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
- window.firebase={initializeApp(config){if(config.projectId!=="evora-collective-staging")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
+ window.firebase={initializeApp(config){if(config.projectId!=="evora-athletes")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
 })();`;
 let browser;
 before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});});
@@ -40,23 +41,23 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
  await page.addInitScript(()=>localStorage.setItem('evora_login_at',String(Date.now())));
  await context.route('**/*',async route=>{
   const req=route.request(),url=req.url();
-  const cors={'Access-Control-Allow-Origin':'http://localhost:8043','Access-Control-Allow-Headers':'Content-Type,Idempotency-Key,X-Turnstile-Token,Authorization','Access-Control-Allow-Methods':'POST,OPTIONS'};
+  const cors={'Access-Control-Allow-Origin':mockOrigin,'Access-Control-Allow-Headers':'Content-Type,Idempotency-Key,X-Turnstile-Token,Authorization','Access-Control-Allow-Methods':'POST,OPTIONS'};
   if(req.method()==='OPTIONS')return route.fulfill({status:204,headers:cors});
-  if(url==='http://localhost:8043/public/worker-config.js')return route.fulfill({contentType:'text/javascript',body:configuration});
-  if(url==='http://localhost:8043/public/applications-client.js')return route.fulfill({contentType:'text/javascript',body:client});
-  if(url==='http://localhost:8043/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
-  if(url.startsWith('http://localhost:8043/'))return route.fulfill({contentType:'text/html',body:html});
+  if(url===mockOrigin+'/public/worker-config.js')return route.fulfill({contentType:'text/javascript',body:configuration});
+  if(url===mockOrigin+'/public/applications-client.js')return route.fulfill({contentType:'text/javascript',body:client});
+  if(url===mockOrigin+'/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
+  if(url.startsWith(mockOrigin+'/'))return route.fulfill({contentType:'text/html',body:html});
   if(js[url])return route.fulfill({contentType:'text/javascript',body:js[url]});
   if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites))});
   if(url.startsWith('https://fonts.'))return route.fulfill({contentType:'text/css',body:''});
   if(req.method()==='POST') {
-   assert.equal(new URL(url).origin,stagingWorker,'Every POST must target the configured mock staging origin');
+   assert.equal(new URL(url).origin,mockWorker,'Every POST must be intercepted at the mocked Worker origin');
    calls.push({url,body:req.postDataJSON(),headers:req.headers()});
-   if(url===stagingWorker+'/auth')return route.fulfill({status:401,headers:cors,contentType:'application/json',body:'{}'});
-   if(url===stagingWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
+   if(url===mockWorker+'/auth')return route.fulfill({status:401,headers:cors,contentType:'application/json',body:'{}'});
+   if(url===mockWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
    if(url.endsWith('/applications'))return route.fulfill({status:applicationResponse?.status||201,headers:cors,contentType:'application/json',body:JSON.stringify(applicationResponse?.body||{ok:true,id:'synthetic-result'})});
-   if(url===stagingWorker+'/') {
+   if(url===mockWorker+'/') {
     const prompt=req.postDataJSON().messages[0].content[1].text;
     const n=value=>({value,visibility:'complete'});
     const result=prompt.includes('displayName')?{screen_type:'profile_ok',displayName:{value:'Synthetic Candidate',visibility:'complete',truncated:false},username:{value:'synthetic',visibility:'complete',truncated:false},followers:n(8500)}:
@@ -65,10 +66,10 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
    }
   }
   // No network escape: even unexpected requests are answered locally.
-  return route.fulfill({status:403,body:'Blocked by test harness'});
+  return route.abort('blockedbyclient');
  });
- await page.goto(`http://localhost:8043/${admin?'#admin':''}`);
- t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid environment configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
+ await page.goto(`${mockOrigin}/${admin?'#admin':''}`);
+ t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid production configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
  return{page,calls};
 }
 async function jpeg(page){return Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=30;c.height=30;c.getContext('2d').fillRect(0,0,30,30);return c.toDataURL('image/jpeg').split(',')[1];}),'base64');}
@@ -207,24 +208,24 @@ test('Legacy overlong notes/code show clear errors and never trigger writes',{ti
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
 });
 
-test('Configured staging URL is used for auth and notification error responses',async t=>{
+test('Mocked Worker URL is used for auth and notification error responses',async t=>{
  const {page,calls}=await pageFor(t);
  const result=await page.evaluate(async()=>{
   let error;try{await AUTH.login('synthetic-invalid');}catch(e){error=e.message;}
   return {error,notification:await sendTelegram('Synthetic test only')};
  });
  assert.equal(result.error,'Codice non riconosciuto.');assert.equal(result.notification.ok,false);
- assert.deepEqual(calls.map(c=>c.url),[stagingWorker+'/auth',stagingWorker+'/notify']);
+ assert.deepEqual(calls.map(c=>c.url),[mockWorker+'/auth',mockWorker+'/notify']);
 });
 
-test('Local browser selects staging Firebase and Worker together',async t=>{
+test('Synthetic browser origin selects production-shaped configuration with all network intercepted',async t=>{
  const {page}=await pageFor(t);
- assert.equal(await page.evaluate(()=>window.testFirebaseConfig.projectId),'evora-collective-staging');
- assert.equal(await page.evaluate(()=>CollectiveEnvironment.current.workerBase),stagingWorker);
+ assert.equal(await page.evaluate(()=>window.testFirebaseConfig.projectId),'evora-athletes');
+ assert.equal(await page.evaluate(()=>CollectiveEnvironment.current.workerBase),mockWorker);
 });
 
-test('Invalid staging configuration blocks SDK initialization and every POST',async t=>{
- const {page,calls}=await pageFor(t,{bootFailure:true,configuration:workerConfig.replace("projectId:'evora-collective-staging'","projectId:'evora-athletes'")});
+test('Invalid configuration blocks SDK initialization and every POST',async t=>{
+ const {page,calls}=await pageFor(t,{bootFailure:true,configuration:workerConfig.replace('projectId: "evora-athletes"','projectId: "invalid-project"')});
  assert.equal(await page.evaluate(()=>window.testFirebaseConfig),undefined);
  assert.equal(calls.length,0);
  assert.equal(await page.getByRole('button',{name:/Candidati|candidatura/i}).count(),0);
