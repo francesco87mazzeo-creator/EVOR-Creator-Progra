@@ -7,6 +7,7 @@
 <meta name="description" content="EVORΛ COLLECTIVE — il Partner Program EVORΛ dedicato a creator, coach e personalità del mondo fitness.">
 <title>EVORΛ COLLECTIVE — Partner Program</title>
 
+<script src="public/worker-config.js"></script>
 <script src="public/applications-client.js"></script>
 <script src="public/admin-scoring-client.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -273,17 +274,11 @@ select option{background:var(--surf-2);color:var(--t1);}
 
 <script>
 /* ============================================================================
-   FIREBASE — configurazione invariata rispetto al progetto esistente.
-   Progetto: evora-athletes · Collezioni: candidature, settings
+   FIREBASE — selezione atomica Worker/Firebase prima di inizializzare SDK.
+   localhost: staging · sito pubblico: progetto originale · candidature, settings
    ========================================================================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyABauyOisUza0ojws0Vp_aDmmP8oNNSeZU",
-  authDomain: "evora-athletes.firebaseapp.com",
-  projectId: "evora-athletes",
-  storageBucket: "evora-athletes.firebasestorage.app",
-  messagingSenderId: "520957090168",
-  appId: "1:520957090168:web:a19e2f727ae69adf9c108d"
-};
+const environment = CollectiveEnvironment.current;
+const firebaseConfig = environment.firebase;
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
@@ -312,7 +307,7 @@ const BRAND = {
 };
 
 // Endpoint invariati — non modificare senza aggiornare il servizio corrispondente.
-const WORKER_BASE = "https://throbbing-feather-957f.francesco87-mazzeo.workers.dev";
+const WORKER_BASE = environment.workerBase;
 const OCR_PROXY   = WORKER_BASE;              // compatibilità: la radice resta l'endpoint OCR
 const APPLICATIONS_URL = WORKER_BASE + "/applications";
 const ADMIN_SCORING_URL = WORKER_BASE + "/admin/scoring";
