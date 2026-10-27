@@ -416,14 +416,18 @@ const AUTH = {
     if(res.status===429) throw new Error("Troppi tentativi. Riprova tra qualche minuto.");
     if(!res.ok || !data.token) throw new Error(data.error || "Accesso non riuscito.");
 
-    await auth.signInWithCustomToken(data.token);
-    const t = await auth.currentUser.getIdTokenResult(true);
-    const role = t.claims.role;
+    // Timestamp PRIMA del login: onAuthStateChanged chiama subito currentRole(), che senza timestamp esegue il logout.
+    localStorage.setItem("evora_login_at", String(Date.now()));
+    let role;
+    try{
+      await auth.signInWithCustomToken(data.token);
+      const t = await auth.currentUser.getIdTokenResult(true);
+      role = t.claims.role;
+    }catch(e){ await AUTH.logout(); throw new Error("Accesso non riuscito."); }
     if(role!=="admin" && role!=="manager"){
-      await auth.signOut();
+      await AUTH.logout();
       throw new Error("Ruolo non valido.");
     }
-    localStorage.setItem("evora_login_at", String(Date.now()));
     sessionStorage.setItem("evora_last_role", role);
     return role;
   },
