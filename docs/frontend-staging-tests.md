@@ -39,7 +39,7 @@ Esecuzione (Windows, PowerShell):
 
 ```powershell
 $env:EVORA_BROWSER_ASSETS = '<cartella con node_modules di react@18, react-dom@18, @babel/standalone>'
-$env:EVORA_CHROMIUM = 'C:Program FilesGoogleChromeApplicationchrome.exe'
+$env:EVORA_CHROMIUM = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 node --test --test-concurrency=1 test/frontend/browser.test.mjs
 ```
 
