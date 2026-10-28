@@ -101,6 +101,6 @@ Si pubblica solo con autorizzazione esplicita.
    ```
 
 2. Pubblicazione: `wrangler deploy`.
-3. Ripristino: `wrangler rollback <versione> --name throbbing-feather-957f`.
+3. Dopo la migrazione V2: ripristino ordinario del solo frontend, mantenendo Worker/Rules V2. Se serve sostituire il runtime, usare il [Worker di compatibilità congelato](rollback/README.md); non ripristinare il Worker legacy che richiede gli account raggiunti.
 
 I secret restano su Cloudflare e non si scrivono mai in questo repository.

@@ -7,6 +7,7 @@ import {validatePublicApplication,prepareApplication} from '../../server/collect
 import {publicFixture,frontendDocument,NOW} from '../../server/collective/test/frontend-reference.mjs';
 import {SINGLE_PAGE} from './app-source.mjs';
 import {buildSinglePage,buildAdminPage} from '../../tools/frontend-mode.mjs';
+import {rollbackServices} from '../../worker/test/rollback-services.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
@@ -49,7 +50,7 @@ before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA
 after(async()=>browser?.close());
 // ocr: ({kind,index,route,cors,synthetic}) può rispondere al posto del Worker simulato (errore, ritardo, nessuna risposta);
 // se restituisce undefined vale la risposta sintetica. applicationResponses: risposte in sequenza per /applications.
-async function pageFor(t,{admin=false,applicationResponse,applicationResponses,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
+async function pageFor(t,{admin=false,applicationResponse,applicationResponses,applicationHandler=null,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
  const calls=[],errors=[],blocked=[],served=[],ocrIndex={};let applications=0;
@@ -79,6 +80,10 @@ async function pageFor(t,{admin=false,applicationResponse,applicationResponses,s
    if(url===mockWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
    if(url.endsWith('/applications')){
+    if(applicationHandler){
+     const response=await applicationHandler(new Request(url,{method:'POST',headers:req.headers(),body:req.postData()}));
+     return route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
+    }
     const r=applicationResponses?applicationResponses[Math.min(applications++,applicationResponses.length-1)]:applicationResponse;
     return route.fulfill({status:r?.status||201,headers:cors,contentType:'application/json',body:JSON.stringify(r?.body||{ok:true,id:'synthetic-result'})});
    }
@@ -258,6 +263,8 @@ test('Legacy overlong notes/code show clear errors and never trigger writes',{ti
 
 test('Mocked Worker URL is used for auth and notification error responses',async t=>{
  const {page,calls}=await pageFor(t,{admin:true});
+ // Il redirect termina prima che Babel abbia necessariamente caricato il modulo Admin.
+ await page.waitForFunction(()=>typeof AUTH!=='undefined' && typeof sendTelegram==='function');
  const result=await page.evaluate(async()=>{
   let error;try{await AUTH.login('synthetic-invalid');}catch(e){error=e.message;}
   return {error,notification:await sendTelegram('Synthetic test only')};
@@ -867,7 +874,7 @@ test('Manual completion is never offered for wrong or uncertain screens',{timeou
 });
 
 /* ---------- Ripristino: pagina nuova aperta con un Worker precedente ---------- */
-test('Rollback safety: an older Worker refusing empty accounts reached keeps the application, the candidate adds it and resends',{timeout:60000},async t=>{
+test('Legacy endpoint rejection guidance: preserves the application if the candidate can add reach (not the rollback strategy)',{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{applicationResponses:[{status:400,body:{ok:false,error:{code:'TYPE',path:'$.accountsReached'}}},{status:201}],
   ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:notVisible})):undefined});
  await fillPublic(page);
@@ -881,6 +888,32 @@ test('Rollback safety: an older Worker refusing empty accounts reached keeps the
  const sent=sentApplication(calls);
  assert.equal(sent.length,2);assert.equal(sent[0].body.accountsReached,null);assert.equal(sent[1].body.accountsReached,15000);
  assert.notEqual(sent[0].headers['idempotency-key'],sent[1].headers['idempotency-key'],'a definitive 400 allows the corrected payload');
+});
+
+test('Compatibility rollback: a new page already open submits unavailable reach without inventing a value',{timeout:60000},async t=>{
+ const services=rollbackServices(),originalFetch=globalThis.fetch;
+ globalThis.fetch=services.fetch;t.after(()=>{globalThis.fetch=originalFetch;});
+ const currentWorker=(await import('../../worker/src/worker.js?browser-rollback=current')).default;
+ const compatWorker=(await import('../../worker/rollback/compat/worker/src/worker.js?browser-rollback=compat')).default;
+ let activeWorker=currentWorker;const pending=[];
+ const {page,calls}=await pageFor(t,{
+  applicationHandler:request=>activeWorker.fetch(request,services.env,{waitUntil:p=>pending.push(p)}),
+  ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:notVisible})):undefined
+ });
+ await fillPublic(page);
+ assert.equal(sentApplication(calls).length,0,'la pagina è già aperta e compilata prima del ripristino');
+ const pageState=await page.evaluate(()=>({url:location.href,started:performance.timeOrigin}));
+ activeWorker=compatWorker; // Ripristino del runtime, senza ricaricare né modificare la pagina aperta.
+ await submitAndConfirm(page);await Promise.all(pending);
+ const sent=sentApplication(calls);assert.equal(sent.length,1);
+ assert.equal(sent[0].body.accountsReached,null,'nessun valore inventato o richiesto al candidato');
+ assert.deepEqual(await page.evaluate(()=>({url:location.href,started:performance.timeOrigin})),pageState,'nessun reload');
+ assert.equal(services.store.size,1);
+ const saved=[...services.store.values()][0];
+ assert.equal(saved.accountsReached,null);assert.equal(saved.reachEngagementRate,null);
+ assert.equal(saved.schemaVersion,5);assert.equal(saved.scoringVersion,3);assert.equal(saved.status,'new');
+ assert.equal(services.calls.some(u=>u.includes('telegram')),false,'nessuna notifica reale');
+ await assertNoFirebase(page);
 });
 
 test('Admin: zero views show the overall score as not available, the zero stays visible as data',{timeout:60000},async t=>{

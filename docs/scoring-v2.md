@@ -115,27 +115,31 @@ Ogni passo richiede un'autorizzazione esplicita.
 
 ## Ripristino senza interrompere le candidature in compilazione
 
-Una pagina già aperta resta in uso anche dopo un revert: GitHub Pages non la ricarica. Compatibilità verificata dei payload (stesso client e stesso validatore del codice, senza rete):
+Una pagina già aperta resta in uso anche dopo un revert: GitHub Pages non la ricarica. Il Worker di compatibilità è un runtime autonomo e congelato al commit `c29d05b5d75f176906288c5bc16be0b7fe9f7bbc`, con il contratto V2 e lo stesso scoring/OCR. Non importa i moduli correnti e non richiede mai di completare la reach. Preparazione e verifiche in [`worker/rollback/README.md`](../worker/rollback/README.md).
 
-| Payload | Worker attuale (`main`) | Worker scoring v2 |
-|---|---|---|
-| pagina precedente, account raggiunti indicati | accettato | accettato |
-| pagina nuova, account raggiunti indicati | accettato | accettato |
-| pagina nuova, account raggiunti vuoti | rifiutato (400 `TYPE` `$.accountsReached`) | accettato |
-| pagina nuova, zero visualizzazioni | accettato | accettato |
+| Payload | Worker legacy (`main` pre-V2, NON valido per il rollback) | Worker scoring v2 | Worker di compatibilità congelato |
+|---|---|---|---|
+| pagina precedente, account raggiunti indicati | accettato | accettato | accettato |
+| pagina nuova, account raggiunti indicati | accettato | accettato | accettato |
+| pagina nuova, account raggiunti vuoti | rifiutato (400 `TYPE` `$.accountsReached`) | accettato | accettato, salvati `null` |
+| pagina nuova, zero visualizzazioni | accettato | accettato | accettato, score non disponibile |
 
 La pagina precedente non può inviare account raggiunti vuoti: li blocca già nel browser.
 
 **Procedura consigliata**, dal meno al più invasivo:
 
 1. **Problema nel frontend** (modulo o Admin): revert del merge su `main`. **Il Worker v2 resta pubblicato**: accetta sia le pagine nuove ancora aperte sia quelle precedenti, quindi nessuna candidatura in compilazione si interrompe.
-2. **Problema nel Worker:** prima il revert del frontend (punto 1), poi `wrangler rollback` alla versione precedente.
-   - Le pagine nuove ancora aperte continuano a funzionare se gli account raggiunti sono compilati.
-   - Se sono vuoti, il Worker precedente risponde con un errore sul campo: il modulo torna al passo Social, evidenzia il campo con il messaggio «In questo momento serve anche questo dato…» e il candidato lo aggiunge e invia di nuovo. Nessun dato viene salvato con il primo invio, e il secondo usa una nuova chiave di idempotenza (test browser «Rollback safety»).
-   - Le configurazioni salvate dalla nuova Admin verrebbero rifiutate (400): non salvare lo scoring finché il frontend non è tornato indietro.
+2. **Ripristino completo della distribuzione:** ripristinare il frontend e, se serve sostituire il Worker, usare **esclusivamente il runtime di compatibilità** preparato in `worker/rollback/compat/`, con entrypoint `worker/rollback/wrangler.compat.toml`. Le Rules V2 restano pubblicate.
+   - È un ripristino del runtime compatibile, **non un downgrade del contratto dati o dello scoring**: mantiene schema 5, configurazione 3, reach facoltativa, convalida, autenticazione, limiti e idempotenza della base verificata.
+   - Le pagine nuove già aperte inviano anche con reach realmente indisponibile: nessun dato viene richiesto in più né sostituito con zero/visualizzazioni. Una chiave invariata produce una sola candidatura anche in caso di retry.
+   - La nuova Admin conserva il salvataggio della configurazione 3. Il vecchio pannello configura invece il modello precedente: durante il ripristino non usarlo per modificare lo scoring (riceverebbe 400); per le nuove pagine Admin già aperte e le correzioni i contratti V2 restano compatibili.
+   - **Vietato ripristinare alla cieca il Worker legacy con `wrangler rollback <vecchia-versione>`**: richiede la reach. Il messaggio di recupero nel form è un aiuto per endpoint legacy/configurati male, non la strategia di rollback.
+   - Dopo una pubblicazione futura autorizzata, registrare il version ID Cloudflare del runtime compatibile: un eventuale `wrangler rollback` è utilizzabile solo verso quel version ID verificato compatibile, mai verso il legacy.
 3. **Rules:** non vanno ripristinate. Accettano sia le scritture del pannello precedente sia quelle nuove; tornare al ruleset precedente renderebbe solo impossibili le correzioni dalla nuova Admin ancora aperta.
 
-Dopo un ripristino del Worker, i documenti di schema 5 già salvati restano leggibili dalla vecchia Admin, che non trova `perfLevel` e ricalcola il vecchio punteggio sui dati (con gli account raggiunti mancanti torna a usare le visualizzazioni, come faceva prima).
+I documenti di schema 5 restano leggibili dalla vecchia Admin, che non trova `perfLevel` e ricalcola il vecchio punteggio sui dati (con gli account raggiunti mancanti torna a usare le visualizzazioni, come faceva prima). Tale visualizzazione non è confrontabile con V2 e non cambia i valori salvati; per la valutazione V2 usare la nuova Admin. Ripristinare i file frontend non ripristina automaticamente impostazioni o dati, che non vanno riscritti.
+
+Il test browser «Compatibility rollback» lascia aperta la nuova pagina compilata, cambia l'handler al vero Worker congelato e completa l'invio con reach `null`, senza ricaricare il browser. Sono simulate soltanto OAuth/Firestore; nessun servizio reale viene contattato e Telegram non è configurato. I test Worker verificano anche il payload precedente, lo zero reale, il replay e le richieste non autorizzate.
 
 ## Storico delle correzioni: limiti
 
