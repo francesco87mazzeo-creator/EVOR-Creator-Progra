@@ -47,11 +47,14 @@ const firebaseStub=`(function(){
 let browser;
 before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--host-resolver-rules=MAP * ~NOTFOUND']});});
 after(async()=>browser?.close());
-async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false}={}) {
+// ocr: ({kind,index,route,cors,synthetic}) può rispondere al posto del Worker simulato (errore, ritardo, nessuna risposta);
+// se restituisce undefined vale la risposta sintetica. applicationResponses: risposte in sequenza per /applications.
+async function pageFor(t,{admin=false,applicationResponse,applicationResponses,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
- const calls=[],errors=[],blocked=[],served=[];
+ const calls=[],errors=[],blocked=[],served=[],ocrIndex={};let applications=0;
  page.on('pageerror',e=>errors.push(e.message));
+ if(clock)await page.clock.install();
  if(signedIn)await page.addInitScript(()=>localStorage.setItem('evora_login_at',String(Date.now())));
  await context.route('**/*',async route=>{
   const req=route.request(),url=req.url();
@@ -75,13 +78,21 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
    if(url===mockWorker+'/auth')return route.fulfill({status:401,headers:cors,contentType:'application/json',body:'{}'});
    if(url===mockWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
-   if(url.endsWith('/applications'))return route.fulfill({status:applicationResponse?.status||201,headers:cors,contentType:'application/json',body:JSON.stringify(applicationResponse?.body||{ok:true,id:'synthetic-result'})});
+   if(url.endsWith('/applications')){
+    const r=applicationResponses?applicationResponses[Math.min(applications++,applicationResponses.length-1)]:applicationResponse;
+    return route.fulfill({status:r?.status||201,headers:cors,contentType:'application/json',body:JSON.stringify(r?.body||{ok:true,id:'synthetic-result'})});
+   }
    if(url===mockWorker+'/') {
     const prompt=req.postDataJSON().messages[0].content[1].text;
+    const kind=prompt.includes('displayName')?'profile':prompt.includes('cerca il dato')?'verify':'insights';
     const n=value=>({value,visibility:'complete'});
-    const result=prompt.includes('displayName')?{screen_type:'profile_ok',displayName:{value:'Synthetic Candidate',visibility:'complete',truncated:false},username:{value:'synthetic',visibility:'complete',truncated:false},followers:n(8500)}:
-     {screen_type:'insights_ok',views:n(24800),netFollowers:n(260),interactions:n(1120),accountsReached:n(18400)};
-    return route.fulfill({headers:cors,contentType:'application/json',body:JSON.stringify({content:[{text:JSON.stringify(result)}]})});
+    const synthetic=(result=kind==='profile'?{screen_type:'profile_ok',displayName:{value:'Synthetic Candidate',visibility:'complete',truncated:false},username:{value:'synthetic',visibility:'complete',truncated:false},followers:n(8500)}:
+     {screen_type:'insights_ok',views:n(24800),netFollowers:n(260),interactions:n(1120),accountsReached:n(18400)})=>
+     route.fulfill({headers:cors,contentType:'application/json',body:JSON.stringify({content:[{text:JSON.stringify(result)}]})});
+    const index=ocrIndex[kind]=(ocrIndex[kind]??-1)+1;
+    // Il callback restituisce la propria gestione (fulfill, abort o una promessa che non si risolve) oppure undefined.
+    if(ocr){const handled=ocr({kind,index,route,cors,synthetic});if(handled!==undefined)return handled;}
+    return synthetic();
    }
   }
   // No network escape: unexpected requests are aborted locally and fail the test.
@@ -102,19 +113,23 @@ async function assertNoFirebase(page){
  assert.deepEqual(await page.evaluate(()=>({firebase:typeof window.firebase,counters:typeof window.testCounters})),{firebase:'undefined',counters:'undefined'});
 }
 async function jpeg(page){return Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=30;c.height=30;c.getContext('2d').fillRect(0,0,30,30);return c.toDataURL('image/jpeg').split(',')[1];}),'base64');}
-async function fillPublic(page,{age='27',profileOnly=false}={}) {
+// beforeContinue: attese o verifiche nel precheck; manual: prosegue con l'inserimento manuale; step1: dati Instagram a mano.
+async function fillPublic(page,{age='27',profileOnly=false,beforeContinue=null,manual=false,step1=null,files=null}={}) {
  await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
  await page.getByRole('heading',{name:'Prepara i tuoi dati Instagram'}).waitFor();
  const buffer=await jpeg(page),file={name:'synthetic.jpg',mimeType:'image/jpeg',buffer};
- await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(file);
- await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(file);
- await page.getByRole('button',{name:'Continua con la candidatura'}).click();
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(files?.profile||file);
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(files?.ins1||file);
+ if(beforeContinue)await beforeContinue();
+ await page.getByRole('button',{name:manual?'Prosegui inserendo i dati a mano':'Continua con la candidatura'}).click();
  await page.locator('#f-age').fill(age);await page.locator('#f-email').fill('synthetic@example.test');await page.locator('#f-city').fill('Synthetic City');
+ // Senza lettura del profilo il nome non è precompilato: lo inserisce il candidato.
+ if(!await page.locator('#f-name').inputValue())await page.locator('#f-name').fill('Synthetic Manual');
  await page.getByLabel('Coach / Personal trainer',{exact:true}).check();
  await page.locator('label.check input').check();
  if(profileOnly)return;
  const next=()=>page.getByRole('button',{name:'Avanti',exact:true}).click();
- await next();await next();
+ await next();if(step1)await step1();await next();
  for(const id of ['f-3w','f-ct','f-wt','f-wf'])await page.locator(`#${id}`).fill('Synthetic response');
  await page.getByRole('radiogroup',{name:'collab',exact:true}).getByRole('radio').nth(1).click();await next();
  for(const id of ['f-mot','f-bl','f-ci'])await page.locator(`#${id}`).fill('Synthetic response');await next();
@@ -353,4 +368,323 @@ test('Unexpected requests and WebSockets never leave the harness',async t=>{
  },mockWorker);
  assert.deepEqual(result,{external:'blocked',firestore:'blocked',workerGet:'blocked',ws:'blocked'});
  assert.deepEqual(blocked.map(b=>b.split(' ')[0]),['GET','GET','GET']);
+});
+
+/* ---------- Affidabilità del percorso di candidatura (PR #5) ---------- */
+const sentApplication=calls=>calls.filter(c=>c.url.endsWith('/applications'));
+async function fillManualInsights(page){
+ await page.getByText('Inserisci i dati Insight',{exact:true}).waitFor();
+ for(const [id,value] of [['f-views','24000'],['f-netFollowers','-12'],['f-interactions','900'],['f-accountsReached','15000']])await page.locator(`#${id}`).fill(value);
+}
+async function submitAndConfirm(page){
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByRole('heading',{name:'Candidatura ricevuta',exact:true}).waitFor();
+}
+
+test('OCR unavailable (network): manual Insight entry, screenshots kept, data not marked as OCR-verified',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,route})=>kind==='insights'?route.abort('failed'):undefined});
+ await fillPublic(page,{manual:true,step1:()=>fillManualInsights(page),beforeContinue:async()=>{
+  await page.getByText(/^Connessione assente o instabile. Lo screenshot è caricato: non serve sceglierlo di nuovo./).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.ocrInsights,null,'manual Insight values carry no OCR evidence');
+ assert.ok(sent.body.ocrProfile&&sent.body.ocrProfile.result.screenType==='profile_ok','the successful profile read is kept');
+ assert.deepEqual([sent.body.views,sent.body.netFollowers,sent.body.interactions,sent.body.accountsReached],[24000,-12,900,15000]);
+ assert.match(sent.body.screenshotData,/^data:image\/jpeg;base64,/);assert.match(sent.body.profileScreenshotData,/^data:image\/jpeg;base64,/);
+ assert.equal(sent.body.instagram,'@synthetic');assert.equal(Object.keys(sent.body).length,54);
+});
+
+test('OCR 429 on the profile and 502 on Insight: both entered by hand, nothing marked as read',{timeout:60000},async t=>{
+ const fail=(route,cors,status)=>route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify({error:{message:'Servizio non disponibile'}})});
+ const {page,calls}=await pageFor(t,{ocr:({kind,route,cors})=>fail(route,cors,kind==='profile'?429:502)});
+ await fillPublic(page,{manual:true,beforeContinue:async()=>{
+  await page.getByText(/^Troppe richieste di lettura in questo momento. Lo screenshot è caricato/).waitFor();
+  await page.getByText(/^Il servizio di lettura automatica non è disponibile in questo momento. Lo screenshot è caricato/).waitFor();
+  await page.getByText(/inserire tu username, follower e i quattro dati Insight/).waitFor();
+ },step1:async()=>{
+  await page.getByText('La lettura automatica del profilo non era disponibile: inserisci username e follower come appaiono nello screenshot.',{exact:true}).waitFor();
+  assert.equal(await page.locator('#f-ig').inputValue(),'');assert.equal(await page.locator('#f-fol').inputValue(),'');
+  await page.locator('#f-ig').fill('@manual.synthetic');await page.locator('#f-fol').fill('4300');
+  await fillManualInsights(page);
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.ocrInsights,null);assert.equal(sent.body.ocrProfile,null);
+ assert.equal(sent.body.instagram,'@manual.synthetic');assert.equal(sent.body.followers,4300);
+});
+
+test('OCR timeout shows a clear message and the same screenshot can be read again without re-uploading',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{clock:true,ocr:({kind,index})=>kind==='insights'&&index===0?new Promise(()=>{}):undefined});
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('Lettura automatica in corso…').waitFor();
+  await page.clock.fastForward(31000);
+  await page.getByText(/^La lettura automatica sta richiedendo troppo tempo. Lo screenshot è caricato/).waitFor();
+  await page.getByRole('button',{name:'Riprova la lettura',exact:true}).click();
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0);
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);
+ assert.equal(sent.body.views,24800);assert.ok(sent.body.ocrInsights,'the successful retry is a real OCR read');
+ assert.equal(calls.filter(c=>c.url===mockWorker+'/').length,3,'profile + timed-out read + one manual retry, no automatic retries');
+});
+
+test('Manual entry never bypasses mandatory screenshots or content checks',{timeout:60000},async t=>{
+ // Schermata profilo sbagliata (errore di contenuto) + Insight non disponibile: nessun inserimento manuale.
+ const {page}=await pageFor(t,{ocr:({kind,route,synthetic})=>kind==='profile'?synthetic({screen_type:'wrong_screen',displayName:null,username:null,followers:null}):route.abort('failed')});
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ const file={name:'synthetic.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)};
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(file);
+ await page.getByText(/Connessione assente o instabile\./).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'profile screenshot still required');
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(file);
+ await page.getByRole('dialog').getByText('Schermata non corretta',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Ho capito',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'a wrong screen is not a technical failure');
+ assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+});
+
+test('A replaced screenshot ignores the late OCR answer of the image it replaced',{timeout:60000},async t=>{
+ let releaseFirst;const n=value=>({value,visibility:'complete'});
+ const read=views=>({screen_type:'insights_ok',views:n(views),netFollowers:n(10),interactions:n(20),accountsReached:n(30)});
+ const {page,calls}=await pageFor(t,{ocr:({kind,index,synthetic})=>kind!=='insights'?undefined
+  :index===0?new Promise(resolve=>{releaseFirst=()=>resolve(synthetic(read(111)));}):synthetic(read(222))});
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('Lettura automatica in corso…').waitFor();
+  const other={name:'replacement.jpg',mimeType:'image/jpeg',buffer:Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,40,40);return c.toDataURL('image/jpeg').split(',')[1];}),'base64')};
+  await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(other);
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+  releaseFirst();await page.waitForTimeout(300);
+ },step1:async()=>{assert.equal(await page.locator('#f-views').inputValue(),'222');}});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);
+ assert.equal(sent.body.views,222);assert.equal(sent.body.ocrInsights.merged.views,222);assert.equal(sent.body.screenshotName,'replacement.jpg');
+});
+
+test('Screenshots: each within 700,000 characters and the sum fitted to 900,000 before the form',{timeout:120000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'?synthetic({screen_type:'insights_ok',views:{value:24800,visibility:'partial'},netFollowers:{value:260,visibility:'complete'},interactions:{value:1120,visibility:'complete'},accountsReached:{value:18400,visibility:'complete'}}):undefined});
+ // Screenshot sintetici "densi" (testo e riquadri): ognuno resta sotto il limite singolo, ma insieme lo superano.
+ const heavy=async seed=>({name:`heavy-${seed}.png`,mimeType:'image/png',buffer:Buffer.from(await page.evaluate(seed=>{
+  let x=seed*7919;const rnd=()=>((x=(x*1103515245+12345)%2147483648)/2147483648);
+  const c=document.createElement('canvas');c.width=1170;c.height=2532;const g=c.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+  for(let i=0;i<5000;i++){g.fillStyle=`hsl(${rnd()*360},70%,${20+rnd()*60}%)`;g.font=`${10+rnd()*24}px sans-serif`;g.fillText(Math.floor(rnd()*1e9).toString(36),rnd()*c.width,rnd()*c.height);}
+  for(let i=0;i<400;i++){g.fillStyle=`hsla(${rnd()*360},60%,50%,.5)`;g.fillRect(rnd()*c.width,rnd()*c.height,rnd()*120,rnd()*60);}
+  return c.toDataURL('image/png').split(',')[1];
+ },seed),'base64')});
+ const files={profile:await heavy(1),ins1:await heavy(2)};
+ await fillPublic(page,{files,beforeContinue:async()=>{
+  await page.getByText('✓ Dati letti · da ricontrollare',{exact:true}).waitFor();
+  await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(await heavy(3));
+  await page.waitForFunction(()=>document.querySelectorAll('.u-thumb img').length===3&&![...document.querySelectorAll('.u-sub')].some(e=>/in corso/.test(e.textContent)));
+  const sizes=await page.evaluate(()=>[...document.querySelectorAll('.u-thumb img')].map(i=>i.src.length));
+  assert.ok(sizes.every(s=>s<=700000),`individual limit: ${sizes}`);
+  assert.ok(sizes.reduce((a,b)=>a+b,0)>900000,`the three screenshots must exceed the total before fitting: ${sizes}`);
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ const total=sent.body.screenshotData.length+sent.body.screenshotData2.length+sent.body.profileScreenshotData.length;
+ assert.ok(total<=900000,`total ${total}`);
+ for(const k of ['screenshotData','screenshotData2','profileScreenshotData'])assert.ok(sent.body[k].length>=50000,`${k} still a usable image`);
+});
+
+/**
+ * Attende che Babel abbia eseguito per intero i moduli richiesti (registrati nell'ultima riga di ciascun modulo)
+ * e che i nomi usati dal test siano definiti. page.goto termina al "load", prima della compilazione di Babel.
+ */
+async function appReady(page,names,modules=['app/shared.jsx','app/public-form.jsx']){
+ await page.waitForFunction(({names,modules})=>{
+  try{ if(!modules.every(m=>CollectiveModules.has(m)))return false; }catch{ return false; }
+  return names.every(n=>{try{return typeof (0,eval)(n)!=='undefined';}catch{return false;}});
+ },{names,modules});
+}
+
+test('Screenshot fitting recompresses only when needed and reports when the sum cannot fit',{timeout:60000},async t=>{
+ const {page}=await pageFor(t);
+ await appReady(page,['compressImage','readFileAsDataURL','fitScreenshotsToLimit']);
+ const result=await page.evaluate(async()=>{
+  const c=document.createElement('canvas');c.width=900;c.height=900;const g=c.getContext('2d');
+  for(let i=0;i<900*900/40;i++){g.fillStyle=`rgb(${Math.random()*255|0},${Math.random()*255|0},${Math.random()*255|0})`;g.fillRect(Math.random()*900,Math.random()*900,3,3);}
+  const blob=await new Promise(r=>c.toBlob(r,'image/png'));const file=new File([blob],'noise.png',{type:'image/png'});
+  const data=await compressImage(await readFileAsDataURL(file));
+  const slots=[{key:'a',data,file},{key:'b',data,file},{key:'c',data,file}];
+  return {fits:await fitScreenshotsToLimit(slots,data.length*2),impossible:await fitScreenshotsToLimit(slots,30000),untouched:await fitScreenshotsToLimit(slots,data.length*3)};
+ });
+ assert.equal(result.untouched.ok,true);assert.deepEqual(result.untouched.data,{},'no recompression when the sum already fits');
+ assert.equal(result.fits.ok,true);assert.ok(Object.keys(result.fits.data).length>=1);
+ assert.equal(result.impossible.ok,false);
+});
+
+test('After HTTP 429 the candidate can correct a field and resend once, with a fresh idempotency key',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{applicationResponses:[{status:429,body:{ok:false,error:'Troppe richieste, riprova più tardi'}},{status:201,body:{ok:true,id:'synthetic-after-429'}}]});
+ await fillPublic(page);
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByRole('alert').getByText('Troppi tentativi. Attendi prima di riprovare.',{exact:true}).waitFor();
+ assert.equal(sentApplication(calls).length,1,'no automatic retry');
+ await page.getByRole('button',{name:'Indietro',exact:true}).click();
+ await page.locator('#f-bp').fill('Corrected after 429');
+ await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ await submitAndConfirm(page);
+ const sent=sentApplication(calls);assert.equal(sent.length,2);
+ assert.notEqual(sent[0].headers['idempotency-key'],sent[1].headers['idempotency-key']);
+ assert.equal(sent[1].body.boughtProducts,'Corrected after 429');
+});
+
+test('Timeout with an uncertain outcome: changed data are refused, the identical resend reuses the key',{timeout:90000},async t=>{
+ let first=true;
+ const {page,calls}=await pageFor(t,{clock:true,applicationResponses:[{status:200,body:{ok:true,id:'synthetic-replay',duplicate:true}}]});
+ await page.route(`${mockWorker}/applications`,async route=>{
+  if(route.request().method()==='POST'&&first){first=false;calls.push({url:route.request().url(),body:route.request().postDataJSON(),headers:route.request().headers()});return;}
+  return route.fallback();
+ });
+ await fillPublic(page);
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.clock.fastForward(31000);
+ await page.getByRole('alert').getByText('Il salvataggio non è confermato. Controlla la connessione e riprova senza modificare i dati.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Indietro',exact:true}).click();
+ await page.locator('#f-bp').fill('Changed while uncertain');
+ await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByRole('alert').getByText(/Un invio precedente è ancora da confermare/).waitFor();
+ assert.equal(sentApplication(calls).length,1,'the changed payload never left the browser');
+ await page.getByRole('button',{name:'Indietro',exact:true}).click();
+ await page.locator('#f-bp').fill('');
+ await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ await submitAndConfirm(page);
+ const sent=sentApplication(calls);assert.equal(sent.length,2);
+ assert.equal(sent[0].headers['idempotency-key'],sent[1].headers['idempotency-key']);
+});
+
+/* ---------- Revisione Codex della PR #5: precheck, compressione, classificazione OCR ---------- */
+// Trattiene le letture locali dei file (FileReader) finché il test non le rilascia: simula un telefono lento.
+async function holdLocalReads(page){
+ await page.evaluate(()=>{
+  const original=FileReader.prototype.readAsDataURL;window.__heldReads=[];window.__holdReads=true;
+  FileReader.prototype.readAsDataURL=function(file){if(!window.__holdReads)return original.call(this,file);window.__heldReads.push(()=>original.call(this,file));};
+  window.__releaseReads=()=>{window.__holdReads=false;window.__heldReads.splice(0).forEach(run=>run());};
+ });
+}
+async function syntheticImage(page,name){
+ return {name,mimeType:'image/jpeg',buffer:Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,40,40);return c.toDataURL('image/jpeg').split(',')[1];}),'base64')};
+}
+async function denseScreenshot(page,seed){
+ return {name:`dense-${seed}.png`,mimeType:'image/png',buffer:Buffer.from(await page.evaluate(seed=>{
+  let x=seed*7919;const rnd=()=>((x=(x*1103515245+12345)%2147483648)/2147483648);
+  const c=document.createElement('canvas');c.width=1170;c.height=2532;const g=c.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+  for(let i=0;i<5000;i++){g.fillStyle=`hsl(${rnd()*360},70%,${20+rnd()*60}%)`;g.font=`${10+rnd()*24}px sans-serif`;g.fillText(Math.floor(rnd()*1e9).toString(36),rnd()*c.width,rnd()*c.height);}
+  for(let i=0;i<400;i++){g.fillStyle=`hsla(${rnd()*360},60%,50%,.5)`;g.fillRect(rnd()*c.width,rnd()*c.height,rnd()*120,rnd()*60);}
+  return c.toDataURL('image/png').split(',')[1];
+ },seed),'base64')};
+}
+const partialInsights=({kind,synthetic})=>kind==='insights'?synthetic({screen_type:'insights_ok',views:{value:24800,visibility:'partial'},netFollowers:{value:260,visibility:'complete'},interactions:{value:1120,visibility:'complete'},accountsReached:{value:18400,visibility:'complete'}}):undefined;
+const idle=page=>page.waitForFunction(()=>![...document.querySelectorAll('.u-sub')].some(e=>/in corso/.test(e.textContent)));
+// Tre screenshot densi (somma oltre il limite): Continua avvia la ricompressione, che rileggerà i file originali.
+async function startHeavyContinue(page){
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(await denseScreenshot(page,1));
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(await denseScreenshot(page,2));
+ await page.getByText('✓ Dati letti · da ricontrollare',{exact:true}).waitFor();
+ await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(await denseScreenshot(page,3));
+ await page.waitForFunction(()=>document.querySelectorAll('.u-thumb img').length===3);await idle(page);
+ await holdLocalReads(page);
+ await page.getByRole('button',{name:'Continua con la candidatura'}).click();
+ await page.waitForFunction(()=>window.__heldReads.length>=1);
+}
+
+test('Replacing a screenshot invalidates its reading at once and blocks Continue while the new one is prepared',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t);
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+  const cont=page.getByRole('button',{name:'Continua con la candidatura'});
+  assert.equal(await cont.isDisabled(),false);
+  await holdLocalReads(page);
+  await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(await syntheticImage(page,'replacement.jpg'));
+  await page.waitForFunction(()=>window.__heldReads.length===1);
+  // Lettura locale ancora in corso: nessun risultato precedente, nessuna continuazione possibile.
+  assert.equal(await cont.isDisabled(),true);
+  assert.equal(await page.getByText('✓ Insight verificati',{exact:true}).count(),0);
+  await page.getByText('Preparazione in corso…').waitFor();
+  await page.evaluate(()=>window.__releaseReads());
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+ }});
+ await submitAndConfirm(page);
+ assert.equal(sentApplication(calls)[0].body.screenshotName,'replacement.jpg');
+});
+
+for(const action of ['remove','replace'])test(`A screenshot ${action}d during the final compression never opens the form with the previous data`,{timeout:180000},async t=>{
+ const {page}=await pageFor(t,{ocr:partialInsights});
+ await startHeavyContinue(page);
+ if(action==='remove')await page.getByRole('button',{name:'Rimuovi',exact:true}).nth(2).click();
+ else await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(await syntheticImage(page,'late-replacement.jpg'));
+ await page.evaluate(()=>window.__releaseReads());
+ await idle(page);await page.waitForTimeout(1500);
+ assert.equal(await page.locator('#f-age').count(),0,'the superseded continuation must not open the form');
+ await page.getByRole('heading',{name:'Prepara i tuoi dati Instagram'}).waitFor();
+ // Nuovo tentativo con gli screenshot attuali: il modulo si apre e contiene solo quelli.
+ await page.getByRole('button',{name:'Continua con la candidatura'}).click();
+ await page.locator('#f-age').fill('27',{timeout:120000});
+ await page.locator('#f-email').fill('synthetic@example.test');await page.locator('#f-city').fill('Synthetic City');
+ if(!await page.locator('#f-name').inputValue())await page.locator('#f-name').fill('Synthetic Candidate');
+ await page.getByLabel('Coach / Personal trainer',{exact:true}).check();await page.locator('label.check input').check();
+ await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ const thumbs=await page.evaluate(()=>[...document.querySelectorAll('.thumb-btn img')].map(i=>i.alt));
+ assert.equal(thumbs.includes('Screenshot Insight 2'),action==='replace');
+ if(action==='replace')assert.ok((await page.locator('img[alt="Screenshot Insight 2"]').getAttribute('src')).length<20000,'the late replacement, not the dense original');
+});
+
+test('Leaving the pre-check during the final compression never opens the form afterwards',{timeout:180000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:partialInsights});
+ await startHeavyContinue(page);
+ await page.getByRole('button',{name:'Esci',exact:true}).click();
+ await page.evaluate(()=>window.__releaseReads?.());
+ // La ricompressione dei file densi prosegue anche dopo l'uscita: il modulo non deve comparire nemmeno quando termina.
+ const opened=await page.locator('#f-age').waitFor({timeout:20000}).then(()=>true,()=>false);
+ assert.equal(opened,false,'the form opened after leaving the pre-check');
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().waitFor();
+ assert.equal(sentApplication(calls).length,0);
+});
+
+for(const status of [400,403,413])test(`OCR HTTP ${status} is not a temporary failure: no manual entry, clear guidance to replace the screenshot`,{timeout:60000},async t=>{
+ const {page}=await pageFor(t,{ocr:({kind,route,cors})=>kind==='insights'?route.fulfill({status,headers:cors,contentType:'application/json',body:'{"error":{"message":"Richiesta non consentita"}}'}):undefined});
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ const file={name:'synthetic.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)};
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(file);
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(file);
+ const expected=status===413?/troppo pesante per la lettura automatica/:status===403?/non è autorizzata da questa pagina/:/non accetta questa immagine/;
+ await page.getByRole('alert').getByText(expected).waitFor();
+ await page.getByText('✓ Screenshot verificato',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Riprova la lettura'}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+});
+
+test('Compression keeps the real readability floors and refuses budgets it cannot reach',{timeout:60000},async t=>{
+ const {page}=await pageFor(t);
+ await appReady(page,['compressImageDetailed','MAX_STORED_BYTES','IMG_MIN_WIDTH','IMG_MIN_QUALITY']);
+ const r=await page.evaluate(async()=>{
+  const noisy=(w,h,cell)=>{const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
+   for(let y=0;y<h;y+=cell)for(let x=0;x<w;x+=cell){g.fillStyle=`rgb(${Math.random()*255|0},${Math.random()*255|0},${Math.random()*255|0})`;g.fillRect(x,y,cell,cell);}return c.toDataURL('image/png');};
+  const at=async(d,max)=>{try{const o=await compressImageDetailed(d,max);return {width:o.width,height:o.height,quality:o.quality,length:o.dataUrl.length,max};}catch(e){return {error:e.message,max};}};
+  const big=noisy(1400,2400,4),small=noisy(300,500,4);
+  const free=await at(big,MAX_STORED_BYTES*10);
+  // Budget via via più stretti: la larghezza non scende mai sotto 640 px né la qualità sotto 0,32; altrimenti rifiuto.
+  const ladder=[];for(const f of [1,2,3,4,6,10])ladder.push(await at(big,Math.round(free.length/f)));
+  return {minWidth:IMG_MIN_WIDTH,minQuality:IMG_MIN_QUALITY,free,ladder,impossible:await at(big,5000),
+   smallTight:await at(small,2000),smallFree:await at(small,MAX_STORED_BYTES)};
+ });
+ assert.equal(r.minWidth,640);assert.equal(r.minQuality,0.32);
+ assert.equal(r.free.width,1400);assert.equal(r.free.quality,0.82);
+ for(const s of r.ladder){
+  if(s.error){assert.match(s.error,/troppo grande/);continue;}
+  assert.ok(s.width>=640,`width ${s.width}`);assert.ok(s.quality>=0.32,`quality ${s.quality}`);assert.ok(s.length<=s.max);
+  if(s.width<1400)assert.equal(s.quality,0.32,'width shrinks only after the quality steps are exhausted');
+ }
+ assert.ok(r.ladder.some(s=>!s.error&&s.width<1400),'at least one budget required a narrower image');
+ assert.ok(r.ladder.some(s=>!s.error&&s.width===640)||r.ladder.some(s=>s.error),'the floor is reached or the budget refused');
+ assert.match(r.impossible.error,/troppo grande/,'an impossible budget is refused instead of going below the floors');
+ assert.match(r.smallTight.error,/troppo grande/,'a narrow image is never shrunk below its own width');
+ assert.equal(r.smallFree.width,300);assert.equal(r.smallFree.height,500);
 });

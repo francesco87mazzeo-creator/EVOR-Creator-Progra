@@ -6,21 +6,68 @@
    Formato richiesta identico all'originale: NON modificare senza aggiornare
    il Cloudflare Worker.
    ========================================================================== */
+// Il Worker interrompe la richiesta ad Anthropic dopo 25 s: oltre questo limite la lettura si considera non riuscita.
+const OCR_TIMEOUT_MS = 30000;
+
+/**
+ * Errore della lettura automatica. "technical" = il servizio non ha risposto in modo utilizzabile
+ * (rete, timeout, 429, 5xx, risposta non valida): il candidato non può risolverlo cambiando screenshot,
+ * quindi può proseguire inserendo i dati a mano. Gli errori di contenuto (schermata sbagliata o dati
+ * non leggibili) non sono tecnici e continuano a richiedere uno screenshot corretto.
+ */
+class OcrError extends Error {
+  // kind: "technical" (rete, timeout, 429, 5xx, risposta del servizio non valida: consente l'inserimento manuale)
+  //       "request" (richiesta rifiutata come non valida, non autorizzata o troppo grande: non lo consente)
+  constructor(message, { kind = "technical", status = null } = {}) {
+    super(message); this.name = "OcrError"; this.kind = kind; this.technical = kind === "technical"; this.status = status;
+  }
+}
+const ocrTechnicalMessage = status =>
+  status === "timeout" ? "La lettura automatica sta richiedendo troppo tempo."
+  : status === 429 ? "Troppe richieste di lettura in questo momento."
+  : status === "network" ? "Connessione assente o instabile."
+  : "Il servizio di lettura automatica non è disponibile in questo momento.";
+const ocrRequestMessage = status =>
+  status === 413 ? "Lo screenshot è troppo pesante per la lettura automatica: caricane uno ritagliato o più leggero."
+  : status === 401 || status === 403 ? "La lettura automatica non è autorizzata da questa pagina. Ricarica la pagina; se il problema continua, contatta il team."
+  : "La lettura automatica non accetta questa immagine: carica di nuovo lo screenshot.";
+// Solo rete, timeout, 429 e 5xx sono problemi temporanei del servizio; gli altri 4xx dipendono dalla richiesta.
+const ocrTemporaryStatus = status => status === 429 || status >= 500;
+
+/** Invia al Worker il corpo OCR già pronto (invariato) e restituisce il testo della risposta. */
+const ocrRequest = async (body) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
+  const technical = status => new OcrError(ocrTechnicalMessage(status), { kind: "technical", status });
+  try{
+    let res;
+    try{
+      res = await fetch(OCR_PROXY, {
+        method:"POST",
+        // La chiave Anthropic resta nei secret del Worker: il browser non la vede mai.
+        headers:{ "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
+        body, signal: controller.signal
+      });
+    }catch(e){ throw technical(controller.signal.aborted ? "timeout" : "network"); }
+    if(!res.ok){
+      if(ocrTemporaryStatus(res.status)) throw technical(res.status);
+      throw new OcrError(ocrRequestMessage(res.status), { kind: "request", status: res.status });
+    }
+    let data;
+    try{ data = await res.json(); }
+    catch(e){ throw technical(controller.signal.aborted ? "timeout" : "invalid"); }
+    const block = data && Array.isArray(data.content) ? data.content[0] : null;
+    if(!block || typeof block.text !== "string") throw technical("invalid");
+    return block.text.trim();
+  }finally{ clearTimeout(timer); }
+};
+
 const extractInsights = async (base64Image) => {
   const parts = base64Image.split(",");
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
 
-  let res;
-  try{
-    res = await fetch(OCR_PROXY, {
-      method:"POST",
-      // La chiave Anthropic resta nei secret del Worker: il browser non la vede mai.
-      headers:{
-        "Content-Type":"application/json",
-        "anthropic-version":"2023-06-01"
-      },
-      body: JSON.stringify({
+  const raw = await ocrRequest(JSON.stringify({
         model: OCR_MODEL,
         max_tokens: 200,
         messages:[{
@@ -30,17 +77,7 @@ const extractInsights = async (base64Image) => {
             { type:"text", text:"Analizza questo screenshot Instagram e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"insights_ok\",\"views\":{\"value\":null,\"visibility\":\"not_visible\"},\"netFollowers\":{\"value\":null,\"visibility\":\"not_visible\"},\"interactions\":{\"value\":null,\"visibility\":\"not_visible\"},\"accountsReached\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"insights_ok\" se la schermata mostra i marker della pagina Insight corretta: titolo \"Insight\" con tabs \"Generale/Contenuti/Pubblico\", oppure \"Tutti i contenuti\", oppure box con \"Follower netti\" e \"Interazioni\", oppure \"Account raggiunti\" o \"Account che hanno visualizzato\" o \"Visualizzazioni per tipo di contenuto\". Basta uno o più di questi marker in combinazione coerente.\n- \"dashboard_wrong\" se la schermata mostra il titolo \"Dashboard per professionisti\" insieme a marker come \"Nuovi follower\", \"Contenuti che hai condiviso\", \"I tuoi strumenti\", \"Best practice\", \"Riepilogo mensile\". Questa è la Dashboard iniziale, NON gli Insight dettagliati.\n- \"uncertain\" solo se non ci sono marker sufficienti per decidere (es. schermata generica, ritaglio troppo piccolo).\n\nBasati esclusivamente sul testo che leggi, non sul colore di sfondo (l'app può essere in light o dark mode).\n\nPer i quattro valori numerici — Visualizzazioni, Follower netti, Interazioni, Account raggiunti — value = numero esatto come appare (con separatori e segno +/-), null se non visibile.\n\nIMPORTANTE — \"Account raggiunti\" e \"Account che hanno visualizzato\" sono la STESSA metrica in versioni diverse di Instagram: qualunque delle due etichette trovi, il valore va comunque messo nel campo accountsReached.\n\nIMPORTANTE — la visibility si valuta sul NUMERO, non sul contenitore grafico che lo racchiude: non serve che l'intero box/casella sia visibile, conta solo che il valore numerico sia leggibile per intero. Il fatto che il bordo colorato, lo sfondo o l'angolo arrotondato della card che contiene il numero escano dall'inquadratura NON è di per sé motivo di incertezza: se le cifre del numero sono tutte leggibili, il dato è comunque complete.\n\nCRITERIO DECISIVO, DA APPLICARE COME UN CALCOLO E NON A SENTIMENTO: l'etichetta sopra il numero (troncata, es. \"Interazi\" invece di \"Interazioni\", oppure assente) NON influenza MAI la lettura del numero. Per decidere, confronta due larghezze:\n(a) la larghezza di una singola cifra del numero;\n(b) la larghezza dello spazio vuoto tra l'ultima cifra e il punto di taglio (bordo del riquadro o bordo reale della foto).\nSe (b) è grande quanto o più di (a), allora un'altra cifra non sarebbe potuta stare lì senza lasciarsi vedere almeno in parte: il numero è finito, quindi \"complete\". Questo vale anche se il riquadro grigio prosegue fino al bordo della foto e l'etichetta sopra è tagliata.\nSe invece (b) è più piccolo di (a), oppure l'ultima cifra tocca direttamente il taglio senza spazio, allora \"partial\".\nAltri casi di \"partial\": una cifra visibilmente mozzata a metà (se ne vede solo una fetta verticale), una virgola delle migliaia seguita dal nulla, una cifra coperta da un altro elemento grafico.\nNon deliberare a lungo: fai il confronto tra (a) e (b) e rispondi.\n\nvisibility = \"not_visible\" se il dato non è presente, non viene letto, o l'area relativa alla metrica non è visibile, oppure se screen_type è dashboard_wrong." }
           ]
         }]
-      })
-    });
-  }catch(e){ throw new Error("Connessione non riuscita"); }
-
-  if(!res.ok){
-    let msg="Servizio non disponibile";
-    try{ const e=await res.json(); msg=(e.error&&e.error.message)||msg; }catch(e){}
-    throw new Error(msg);
-  }
-  const data = await res.json();
-  const raw = data.content[0].text.trim();
+  }));
   const match = raw.match(/\{[\s\S]*\}/);
   if(!match) throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili.");
   let parsed;
@@ -80,12 +117,7 @@ const extractProfile = async (base64Image) => {
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
 
-  let res;
-  try{
-    res = await fetch(OCR_PROXY, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
-      body: JSON.stringify({
+  const raw = await ocrRequest(JSON.stringify({
         model: OCR_MODEL,
         max_tokens: 220,
         messages:[{
@@ -95,17 +127,7 @@ const extractProfile = async (base64Image) => {
             { type:"text", text:"Analizza questo screenshot e classificalo. Rispondi SOLO con questo JSON, senza altro testo:\n{\"screen_type\":\"profile_ok\",\"displayName\":{\"value\":null,\"visibility\":\"not_visible\",\"truncated\":false},\"username\":{\"value\":null,\"visibility\":\"not_visible\",\"truncated\":false},\"followers\":{\"value\":null,\"visibility\":\"not_visible\"}}\n\nscreen_type deve essere uno dei tre valori:\n- \"profile_ok\" se la schermata è la pagina principale di un profilo Instagram: mostra in alto lo username, e più sotto i conteggi di post/follower/seguiti, ed eventualmente nome, bio, pulsanti Modifica profilo/Segui.\n- \"wrong_screen\" se la schermata è chiaramente qualcos'altro (una chat, un feed, una pagina Insight, impostazioni, un altro social, una schermata di ricerca).\n- \"uncertain\" se non è possibile decidere con sufficiente sicurezza.\n\nATTENZIONE SULLO USERNAME: nella barra in alto, vicino ai conteggi, Instagram spesso mostra lo username TRONCATO con \'...\' quando è lungo (es. \'francesco___...\'). Non esiste sempre un\'altra posizione nello schermo dove leggerlo per intero: quel testo in alto è spesso l\'UNICA fonte disponibile. Leggilo comunque, riportando anche i puntini finali se presenti: non inventare né completare le lettere mancanti.\n\nusername (senza la @, in alto vicino ai conteggi): value = il testo esatto come appare, inclusi eventuali puntini di troncamento finali \'...\' se Instagram tronca lo username; null se non visibile. followers (il numero dei follower, NON i post né i seguiti): value = testo/numero esatto come appare, null se non visibile. Per entrambi, visibility = \"complete\" se il dato è interamente leggibile senza puntini di troncamento, \"partial\" se è tagliato, troncato con \'...\', o ambiguo, \"not_visible\" se non compare o se screen_type non è profile_ok. truncated (solo per username) = true SOLO se il testo mostrato termina con puntini di troncamento \'...\' aggiunti dall\'interfaccia, false altrimenti.\n\ndisplayName (il nome visualizzato sopra la bio, es. 'Mario Rossi'): value = il testo esatto come appare, incluso un eventuale '...' finale se il nome è troncato graficamente da Instagram; null se non presente o non leggibile. visibility = \"complete\" se il nome è leggibile per intero e non termina con puntini di troncamento, \"partial\" se termina con '...' o è chiaramente tagliato, \"not_visible\" se assente o illeggibile. truncated = true SOLO se il nome mostrato termina con puntini di troncamento ('...') aggiunti dall'interfaccia di Instagram, false altrimenti.\n\nBasati solo sul testo che leggi, non sui colori: l'app può essere in light o dark mode, su iPhone o Android.\n\nIMPORTANTE: la validità della schermata dipende SOLO da username e followers leggibili. Il nome visualizzato non è mai un requisito." }
           ]
         }]
-      })
-    });
-  }catch(e){ throw new Error("Connessione non riuscita"); }
-
-  if(!res.ok){
-    let msg="Servizio non disponibile";
-    try{ const e=await res.json(); msg=(e.error&&e.error.message)||msg; }catch(e){}
-    throw new Error(msg);
-  }
-  const data = await res.json();
-  const raw = data.content[0].text.trim();
+  }));
   const match = raw.match(/\{[\s\S]*\}/);
   if(!match) throw new Error("Immagine non leggibile.");
   let parsed;
@@ -167,12 +189,7 @@ const verifyFieldValue = async (base64Image, fieldLabel, expectedValue) => {
   const base64Data = parts[1];
   const mediaType = parts[0].split(":")[1].split(";")[0];
 
-  let res;
-  try{
-    res = await fetch(OCR_PROXY, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
-      body: JSON.stringify({
+  const raw = await ocrRequest(JSON.stringify({
         model: OCR_MODEL,
         max_tokens: 100,
         messages:[{
@@ -182,13 +199,7 @@ const verifyFieldValue = async (base64Image, fieldLabel, expectedValue) => {
             { type:"text", text:"In questo screenshot cerca il dato \""+fieldLabel+"\". Rispondi SOLO con questo JSON, senza altro testo:\n{\"readable\":true,\"value\":null}\nreadable = false se il dato non è leggibile, il box è tagliato o non è presente nell'immagine. Altrimenti true, e value = il numero esatto come appare (con eventuale separatore delle migliaia e segno +/-)." }
           ]
         }]
-      })
-    });
-  }catch(e){ throw new Error("Connessione non riuscita"); }
-
-  if(!res.ok) throw new Error("Servizio non disponibile");
-  const data = await res.json();
-  const raw = data.content[0].text.trim();
+  }));
   const match = raw.match(/\{[\s\S]*\}/);
   if(!match) return { outcome:"unreadable", foundValue:null };
   let parsed;
@@ -526,10 +537,48 @@ function CharField({id, value, onChange, max, rows=4, placeholder, error, invali
 /** Converte lo stato di visibilità OCR in un giudizio di completezza booleano. */
 const fieldIsComplete = f => !!(f && f.value !== null && f.value !== undefined && f.visibility === "complete");
 
+// file: originale scelto dal candidato, per ricomprimere se la somma degli screenshot supera il limite.
+// technical/errorMsg: lettura non riuscita per un errore tecnico (vedi OcrError).
+const EMPTY_SLOT = Object.freeze({ data:null, name:"", file:null, state:"idle", result:null, technical:false, errorMsg:"" });
+
+/**
+ * Avviso per uno screenshot caricato ma non letto. Errore tecnico: nuovo tentativo sulla stessa immagine
+ * (e, nel precheck, inserimento manuale). Richiesta rifiutata: va caricato un altro screenshot.
+ */
+function OcrUnavailable({ slot, onRetry }){
+  if(!(slot.data && slot.state==="failed" && slot.errorMsg)) return null;
+  return (
+    <div className="status-box" role={slot.technical ? "status" : "alert"} style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
+      <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+      <div className="body-sm">
+        {slot.technical ? <>{slot.errorMsg} Lo screenshot è caricato: non serve sceglierlo di nuovo.</> : slot.errorMsg}
+        {slot.technical && (
+          <div style={{marginTop:8}}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onRetry}>Riprova la lettura</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InstagramPreCheck({ onComplete, onBack }){
-  const [profile,setProfile] = useState({ data:null, name:"", state:"idle", result:null });
-  const [ins1,setIns1]       = useState({ data:null, name:"", state:"idle", result:null });
-  const [ins2,setIns2]       = useState({ data:null, name:"", state:"idle", result:null });
+  const [profile,setProfile] = useState(EMPTY_SLOT);
+  const [ins1,setIns1]       = useState(EMPTY_SLOT);
+  const [ins2,setIns2]       = useState(EMPTY_SLOT);
+  const [continueState,setContinueState] = useState({ busy:false, error:"" });
+  // Ogni caricamento riceve un numero: la risposta di una lettura avviata prima di una sostituzione
+  // o rimozione dell'immagine appartiene a una richiesta superata e viene ignorata.
+  const seq = useRef({ profile:0, ins1:0, ins2:0 });
+  // Tentativo di continuazione in corso: qualsiasi modifica degli screenshot, nuova lettura o uscita dal
+  // precheck lo rende superato, e il modulo non si apre con dati non più validi.
+  const continueSeq = useRef(0);
+  const continuing = useRef(null);
+  const invalidateContinue = () => { continueSeq.current++; continuing.current = null; };
+  useEffect(() => () => invalidateContinue(), []);
+  // Stato dell'ultimo render, letto dal gestore del pulsante (mai valori catturati in un render precedente).
+  const latest = useRef(null);
+  const setters = { profile:setProfile, ins1:setIns1, ins2:setIns2 };
   const [wrongScreen,setWrongScreen] = useState(null); // "profile" | "ins1" | "ins2" | null
   const [showInfoModal,setShowInfoModal] = useState(false);
   const [lightbox,setLightbox] = useState(null); // src stringa | null
@@ -545,71 +594,68 @@ function InstagramPreCheck({ onComplete, onBack }){
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [wrongScreen, showInfoModal, lightbox]);
 
-  /* ---------- PROFILO ---------- */
-  const processProfile = async (file) => {
-    if(!file) return;
-    if(!ALLOWED_IMAGE.includes(file.type)){ setProfile(p=>({...p,state:"failed",result:null})); return; }
-    if(file.size > MAX_UPLOAD_BYTES){ setProfile(p=>({...p,state:"failed",result:null})); return; }
-    setProfile(p=>({...p,state:"reading"}));
-    let img;
+  /* ---------- LETTURA AUTOMATICA (profilo, Insight 1 e 2) ---------- */
+  const analyze = async (key, img, ticket) => {
+    const setSlot = setters[key];
+    const current = () => seq.current[key] === ticket;
+    setSlot(s=>({...s,state:"analyzing",technical:false,errorMsg:""}));
     try{
-      const raw = await readFileAsDataURL(file);
-      img = await compressImage(raw);
-      setProfile(p=>({...p,data:img,name:file.name}));
-    }catch(err){
-      console.error("Preparazione immagine profilo non riuscita:", err);
-      setProfile(p=>({...p,state:"failed",result:null})); return;
-    }
-    setProfile(p=>({...p,state:"analyzing"}));
-    try{
-      const r = await extractProfile(img);
-      if(r.screenType === "wrong_screen"){
-        setProfile(p=>({...p,state:"failed",result:r}));
-        setWrongScreen("profile");
-        return;
-      }
-      setProfile(p=>({...p,state:"done",result:r}));
-    }catch(err){
-      console.warn("Lettura profilo non riuscita:", err);
-      setProfile(p=>({...p,state:"failed",result:null}));
-    }
-  };
-  const removeProfile = () => setProfile({ data:null, name:"", state:"idle", result:null });
-
-  /* ---------- INSIGHT (uno o due screenshot) ---------- */
-  const processInsight = async (file, slot) => {
-    if(!file) return;
-    const setSlot = slot===1 ? setIns1 : setIns2;
-    if(!ALLOWED_IMAGE.includes(file.type)){ setSlot(s=>({...s,state:"failed",result:null})); return; }
-    if(file.size > MAX_UPLOAD_BYTES){ setSlot(s=>({...s,state:"failed",result:null})); return; }
-    setSlot(s=>({...s,state:"reading"}));
-    let img;
-    try{
-      const raw = await readFileAsDataURL(file);
-      img = await compressImage(raw);
-      setSlot(s=>({...s,data:img,name:file.name}));
-    }catch(err){
-      console.error("Preparazione immagine Insight non riuscita:", err);
-      setSlot(s=>({...s,state:"failed",result:null})); return;
-    }
-    setSlot(s=>({...s,state:"analyzing"}));
-    try{
-      const r = await extractInsights(img);
-      if(r.screenType === "dashboard_wrong"){
+      const r = key==="profile" ? await extractProfile(img) : await extractInsights(img);
+      if(!current()) return;
+      if(r.screenType === (key==="profile" ? "wrong_screen" : "dashboard_wrong")){
         setSlot(s=>({...s,state:"failed",result:r}));
-        setWrongScreen(slot===1?"ins1":"ins2");
+        setWrongScreen(key);
         return;
       }
       setSlot(s=>({...s,state:"done",result:r}));
     }catch(err){
-      console.warn("Lettura Insight non riuscita:", err);
-      setSlot(s=>({...s,state:"failed",result:null}));
+      if(!current()) return;
+      console.warn("Lettura automatica non riuscita:", err);
+      // Tecnico: si può riprovare o proseguire a mano. Richiesta rifiutata (400/401/403/413…): messaggio
+      // e nuovo screenshot, senza inserimento manuale. Altri errori (immagine non leggibile): come prima.
+      const technical = !!(err && err.kind === "technical");
+      const request = !!(err && err.kind === "request");
+      setSlot(s=>({...s,state:"failed",result:null,technical,errorMsg:(technical || request) ? err.message : ""}));
     }
   };
-  const removeInsight = (slot) => {
-    if(slot===1) setIns1({ data:null, name:"", state:"idle", result:null });
-    else         setIns2({ data:null, name:"", state:"idle", result:null });
+
+  const processSlot = async (key, file) => {
+    if(!file) return;
+    const setSlot = setters[key];
+    const ticket = ++seq.current[key];
+    invalidateContinue();
+    setContinueState({ busy:false, error:"" });
+    if(!ALLOWED_IMAGE.includes(file.type) || file.size > MAX_UPLOAD_BYTES){
+      setSlot(s=>({...s,state:"failed",result:null,technical:false,errorMsg:""})); return;
+    }
+    // La lettura precedente non vale più appena si sceglie un'altra immagine, anche durante la preparazione.
+    setSlot(s=>({...s,state:"reading",result:null,technical:false,errorMsg:""}));
+    let img;
+    try{
+      img = await compressImage(await readFileAsDataURL(file));
+    }catch(err){
+      if(seq.current[key] !== ticket) return;
+      console.error("Preparazione immagine non riuscita:", err);
+      setSlot(s=>({...s,state:"failed",result:null,technical:false,errorMsg:""})); return;
+    }
+    if(seq.current[key] !== ticket) return;
+    // La lettura precedente riguarda l'immagine sostituita: non vale per quella nuova.
+    setSlot(s=>({...s,data:img,name:file.name,file,result:null}));
+    await analyze(key, img, ticket);
   };
+  const retrySlot = (key) => {
+    const slot = ({ profile, ins1, ins2 })[key];
+    if(!slot.data || slot.state==="reading" || slot.state==="analyzing") return;
+    invalidateContinue();
+    setContinueState({ busy:false, error:"" });
+    analyze(key, slot.data, ++seq.current[key]);
+  };
+  const clearSlot = (key) => { seq.current[key]++; invalidateContinue(); setters[key](EMPTY_SLOT); setContinueState({ busy:false, error:"" }); };
+
+  const processProfile = (file) => processSlot("profile", file);
+  const removeProfile = () => clearSlot("profile");
+  const processInsight = (file, slot) => processSlot(slot===1 ? "ins1" : "ins2", file);
+  const removeInsight = (slot) => clearSlot(slot===1 ? "ins1" : "ins2");
 
   /* ---------- STATO DERIVATO ---------- */
   const { merged: insightsMerged, conflicts: insightsConflicts } = mergeInsights(ins1.result, ins2.result);
@@ -652,12 +698,29 @@ function InstagramPreCheck({ onComplete, onBack }){
   const profileDataIncomplete = !!(profile.result && profile.result.screenType === "profile_ok" && !profileComplete);
   const profileUncertain = !!(profile.result && profile.result.screenType === "uncertain");
 
-  const canContinue = profileComplete && insightsReadable;
+  // Nessuna continuazione mentre un'immagine viene letta, compressa o analizzata.
+  const busy = [profile, ins1, ins2].some(s => s.state==="reading" || s.state==="analyzing");
+  const canContinue = !busy && profileComplete && insightsReadable;
 
-  const handleContinue = () => {
-    if(!canContinue) return;
-    const ig = parseSocial(usernameField.value, "instagram");
-    const name = profile.result.displayName || { value:null, visibility:"not_visible", truncated:false };
+  // Lettura non disponibile per un errore tecnico (non per la schermata): con gli screenshot comunque
+  // caricati il candidato può proseguire inserendo a mano i soli dati non letti. Schermate sbagliate o
+  // dati non leggibili continuano invece a richiedere uno screenshot corretto.
+  const technicalFailure = s => !!(s.data && s.state==="failed" && s.technical);
+  const profileTechnical = technicalFailure(profile);
+  const insightsTechnical = technicalFailure(ins1) || (insightsNeedSecond && technicalFailure(ins2));
+  const manualParts = { profile: !profileComplete && profileTechnical, insights: !insightsReadable && insightsTechnical };
+  const canContinueManual = !canContinue && !busy
+    && (profileComplete || profileTechnical) && (insightsReadable || insightsTechnical)
+    && (manualParts.profile || manualParts.insights);
+
+  // Dati per il modulo, costruiti con lo stato di QUESTO render (gli screenshot eventualmente ricompressi in fit).
+  const buildCompletion = (fit, manual) => {
+    const image = key => fit.data[key] || ({ profile, ins1, ins2 })[key].data;
+    // In modalità manuale si usano solo le letture riuscite; il resto lo inserisce il candidato.
+    const profileRead = !(manual && manualParts.profile);
+    const insightsRead = !(manual && manualParts.insights);
+    const ig = profileRead ? parseSocial(usernameField.value, "instagram") : { handle:"", url:"" };
+    const name = (profileRead && profile.result.displayName) || { value:null, visibility:"not_visible", truncated:false };
     // Nome completo e leggibile → precompilato normalmente.
     // Nome troncato con "..." → precompilato comunque con la sola parte letta (senza i puntini),
     // ma segnalato come incompleto: nello step successivo il campo va evidenziato ed è il
@@ -665,33 +728,63 @@ function InstagramPreCheck({ onComplete, onBack }){
     // Nome ambiguo/illeggibile → campo vuoto, nessun precompilamento.
     const fullNameGuess = name.value ? name.value : "";
     const fullNameNeedsCompletion = !!(name.truncated && name.value);
-    onComplete({
+    const metric = key => insightsRead ? String(insightsMerged[key].value) : "";
+    return {
       instagram: ig.handle ? "@"+ig.handle : "",
       instagramHandle: ig.handle,
       instagramUrl: ig.url,
-      usernameNeedsCompletion,
-      followers: String(profile.result.followers.value),
+      usernameNeedsCompletion: profileRead && usernameNeedsCompletion,
+      followers: profileRead ? String(profile.result.followers.value) : "",
       fullNameGuess,
       fullNameNeedsCompletion,
-      views:           String(insightsMerged.views.value),
-      netFollowers:    String(insightsMerged.netFollowers.value),
-      interactions:    String(insightsMerged.interactions.value),
-      accountsReached: String(insightsMerged.accountsReached.value),
-      screenshotData:  ins1.data,
+      views:           metric("views"),
+      netFollowers:    metric("netFollowers"),
+      interactions:    metric("interactions"),
+      accountsReached: metric("accountsReached"),
+      screenshotData:  image("ins1"),
       screenshotName:  ins1.name,
-      screenshotData2: ins2.data || null,
+      screenshotData2: ins2.data ? image("ins2") : null,
       screenshotName2: ins2.name || "",
-      profileScreenshotData: profile.data,
-      ocrInsights: {
+      profileScreenshotData: image("profile"),
+      // Dati inseriti a mano: nessuna lettura OCR allegata, quindi non risultano verificati.
+      ocrInsights: insightsRead ? {
         screenshot1: ins1.result, screenshot2: ins2.result,
         merged: {
           views: insightsMerged.views.value, netFollowers: insightsMerged.netFollowers.value,
           interactions: insightsMerged.interactions.value, accountsReached: insightsMerged.accountsReached.value
         },
         conflicts: insightsConflicts, readAt: new Date().toISOString()
-      },
-      ocrProfile: { result: profile.result, readAt: new Date().toISOString() }
-    });
+      } : null,
+      ocrProfile: profileRead ? { result: profile.result, readAt: new Date().toISOString() } : null,
+      // Solo per l'interfaccia, non inviato al Worker: quali dati vanno inseriti a mano nel modulo.
+      manualEntry: { profile: !profileRead, insights: !insightsRead }
+    };
+  };
+  latest.current = { canContinue, canContinueManual, slots:{ profile, ins1, ins2 }, buildCompletion };
+
+  const handleContinue = async (manual = false) => {
+    // Prerequisiti ricontrollati sullo stato più recente, non su quello del render in cui è nato il gestore.
+    const start = latest.current;
+    if((manual ? !start.canContinueManual : !start.canContinue) || continuing.current !== null) return;
+    const ticket = ++continueSeq.current;
+    continuing.current = ticket;
+    const stillValid = () => continueSeq.current === ticket && Object.keys(start.slots).every(k => latest.current.slots[k] === start.slots[k]);
+    setContinueState({ busy:true, error:"" });
+    try{
+      // Somma degli screenshot entro il limite del Worker, prima di compilare il resto della candidatura.
+      const { profile:p, ins1:a, ins2:b } = start.slots;
+      const fit = await fitScreenshotsToLimit([{ key:"profile", ...p }, { key:"ins1", ...a }, { key:"ins2", ...b }]);
+      if(!stillValid()) return;   // screenshot sostituito o rimosso, nuova lettura o uscita durante la compressione
+      if(!fit.ok){
+        setContinueState({ busy:false, error:"Gli screenshot insieme sono troppo pesanti anche dopo la compressione. Ritaglia gli screenshot sulla parte con i dati richiesti e caricali di nuovo." });
+        return;
+      }
+      const data = start.buildCompletion(fit, manual);
+      if(!stillValid()) return;
+      onComplete(data);
+    }finally{
+      if(continuing.current === ticket){ continuing.current = null; }
+    }
   };
 
   const wrongExampleSrc = wrongScreen === "profile" ? BRAND.profileExampleSrc : BRAND.insightsExampleSrc;
@@ -752,6 +845,7 @@ function InstagramPreCheck({ onComplete, onBack }){
           {profile.data && (
             <div className="upload-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={removeProfile}>Rimuovi</button></div>
           )}
+          <OcrUnavailable slot={profile} onRetry={()=>retrySlot("profile")}/>
 
           {profileComplete && <div className="verify-pill ok">✓ Screenshot verificato</div>}
           {(profileDataIncomplete || profileUncertain) && (
@@ -818,6 +912,7 @@ function InstagramPreCheck({ onComplete, onBack }){
           {ins1.data && (
             <div className="upload-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeInsight(1)}>Rimuovi</button></div>
           )}
+          <OcrUnavailable slot={ins1} onRetry={()=>retrySlot("ins1")}/>
 
           {insightsNeedSecond && (
             <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:12}}>
@@ -856,6 +951,7 @@ function InstagramPreCheck({ onComplete, onBack }){
               {ins2.data && (
                 <div className="upload-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeInsight(2)}>Rimuovi</button></div>
               )}
+              <OcrUnavailable slot={ins2} onRetry={()=>retrySlot("ins2")}/>
               {ins2.data && ins2.state==="done" && !insightsComplete && (
                 <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
                   <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
@@ -890,10 +986,32 @@ function InstagramPreCheck({ onComplete, onBack }){
           )}
         </div>
 
-        <button type="button" className="btn btn-primary" disabled={!canContinue} onClick={handleContinue}
+        {canContinueManual && (
+          <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:12}}>
+            <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+            <div className="body-sm">
+              La lettura automatica non è disponibile, ma gli screenshot sono caricati. Puoi riprovare la lettura
+              oppure proseguire e inserire tu {manualParts.profile && manualParts.insights ? "username, follower e i quattro dati Insight"
+                : manualParts.profile ? "username e follower" : "i quattro dati Insight"}: il team li controllerà sugli screenshot.
+            </div>
+          </div>
+        )}
+        <button type="button" className="btn btn-primary" disabled={!canContinue || continueState.busy} onClick={()=>handleContinue(false)}
           style={{width:"100%",padding:"16px",opacity:canContinue?1:.45,cursor:canContinue?"pointer":"not-allowed"}}>
-          Continua con la candidatura
+          {continueState.busy && canContinue ? "Preparazione degli screenshot…" : "Continua con la candidatura"}
         </button>
+        {canContinueManual && (
+          <button type="button" className="btn btn-ghost" disabled={continueState.busy} onClick={()=>handleContinue(true)}
+            style={{width:"100%",padding:"14px",marginTop:10}}>
+            {continueState.busy ? "Preparazione degli screenshot…" : "Prosegui inserendo i dati a mano"}
+          </button>
+        )}
+        {continueState.error && (
+          <div className="status-box" role="alert" style={{borderColor:"rgba(192,57,43,.55)",marginTop:12}}>
+            <div className="dot" style={{background:"var(--bad)",marginTop:6}}/>
+            <div className="body-sm">{continueState.error}</div>
+          </div>
+        )}
       </div>
 
       {/* Popup: schermata sbagliata (profilo o Insight) */}
@@ -971,6 +1089,8 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   // Se l'utente arriva dallo step di verifica screenshot, i dati Instagram sono già pronti:
   // niente upload da rifare, solo conferma dei quattro valori.
   const [prefilled] = useState(() => !!precheckData);
+  // Dati da inserire a mano perché la lettura automatica non era disponibile (nessuna verifica OCR).
+  const [manualEntry] = useState(() => ({ profile:false, insights:false, ...(precheckData && precheckData.manualEntry) }));
   // Se lo screenshot profilo mostrava un nome troncato ("Francesco Maz..."), il campo Nome
   // e cognome viene precompilato con la sola parte letta (senza i puntini), ma segnalato in
   // rosso: il candidato deve completarlo di persona. Il flag sparisce appena tocca il campo.
@@ -1005,18 +1125,23 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
   };
   const fieldLabelIt = {views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"};
 
+  // Numero dell'ultima verifica per campo: una risposta arrivata dopo una nuova foto o una modifica del valore è superata.
+  const verifySeq = useRef({});
   const uploadVerifyPhoto = async (key, file) => {
     if(testMode){ setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:"Lettura automatica disattivata in modalità prova."}})); return; }
     if(!file) return;
     if(!ALLOWED_IMAGE.includes(file.type) || file.size > MAX_UPLOAD_BYTES){
       setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:"Formato non valido, riprova."}})); return;
     }
+    const ticket = verifySeq.current[key] = (verifySeq.current[key] || 0) + 1;
+    const current = () => verifySeq.current[key] === ticket;
     setFieldVerify(p=>({...p,[key]:{status:"checking"}}));
     try{
       const raw = await readFileAsDataURL(file);
       const img = await compressImage(raw);
       const expected = toNum(form[key]);
       const res = await verifyFieldValue(img, fieldLabelIt[key], expected);
+      if(!current()) return;
       if(res.outcome==="match"){
         setFieldVerify(p=>({...p,[key]:{status:"verified"}}));
       }else if(res.outcome==="mismatch"){
@@ -1025,7 +1150,11 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
         setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:"Non riusciamo a leggere il dato in questa foto."}}));
       }
     }catch(err){
-      setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:"Immagine non valida."}}));
+      if(!current()) return;
+      // La verifica è facoltativa: se il servizio non risponde il candidato può proseguire comunque.
+      setFieldVerify(p=>({...p,[key]:{status:"unreadable",msg:err && err.technical
+        ? err.message+" Puoi proseguire: il team controllerà il valore sugli screenshot."
+        : "Immagine non valida."}}));
     }
   };
 
@@ -1038,7 +1167,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
       <Field key={key} label={label} required error={err(key)} hint={hint||undefined} htmlFor={"f-"+key}>
         <input id={"f-"+key} type="number" inputMode={key==="netFollowers"?"text":"numeric"}
           value={form[key]} aria-invalid={inv(key)}
-          onChange={e=>{ set(key,e.target.value); setFieldVerify(p=>{ const n={...p}; delete n[key]; return n; }); }}
+          onChange={e=>{ set(key,e.target.value); verifySeq.current[key] = (verifySeq.current[key] || 0) + 1; setFieldVerify(p=>{ const n={...p}; delete n[key]; return n; }); }}
           placeholder={placeholder}/>
         {edited && (!fv || fv.status==="checking") && (
           <div className="field-verify">
@@ -1166,10 +1295,14 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     setInsightConflicts(conflicts);
   };
 
+  // Come nel precheck: una lettura avviata prima di una sostituzione o rimozione dello screenshot viene ignorata.
+  const fileSeq = useRef({ 1:0, 2:0 });
   const processFile = async (file, slot) => {
     if(testMode){ (slot===1 ? setOcr1 : setOcr2)(s=>({...s,state:"failed",msg:"Lettura automatica disattivata in modalità prova."})); return; }
     if(!file) return;
     const setSlot = slot===1 ? setOcr1 : setOcr2;
+    const ticket = ++fileSeq.current[slot];
+    const current = () => fileSeq.current[slot] === ticket;
     if(!ALLOWED_IMAGE.includes(file.type)){
       setSlot(s=>({...s,state:"failed",msg:"Formato non supportato. Usa JPG, PNG o WEBP."})); return;
     }
@@ -1181,17 +1314,20 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     try{
       const raw = await readFileAsDataURL(file);
       img = await compressImage(raw);
+      if(!current()) return;
       const dataKey = slot===1 ? "screenshotData"  : "screenshotData2";
       const nameKey = slot===1 ? "screenshotName"  : "screenshotName2";
       setForm(p=>({...p, [dataKey]:img, [nameKey]:file.name}));
       if(slot===1) setErrors(p=>({...p, screenshotData:undefined}));
     }catch(err){
+      if(!current()) return;
       console.error("Preparazione immagine non riuscita:", err);
       setSlot(s=>({...s,state:"failed",msg:err.message || "Immagine non valida."})); return;
     }
     setSlot(s=>({...s,state:"analyzing"}));
     try{
       const d = await extractInsights(img);
+      if(!current()) return;
 
       // Se il modello ha classificato lo screenshot come Dashboard (schermata sbagliata),
       // non fondere i dati letti e apri il popup con l'esempio della schermata corretta.
@@ -1205,12 +1341,14 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
       applyMerged(parsedRef.current.a, parsedRef.current.b);
       setSlot(s=>({...s,state:"done",msg:"",screenType:d.screenType||"insights_ok"}));
     }catch(err){
+      if(!current()) return;
       console.warn("Lettura automatica non riuscita:", err);
       setSlot(s=>({...s,state:"failed",msg:err.message || "Lettura non riuscita",screenType:null}));
     }
   };
 
   const removeScreenshot = (slot) => {
+    fileSeq.current[slot]++;
     if(slot===1){
       setForm(p=>({...p, screenshotData:null, screenshotName:""}));
       parsedRef.current.a = null;
@@ -1538,6 +1676,11 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
           <section style={{animation:"fadeUp .3s ease both"}}>
             {/* ── INSTAGRAM ── */}
             <div className="eyebrow" style={{marginBottom:14}}>Instagram</div>
+            {manualEntry.profile && (
+              <p className="body-sm" role="status" style={{fontSize:13,color:"var(--t3)",marginBottom:14}}>
+                La lettura automatica del profilo non era disponibile: inserisci username e follower come appaiono nello screenshot.
+              </p>
+            )}
             <div className="g2-gap">
               <Field label="Username Instagram" required
                 error={usernameNeedsCompletion ? "Lo username letto dallo screenshot era troncato: completalo per intero." : err("instagram")}
@@ -1572,10 +1715,22 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
               <>
                 {/* ── DATI GIÀ VERIFICATI NELLO STEP INIZIALE ── */}
                 <div style={{marginTop:8,paddingTop:4}}>
-                  <div className="h-sm" style={{marginBottom:4}}>Controlla i dati rilevati</div>
-                  <p className="body-sm" style={{fontSize:13,marginBottom:14,color:"var(--t3)"}}>
-                    Abbiamo compilato automaticamente questi dati dagli screenshot caricati. Controlla che siano corretti.
-                  </p>
+                  {manualEntry.insights ? (
+                    <>
+                      <div className="h-sm" style={{marginBottom:4}}>Inserisci i dati Insight</div>
+                      <p className="body-sm" role="status" style={{fontSize:13,marginBottom:14,color:"var(--t3)"}}>
+                        La lettura automatica non era disponibile: inserisci i quattro valori come appaiono negli screenshot.
+                        Il team li controllerà sugli screenshot caricati.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="h-sm" style={{marginBottom:4}}>Controlla i dati rilevati</div>
+                      <p className="body-sm" style={{fontSize:13,marginBottom:14,color:"var(--t3)"}}>
+                        Abbiamo compilato automaticamente questi dati dagli screenshot caricati. Controlla che siano corretti.
+                      </p>
+                    </>
+                  )}
                   <div className="g2-gap">
                     {renderInsightField("views","Visualizzazioni","28400","")}
                     {renderInsightField("netFollowers","Follower netti","260","Può essere negativo")}

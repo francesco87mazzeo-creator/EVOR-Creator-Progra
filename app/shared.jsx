@@ -34,6 +34,7 @@ const SESSION_HOURS = 8;
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // limite del file scelto dall'utente
 const MAX_STORED_BYTES = 700000;           // limite del base64 salvato: il documento Firestore non può superare 1 MiB
+const MAX_TOTAL_SCREENSHOTS = 900000;      // limite complessivo dei tre screenshot, identico al Worker (server/collective)
 const IMG_MAX_WIDTH    = 1400;
 const ALLOWED_IMAGE = ["image/jpeg","image/png","image/webp","image/heic","image/heif"];
 
@@ -222,33 +223,61 @@ const readFileAsDataURL = file => new Promise((resolve,reject)=>{
  * Ridimensiona e comprime lo screenshot prima del salvataggio.
  * Senza questo passaggio un'immagine da telefono supera il limite di 1 MiB
  * previsto da Firestore per singolo documento e il salvataggio viene rifiutato.
+ * maxChars abbassa il limite solo quando serve (somma degli screenshot). Soglie di leggibilità effettive:
+ * qualità JPEG mai sotto IMG_MIN_QUALITY e larghezza mai sotto IMG_MIN_WIDTH (le immagini già più strette
+ * non vengono rimpicciolite). Se il limite non si raggiunge entro queste soglie, l'immagine è rifiutata.
  */
-const compressImage = dataUrl => new Promise((resolve,reject)=>{
+const IMG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.42, 0.32];
+const IMG_MIN_QUALITY = IMG_QUALITY_STEPS[IMG_QUALITY_STEPS.length - 1];
+const IMG_MIN_WIDTH = 640;
+const compressImageDetailed = (dataUrl, maxChars = MAX_STORED_BYTES) => new Promise((resolve,reject)=>{
   const img = new Image();
   img.onerror = () => reject(new Error("Immagine non valida."));
   img.onload  = () => {
-    let w = img.naturalWidth, h = img.naturalHeight;
-    if(!w || !h) return reject(new Error("Immagine non valida."));
-    const scale = w > IMG_MAX_WIDTH ? IMG_MAX_WIDTH/w : 1;
-    w = Math.round(w*scale); h = Math.round(h*scale);
-    const draw = (cw,ch,q) => {
+    const ow = img.naturalWidth, oh = img.naturalHeight;
+    if(!ow || !oh) return reject(new Error("Immagine non valida."));
+    const minWidth = Math.min(IMG_MIN_WIDTH, ow);
+    let w = Math.round(ow * (ow > IMG_MAX_WIDTH ? IMG_MAX_WIDTH/ow : 1));
+    const height = cw => Math.max(1, Math.round(oh * cw / ow));
+    const draw = (cw,q) => {
       const c = document.createElement("canvas");
-      c.width = cw; c.height = ch;
+      c.width = cw; c.height = height(cw);
       const ctx = c.getContext("2d");
-      ctx.fillStyle = "#0E0E0E"; ctx.fillRect(0,0,cw,ch);
-      ctx.drawImage(img,0,0,cw,ch);
+      ctx.fillStyle = "#0E0E0E"; ctx.fillRect(0,0,c.width,c.height);
+      ctx.drawImage(img,0,0,c.width,c.height);
       return c.toDataURL("image/jpeg", q);
     };
-    let q = 0.82, out = draw(w,h,q);
-    while(out.length > MAX_STORED_BYTES && q > 0.4){ q -= 0.1; out = draw(w,h,q); }
-    while(out.length > MAX_STORED_BYTES && w > 640){
-      w = Math.round(w*0.85); h = Math.round(h*0.85); out = draw(w,h,q);
+    let qi = 0, out = draw(w, IMG_QUALITY_STEPS[qi]);
+    while(out.length > maxChars && qi < IMG_QUALITY_STEPS.length - 1){ qi++; out = draw(w, IMG_QUALITY_STEPS[qi]); }
+    while(out.length > maxChars && w > minWidth){
+      w = Math.max(minWidth, Math.round(w*0.85)); out = draw(w, IMG_QUALITY_STEPS[qi]);
     }
-    if(out.length > MAX_STORED_BYTES) return reject(new Error("Immagine troppo grande: riprova con uno screenshot più leggero."));
-    resolve(out);
+    if(out.length > maxChars) return reject(new Error("Immagine troppo grande: riprova con uno screenshot più leggero."));
+    resolve({ dataUrl:out, width:w, height:height(w), quality:IMG_QUALITY_STEPS[qi] });
   };
   img.src = dataUrl;
 });
+const compressImage = (dataUrl, maxChars = MAX_STORED_BYTES) => compressImageDetailed(dataUrl, maxChars).then(r => r.dataUrl);
+
+/**
+ * Riporta gli screenshot entro il limite complessivo del Worker, ricomprimendo dal file originale
+ * soltanto quelli più pesanti della quota media e soltanto se la somma supera il limite.
+ * slots: [{ key, data, file }]. Restituisce { ok, data:{ key: nuovoDataUrl } } con le sole immagini cambiate.
+ */
+const fitScreenshotsToLimit = async (slots, limit = MAX_TOTAL_SCREENSHOTS) => {
+  const present = slots.filter(s => s.data).map(s => ({ ...s }));
+  const total = () => present.reduce((n, s) => n + s.data.length, 0);
+  const data = {};
+  if(total() <= limit) return { ok:true, data };
+  const share = Math.floor(limit / present.length) - 2000;   // margine per gli arrotondamenti della codifica
+  for(const s of present.filter(s => s.data.length > share).sort((a, b) => b.data.length - a.data.length)){
+    if(!s.file) continue;
+    try{ s.data = await compressImage(await readFileAsDataURL(s.file), share); data[s.key] = s.data; }
+    catch(e){ return { ok:false, data:{} }; }
+    if(total() <= limit) break;
+  }
+  return { ok: total() <= limit, data: total() <= limit ? data : {} };
+};
 
 /* ============================================================================
    7. COMPONENTI CONDIVISI
