@@ -79,22 +79,21 @@ const extractInsights = async (base64Image) => {
         }]
   }));
   const match = raw.match(/\{[\s\S]*\}/);
-  if(!match) throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili.");
+  if(!match) throw new Error("Immagine non leggibile: controlla che i dati richiesti siano visibili.");
   let parsed;
   try{ parsed = JSON.parse(match[0]); }
-  catch(e){ throw new Error("Immagine non leggibile: controlla che i quattro dati siano visibili."); }
+  catch(e){ throw new Error("Immagine non leggibile: controlla che i dati richiesti siano visibili."); }
+  // Il modello potrebbe restituire un oggetto {value, visibility} o un semplice numero/stringa.
+  // Un testo che non è un numero ("—", "non visibile") resta un dato mancante: mai uno zero.
+  // Senza uno stato di visibilità esplicito il valore va ricontrollato, non è verificato.
   const field = raw_val => {
     if(raw_val===null || raw_val===undefined) return { value:null, visibility:"not_visible" };
-    // Il modello potrebbe restituire un oggetto {value, visibility} o un semplice numero/stringa.
-    if(typeof raw_val === "object" && raw_val !== null){
-      const s = String(raw_val.value===undefined?"":raw_val.value).trim().toLowerCase();
-      const vis = String(raw_val.visibility||"complete").toLowerCase();
-      if(!s || s==="null" || s==="n/a") return { value:null, visibility:"not_visible" };
-      return { value:toNum(raw_val.value), visibility: vis==="partial"?"partial" : vis==="not_visible"?"not_visible":"complete" };
-    }
-    const s = String(raw_val).trim().toLowerCase();
-    if(s==="" || s==="null" || s==="n/a" || s==="-") return { value:null, visibility:"not_visible" };
-    return { value:toNum(raw_val), visibility:"complete" };
+    const isObj = typeof raw_val === "object";
+    const value = toNum(isObj ? raw_val.value : raw_val);
+    if(value===null) return { value:null, visibility:"not_visible" };
+    const vis = isObj && typeof raw_val.visibility === "string" ? raw_val.visibility.toLowerCase() : "";
+    if(vis==="not_visible") return { value:null, visibility:"not_visible" };
+    return { value, visibility: vis==="complete" ? "complete" : "partial" };
   };
   const st = String(parsed.screen_type||"").toLowerCase();
   const screenType = (st==="insights_ok" || st==="dashboard_wrong" || st==="uncertain") ? st : "uncertain";
@@ -140,10 +139,12 @@ const extractProfile = async (base64Image) => {
       const s = String(raw_val.value===undefined?"":raw_val.value).trim();
       const vis = String(raw_val.visibility||"complete").toLowerCase();
       if(!s || s.toLowerCase()==="null" || s.toLowerCase()==="n/a") return { value:null, visibility:"not_visible" };
+      if(isNumeric && toNum(raw_val.value)===null) return { value:null, visibility:"not_visible" };
       return { value: isNumeric ? toNum(raw_val.value) : s, visibility: vis==="partial"?"partial" : vis==="not_visible"?"not_visible":"complete" };
     }
     const s = String(raw_val).trim();
     if(s==="" || s.toLowerCase()==="null" || s.toLowerCase()==="n/a" || s==="-") return { value:null, visibility:"not_visible" };
+    if(isNumeric && toNum(raw_val)===null) return { value:null, visibility:"not_visible" };
     return { value: isNumeric ? toNum(raw_val) : s, visibility:"complete" };
   };
 
@@ -534,6 +535,11 @@ function CharField({id, value, onChange, max, rows=4, placeholder, error, invali
    STEP INIZIALE — VERIFICA SCREENSHOT INSTAGRAM (prima del form vero e proprio)
    ========================================================================== */
 
+// Dati Insight: tre obbligatori, gli account raggiunti sono facoltativi (servono solo all'indicatore B).
+const REQUIRED_INSIGHTS = ["views","netFollowers","interactions"];
+const INSIGHT_FIELD_LABELS = { views:"Visualizzazioni", netFollowers:"Follower netti", interactions:"Interazioni", accountsReached:"Account raggiunti (o «Account che hanno visualizzato»)" };
+const INSIGHT_CHECKLIST = ["Visualizzazioni","Follower netti","Interazioni","Account raggiunti o «Account che hanno visualizzato» (facoltativo)"];
+
 /** Converte lo stato di visibilità OCR in un giudizio di completezza booleano. */
 const fieldIsComplete = f => !!(f && f.value !== null && f.value !== undefined && f.visibility === "complete");
 
@@ -665,25 +671,23 @@ function InstagramPreCheck({ onComplete, onBack }){
   // candidato: lo lasciamo proseguire e glielo facciamo confermare esplicitamente più avanti,
   // nella sezione "Controlla i dati rilevati", dove può correggerlo e allegare una foto di verifica.
   // Chiedere un secondo screenshot per un dato che si legge benissimo era la causa dei blocchi.
+  // Account raggiunti: facoltativi (indicatore secondario). Non bloccano mai e non chiedono un secondo screenshot.
   const hasValue = f => !!(f && f.value !== null && f.value !== undefined);
-  const insightsReadable = insightsAttempted
-    && hasValue(insightsMerged.views) && hasValue(insightsMerged.netFollowers)
-    && hasValue(insightsMerged.interactions) && hasValue(insightsMerged.accountsReached);
-  const insightsComplete = insightsAttempted
-    && fieldIsComplete(insightsMerged.views) && fieldIsComplete(insightsMerged.netFollowers)
-    && fieldIsComplete(insightsMerged.interactions) && fieldIsComplete(insightsMerged.accountsReached);
+  const insightsReadable = insightsAttempted && REQUIRED_INSIGHTS.every(k => hasValue(insightsMerged[k]));
+  const insightsComplete = insightsAttempted && REQUIRED_INSIGHTS.every(k => fieldIsComplete(insightsMerged[k]))
+    && (!hasValue(insightsMerged.accountsReached) || fieldIsComplete(insightsMerged.accountsReached));
+  const reachedMissing = insightsReadable && !hasValue(insightsMerged.accountsReached);
   // Il secondo screenshot si chiede SOLO se manca davvero un valore, non per un semplice dubbio.
   const insightsNeedSecond = insightsAttempted && !insightsReadable;
   // Dati letti ma con qualche riserva: si prosegue, segnalando di ricontrollarli dopo.
   const insightsToDoubleCheck = insightsReadable && !insightsComplete;
   // Elenco leggibile dei soli dati non ancora completi, per dire con precisione cosa manca
   // invece di un generico "alcuni dati" — utile sia al candidato sia per capire dove interviene l'OCR.
-  const insightFieldLabels = { views:"Visualizzazioni", netFollowers:"Follower netti", interactions:"Interazioni", accountsReached:"Account raggiunti" };
   const missingInsightFields = insightsAttempted
-    ? Object.keys(insightFieldLabels).filter(k => !hasValue(insightsMerged[k])).map(k => insightFieldLabels[k])
+    ? REQUIRED_INSIGHTS.filter(k => !hasValue(insightsMerged[k])).map(k => INSIGHT_FIELD_LABELS[k])
     : [];
   const doubtfulInsightFields = insightsAttempted
-    ? Object.keys(insightFieldLabels).filter(k => hasValue(insightsMerged[k]) && !fieldIsComplete(insightsMerged[k])).map(k => insightFieldLabels[k])
+    ? Object.keys(INSIGHT_FIELD_LABELS).filter(k => hasValue(insightsMerged[k]) && !fieldIsComplete(insightsMerged[k])).map(k => INSIGHT_FIELD_LABELS[k])
     : [];
 
   // Il nome visualizzato non è mai un requisito. Lo username può risultare troncato da
@@ -728,7 +732,8 @@ function InstagramPreCheck({ onComplete, onBack }){
     // Nome ambiguo/illeggibile → campo vuoto, nessun precompilamento.
     const fullNameGuess = name.value ? name.value : "";
     const fullNameNeedsCompletion = !!(name.truncated && name.value);
-    const metric = key => insightsRead ? String(insightsMerged[key].value) : "";
+    // Un dato non letto resta vuoto (mai "null" o zero): il candidato lo inserisce o lo lascia vuoto se facoltativo.
+    const metric = key => insightsRead && hasValue(insightsMerged[key]) ? String(insightsMerged[key].value) : "";
     return {
       instagram: ig.handle ? "@"+ig.handle : "",
       instagramHandle: ig.handle,
@@ -874,7 +879,7 @@ function InstagramPreCheck({ onComplete, onBack }){
 
           <div className="body-sm" style={{fontSize:12,color:"var(--t3)",marginBottom:6}}>Devono essere visibili:</div>
           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
-            {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
+            {INSIGHT_CHECKLIST.map(x=>(
               <div key={x} style={{display:"flex",alignItems:"center",gap:9}}>
                 <span className="dot" style={{background:"var(--red)"}}/>
                 <span className="body-sm" style={{fontSize:13,color:"var(--t2)"}}>{x}</span>
@@ -929,8 +934,19 @@ function InstagramPreCheck({ onComplete, onBack }){
             </div>
           )}
 
-          {/* Slot 2 — obbligatorio se manca un dato, facoltativo se un dato è solo dubbio */}
-          {(insightsNeedSecond || insightsToDoubleCheck) && (
+          {reachedMissing && (
+            <div className="status-box" role="status" style={{borderColor:"rgba(58,123,213,.45)",marginTop:12}}>
+              <div className="dot" style={{background:"var(--info)",marginTop:6}}/>
+              <div className="body-sm">
+                Non abbiamo trovato <strong style={{color:"var(--t1)"}}>«Account raggiunti»</strong> (o «Account che hanno visualizzato»).
+                È un dato facoltativo: puoi proseguire. Se vuoi aggiungerlo, carica un secondo screenshot in cui sia visibile:
+                di solito si trova sotto il grafico, nella sezione «Visualizzazioni per tipo di contenuto».
+              </div>
+            </div>
+          )}
+
+          {/* Slot 2 — obbligatorio se manca un dato, facoltativo se un dato è solo dubbio o se mancano gli account raggiunti */}
+          {(insightsNeedSecond || insightsToDoubleCheck || reachedMissing) && (
             <div style={{marginTop:12}}>
               <label className={"upload-compact"+(ins2.data?" done":"")}>
                 {ins2.data
@@ -952,7 +968,7 @@ function InstagramPreCheck({ onComplete, onBack }){
                 <div className="upload-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeInsight(2)}>Rimuovi</button></div>
               )}
               <OcrUnavailable slot={ins2} onRetry={()=>retrySlot("ins2")}/>
-              {ins2.data && ins2.state==="done" && !insightsComplete && (
+              {ins2.data && ins2.state==="done" && !insightsReadable && (
                 <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
                   <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
                   <div className="body-sm">
@@ -991,8 +1007,8 @@ function InstagramPreCheck({ onComplete, onBack }){
             <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
             <div className="body-sm">
               La lettura automatica non è disponibile, ma gli screenshot sono caricati. Puoi riprovare la lettura
-              oppure proseguire e inserire tu {manualParts.profile && manualParts.insights ? "username, follower e i quattro dati Insight"
-                : manualParts.profile ? "username e follower" : "i quattro dati Insight"}: il team li controllerà sugli screenshot.
+              oppure proseguire e inserire tu {manualParts.profile && manualParts.insights ? "username, follower e i dati Insight"
+                : manualParts.profile ? "username e follower" : "i dati Insight"}: il team li controllerà sugli screenshot.
             </div>
           </div>
         )}
@@ -1062,7 +1078,7 @@ function InstagramPreCheck({ onComplete, onBack }){
             </div>
             <div className="body-sm" style={{fontSize:12,color:"var(--t3)",marginBottom:6}}>Devono essere visibili:</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
+              {INSIGHT_CHECKLIST.map(x=>(
                 <div key={x} style={{display:"flex",alignItems:"center",gap:9}}>
                   <span className="dot" style={{background:"var(--red)"}}/>
                   <span className="body-sm" style={{fontSize:13}}>{x}</span>
@@ -1087,7 +1103,7 @@ function InstagramPreCheck({ onComplete, onBack }){
 function ApplicationForm({onBack, testMode=false, precheckData=null}){
   const [step,setStep]           = useState(0);
   // Se l'utente arriva dallo step di verifica screenshot, i dati Instagram sono già pronti:
-  // niente upload da rifare, solo conferma dei quattro valori.
+  // niente upload da rifare, solo conferma dei valori.
   const [prefilled] = useState(() => !!precheckData);
   // Dati da inserire a mano perché la lettura automatica non era disponibile (nessuna verifica OCR).
   const [manualEntry] = useState(() => ({ profile:false, insights:false, ...(precheckData && precheckData.manualEntry) }));
@@ -1123,6 +1139,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     const orig = ocrOriginal(key);
     return orig !== null && String(orig) !== String(form[key]).trim();
   };
+  // Etichette cercate dalla verifica del singolo dato: fanno parte dei prompt verificati dal Worker, da non cambiare.
   const fieldLabelIt = {views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"};
 
   // Numero dell'ultima verifica per campo: una risposta arrivata dopo una nuova foto o una modifica del valore è superata.
@@ -1158,13 +1175,13 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     }
   };
 
-  // Renderizza uno dei quattro campi Insight con l'eventuale richiesta di foto di verifica:
+  // Renderizza uno dei campi Insight con l'eventuale richiesta di foto di verifica:
   // usato sia quando i dati arrivano dal precheck sia quando arrivano dagli upload nel form.
-  const renderInsightField = (key, label, placeholder, hint) => {
+  const renderInsightField = (key, label, placeholder, hint, optional=false) => {
     const edited = isFieldEdited(key);
     const fv = fieldVerify[key];
     return (
-      <Field key={key} label={label} required error={err(key)} hint={hint||undefined} htmlFor={"f-"+key}>
+      <Field key={key} label={label} required={!optional} error={err(key)} hint={hint||undefined} htmlFor={"f-"+key}>
         <input id={"f-"+key} type="number" inputMode={key==="netFollowers"?"text":"numeric"}
           value={form[key]} aria-invalid={inv(key)}
           onChange={e=>{ set(key,e.target.value); verifySeq.current[key] = (verifySeq.current[key] || 0) + 1; setFieldVerify(p=>{ const n={...p}; delete n[key]; return n; }); }}
@@ -1383,16 +1400,20 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     }
     if(s===1){
       req("instagram","Inserisci il tuo username Instagram");
+      // Solo numeri interi: un campo vuoto non diventa zero e non si invia.
+      const unsigned = v => /^\d+$/.test(String(v).trim());
       if(!String(form.followers).trim()) e.followers="Inserisci il numero di follower";
-      else if(isNaN(form.followers) || +form.followers<0) e.followers="Valore non valido";
+      else if(!unsigned(form.followers)) e.followers="Inserisci un numero intero";
       if(!form.screenshotData) e.screenshotData="Carica il primo screenshot richiesto";
-      ["views","interactions","accountsReached"].forEach(k=>{
+      ["views","interactions"].forEach(k=>{
         if(String(form[k]).trim()==="") e[k]="Dato mancante";
-        else if(isNaN(form[k]) || +form[k]<0) e[k]="Valore non valido";
+        else if(!unsigned(form[k])) e[k]="Inserisci un numero intero";
       });
-      // I follower netti possono essere negativi
+      // Account raggiunti facoltativi: vuoto ammesso, altrimenti intero non negativo.
+      if(String(form.accountsReached).trim()!=="" && !unsigned(form.accountsReached)) e.accountsReached="Inserisci un numero intero";
+      // I follower netti possono essere negativi o zero
       if(String(form.netFollowers).trim()==="") e.netFollowers="Dato mancante";
-      else if(isNaN(form.netFollowers)) e.netFollowers="Valore non valido";
+      else if(!/^[+-]?\d+$/.test(String(form.netFollowers).trim())) e.netFollowers="Inserisci un numero intero";
       if(form.tiktokFollowers && (isNaN(form.tiktokFollowers) || +form.tiktokFollowers<0)) e.tiktokFollowers="Valore non valido";
       ["contentUrl1","contentUrl2","contentUrl3"].forEach(k=>{
         if(form[k] && !isUrl(form[k])) e[k]="Inserisci un link valido (https://…)";
@@ -1610,7 +1631,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
               </p>
               <p className="body-sm" style={{marginBottom:12}}>Nella schermata devono essere visibili:</p>
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-                {["Visualizzazioni","Follower netti","Interazioni","Account raggiunti"].map(x=>(
+                {INSIGHT_CHECKLIST.map(x=>(
                   <div key={x} style={{display:"flex",alignItems:"center",gap:10}}>
                     <span className="dot" style={{background:"var(--red)"}}/>
                     <span style={{fontFamily:"var(--fh)",fontWeight:600,fontSize:13,color:"var(--t1)"}}>{x}</span>
@@ -1650,7 +1671,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                 </div>
               </div>
               <p className="body-sm" style={{fontSize:12,color:"var(--t4)",marginBottom:16,lineHeight:1.5}}>
-                I dati che ci servono sono: Visualizzazioni, Follower netti, Interazioni e Account raggiunti.
+                I dati che ci servono sono: Visualizzazioni, Follower netti e Interazioni. Account raggiunti (o «Account che hanno visualizzato») è facoltativo.
               </p>
               <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                 <button type="button" className="btn btn-primary btn-sm"
@@ -1700,7 +1721,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
             <div style={{marginTop:22,marginBottom:14}}>
               <div className="field-label" style={{marginBottom:6}}>Insight degli ultimi 30 giorni</div>
               <p className="body-sm" style={{fontSize:13,color:"var(--t3)",marginBottom:prefilled?0:12,lineHeight:1.5}}>
-                Visualizzazioni, follower netti, interazioni e account raggiunti.
+                Visualizzazioni, follower netti e interazioni. Account raggiunti facoltativi.
               </p>
               {!prefilled && (
                 <button type="button" className="info-trigger" onClick={()=>setShowInfoModal(true)}
@@ -1719,7 +1740,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                     <>
                       <div className="h-sm" style={{marginBottom:4}}>Inserisci i dati Insight</div>
                       <p className="body-sm" role="status" style={{fontSize:13,marginBottom:14,color:"var(--t3)"}}>
-                        La lettura automatica non era disponibile: inserisci i quattro valori come appaiono negli screenshot.
+                        La lettura automatica non era disponibile: inserisci i valori come appaiono negli screenshot (gli account raggiunti sono facoltativi).
                         Il team li controllerà sugli screenshot caricati.
                       </p>
                     </>
@@ -1735,7 +1756,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                     {renderInsightField("views","Visualizzazioni","28400","")}
                     {renderInsightField("netFollowers","Follower netti","260","Può essere negativo")}
                     {renderInsightField("interactions","Interazioni","1240","")}
-                    {renderInsightField("accountsReached","Account raggiunti","18400","")}
+                    {renderInsightField("accountsReached","Account raggiunti (facoltativo)","18400","«Account che hanno visualizzato». Lascia vuoto se non lo trovi.",true)}
                   </div>
 
                   {/* Miniature degli screenshot caricati nello step iniziale, ingrandibili al tocco */}
@@ -1873,7 +1894,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                   </div>
                 )}
                 {(ocr1.state==="done" || ocr2.state==="done") && insightConflicts.length===0 && (
-                  (form.views==="" || form.netFollowers==="" || form.interactions==="" || form.accountsReached==="")
+                  (form.views==="" || form.netFollowers==="" || form.interactions==="")
                     ? (
                       <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginTop:8}}>
                         <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
@@ -1900,7 +1921,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                       <div style={{marginTop:8}}>
                         {insightConflicts.map(c=>(
                           <div key={c.key} style={{fontSize:12,color:"var(--t3)",marginTop:4}}>
-                            {{views:"Visualizzazioni",netFollowers:"Follower netti",interactions:"Interazioni",accountsReached:"Account raggiunti"}[c.key]}:
+                            {INSIGHT_FIELD_LABELS[c.key]}:
                             {" screenshot 1 → "}<strong style={{color:"var(--t1)"}}>{c.valueA}</strong>
                             {" · screenshot 2 → "}<strong style={{color:"var(--t1)"}}>{c.valueB}</strong>
                           </div>
@@ -1920,7 +1941,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                     {renderInsightField("views","Visualizzazioni","28400","")}
                     {renderInsightField("netFollowers","Follower netti","260","Può essere negativo")}
                     {renderInsightField("interactions","Interazioni","1240","")}
-                    {renderInsightField("accountsReached","Account raggiunti","18400","")}
+                    {renderInsightField("accountsReached","Account raggiunti (facoltativo)","18400","«Account che hanno visualizzato». Lascia vuoto se non lo trovi.",true)}
                   </div>
                 </div>
               </>
@@ -2111,7 +2132,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                 ))}
               </div>
               <div className="g2" style={{marginTop:2}}>
-                {[["Visualizzazioni",fmtInt(form.views)],["Account raggiunti",fmtInt(form.accountsReached)],["Interazioni",fmtInt(form.interactions)],["Follower netti",(+form.netFollowers>0?"+":"")+fmtInt(form.netFollowers)]].map(([k,v])=>(
+                {[["Visualizzazioni",fmtInt(form.views)],["Account raggiunti",String(form.accountsReached).trim()==="" ? "Non indicato" : fmtInt(form.accountsReached)],["Interazioni",fmtInt(form.interactions)],["Follower netti",(+form.netFollowers>0?"+":"")+fmtInt(form.netFollowers)]].map(([k,v])=>(
                   <div className="kv" key={k}><div className="kv-k">{k}</div><div className="kv-v">{v}</div></div>
                 ))}
               </div>

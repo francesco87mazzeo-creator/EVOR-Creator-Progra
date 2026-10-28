@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { publicFixture, frontendDocument, fullOcr } from '../../server/collective/test/frontend-reference.mjs';
+import { publicFixture, currentDocument, fullOcr } from '../../server/collective/test/frontend-reference.mjs';
 import { fromFirestoreValue } from '../src/firestore.mjs';
 import { freshWorker, baseEnv, post } from './helpers.mjs';
 
@@ -38,8 +38,8 @@ test('Emulator: candidatura scritta via REST e riletta identica al documento del
   const { id } = await res.json();
   const saved = await readBack(id);
   const { date, updatedAt, ...rest } = saved;
-  const { date: _d, updatedAt: _u, ...expected } = await frontendDocument();
-  assert.equal(Object.keys(saved).length, 71);
+  const { date: _d, updatedAt: _u, ...expected } = await currentDocument();
+  assert.equal(Object.keys(saved).length, 72);
   assert.deepEqual(rest, expected);
   assert.equal(telegram.length, 1);
 });

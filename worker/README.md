@@ -4,6 +4,21 @@ Sorgenti del Worker in produzione, finora conservati solo in locale. `wrangler.t
 
 - **Moduli:** `src/` contiene il Worker; importa la convalida da `../server/collective`.
 
+## Modifiche non ancora pubblicate: scoring v2
+
+Il branch `scoring/v2-engagement-views` modifica i sorgenti del Worker. **Dopo il merge il repository non corrisponde più alla versione in produzione descritta sotto**, finché il Worker non viene pubblicato con autorizzazione.
+
+- **Sorgenti modificati:**
+  - `worker/src/worker.js`: punteggio v2 e nuova notifica Telegram;
+  - `server/collective/scoring.mjs`;
+  - `server/collective/application.mjs`: account raggiunti facoltativi, schema 5.
+- **Prompt OCR:** non modificati; le impronte in `OCR_PROMPTS` restano quelle attuali.
+- **`/notify`:** il modello storico del messaggio resta accettato.
+- **Bundle locale:** `wrangler deploy --dry-run` con Wrangler 4.149.0, nessuna pubblicazione.
+  - `worker.js`: 58.866 byte;
+  - SHA-256 `a463048f066e7fd7045c727741f9153532c65b4903f6a1d41055e5f67e0b4fc7`, calcolato al commit di questa modifica.
+- **Ordine di pubblicazione:** prima le Rules, poi il Worker, poi il frontend. Dettagli in [docs/scoring-v2.md](../docs/scoring-v2.md).
+
 ## Provenienza (verificata il 2026-10-28)
 
 **Riferimenti Cloudflare** (non sono secret):

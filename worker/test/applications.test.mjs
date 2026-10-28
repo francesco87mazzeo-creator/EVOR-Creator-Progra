@@ -2,9 +2,9 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { publicFixture, frontendDocument, frontendScore, fullOcr, JPEG } from '../../server/collective/test/frontend-reference.mjs';
+import { publicFixture, frontendDocument, currentDocument, frontendScore, fullOcr, JPEG } from '../../server/collective/test/frontend-reference.mjs';
 import { fromFirestoreValue, __resetTokenCacheForTests } from '../src/firestore.mjs';
-import { freshWorker, baseEnv, post, mockFetch, frontendApplicationMessage, frontendSource } from './helpers.mjs';
+import { freshWorker, baseEnv, post, mockFetch, frontendSource } from './helpers.mjs';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const SA = { client_email: 'synthetic-writer@demo-evora-security.iam.gserviceaccount.com', project_id: 'demo-evora-security',
@@ -59,7 +59,7 @@ const writes = calls => calls.filter(c => c.url.includes('/candidature?documentI
 const tgCalls = calls => calls.filter(c => c.url.startsWith('https://api.telegram.org/'));
 
 /* ---------- Percorso valido ---------- */
-test('Candidatura valida: 201, documento con gli stessi 71 campi del frontend, ID casuale', async () => {
+test('Candidatura valida: 201, documento di schema 5 (72 campi) con il punteggio v2, ID casuale', async () => {
   const { res, json, calls } = await submit(await publicFixture());
   assert.equal(res.status, 201);
   assert.equal(json.ok, true);
@@ -68,12 +68,14 @@ test('Candidatura valida: 201, documento con gli stessi 71 campi del frontend, I
   assert.equal(w.url, `${ROOT}/candidature?documentId=${json.id}`);
   assert.equal(w.init.headers.Authorization, 'Bearer ya29.synthetic');
   const saved = decodeDoc(w.body);
-  const expected = await frontendDocument();
+  const expected = await currentDocument();
   assert.deepEqual(Object.keys(saved).sort(), Object.keys(expected).sort());
-  assert.equal(Object.keys(saved).length, 71);
+  assert.equal(Object.keys(saved).length, 72);
   const { date, updatedAt, ...rest } = saved;
   const { date: _d, updatedAt: _u, ...expectedRest } = expected;
-  assert.deepEqual(rest, expectedRest, 'stessi valori del documento prodotto oggi dal frontend');
+  assert.deepEqual(rest, expectedRest, 'stessi valori del documento storico, con lo scoring v2 al posto del precedente');
+  for (const key of ['perfLevel', 'bandLabel', 'erRate', 'reachRate', 'growthRate']) assert.ok(!(key in saved), key);
+  assert.equal(saved.status, 'new', 'nessuna decisione automatica');
   assert.equal(date, updatedAt);
   assert.ok(Math.abs(Date.parse(date) - Date.now()) < 60_000, 'data del server');
 });
@@ -83,7 +85,9 @@ test('I numeri interi sono salvati come integerValue, come fa l\'SDK web', async
   const f = writes(calls)[0].body.fields;
   assert.deepEqual(f.followers, { integerValue: '8500' });
   assert.deepEqual(f.age, { integerValue: '27' });
-  assert.ok('doubleValue' in f.erRate || 'integerValue' in f.erRate);
+  assert.ok('doubleValue' in f.engagementRate || 'integerValue' in f.engagementRate);
+  assert.deepEqual(f.scoringVersion, { integerValue: '3' });
+  assert.deepEqual(f.accountsReached, { integerValue: '18400' });
   assert.deepEqual(f.evaluation, { mapValue: {} });
   assert.deepEqual(f.status, { stringValue: 'new' });
 });
@@ -120,14 +124,48 @@ test('OCR completo con quattro conflitti accettato e salvato', async () => {
   assert.deepEqual(saved.ocrProfile, ocr.ocrProfile);
 });
 
-test('Notifica Telegram identica a quella del frontend, inviata una volta dopo il salvataggio', async () => {
+test('Notifica Telegram con il punteggio v2, inviata una volta dopo il salvataggio', async () => {
   const { calls } = await submit(await publicFixture());
   const sent = tgCalls(calls);
   assert.equal(sent.length, 1);
-  const doc = await frontendDocument();
-  const expected = await frontendApplicationMessage(doc, frontendScore(doc));
-  assert.equal(sent[0].body.text, expected);
+  const doc = await currentDocument();
+  const s = frontendScore(doc);
+  const pct = v => v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+  assert.equal(sent[0].body.text, [
+    '🔔 <b>EVORΛ COLLECTIVE</b>', 'Nuova candidatura', '',
+    '👤 <b>Candidato Prova</b>',
+    '📱 Instagram: <a href="https://www.instagram.com/profilo_prova/">@profilo_prova</a>',
+    '🎵 TikTok: <a href="https://www.tiktok.com/@profilo_prova">@profilo_prova</a>',
+    '🏷 Coach / Personal trainer, Creator fitness',
+    '👥 ' + (8500).toLocaleString('it-IT') + ' follower', '',
+    '👁 Visualizzazioni: 24.800', '💬 Interazioni: ' + (1120).toLocaleString('it-IT'), '📈 Follower netti: +260', '🎯 Account raggiunti: 18.400', '',
+    '📊 Punteggio quantitativo: <b>' + s.socialScore + '/100</b> (scoring v2)',
+    'Coinvolgimento ' + pct(s.engagementRate) + ' · Indicatore B ' + pct(s.reachEngagementRate) + ' (non incide)'
+  ].join('\n'));
+  assert.equal(sent[0].body.parse_mode, 'HTML');
+  assert.ok(!/ER |Reach |Growth |fascia|Social Performance/.test(sent[0].body.text), 'nessun riferimento al modello precedente');
   assert.ok(calls.indexOf(sent[0]) > calls.indexOf(writes(calls)[0]), 'notifica dopo la scrittura');
+});
+
+test('Account raggiunti non indicati: 201, salvati come null (mai zero), indicatore B non disponibile', async () => {
+  const { res, calls } = await submit(await publicFixture({ accountsReached: null }));
+  assert.equal(res.status, 201);
+  const saved = decodeDoc(writes(calls)[0].body);
+  assert.equal(saved.accountsReached, null);
+  assert.equal(saved.reachEngagementRate, null);
+  assert.equal(saved.socialScore, (await currentDocument()).socialScore, 'il punteggio principale non dipende dagli account raggiunti');
+  const text = tgCalls(calls)[0].body.text;
+  assert.match(text, /🎯 Account raggiunti: non indicati/);
+  assert.match(text, /Indicatore B n\/d/);
+});
+
+test('Base di osservazione ridotta: segnalata nella notifica, punteggio non corretto', async () => {
+  const { res, calls } = await submit(await publicFixture({ views: 400, interactions: 6, accountsReached: 300 }));
+  assert.equal(res.status, 201);
+  const saved = decodeDoc(writes(calls)[0].body);
+  assert.equal(saved.lowBase, true);
+  assert.equal(saved.socialScore, frontendScore({ ...saved }).socialScore);
+  assert.match(tgCalls(calls)[0].body.text, /⚠️ Base di osservazione molto ridotta$/);
 });
 
 test('Un errore Telegram non annulla la candidatura', async () => {
@@ -147,18 +185,27 @@ test('Nome con link e menzioni: salvato com\'è, neutralizzato solo nella notifi
 /* ---------- Scoring del server ---------- */
 test('Scoring personalizzato letto da Firestore e applicato come nel frontend', async () => {
   const custom = JSON.parse(JSON.stringify((await import('../../server/collective/scoring.mjs')).DEFAULT_SCORING));
-  custom.weights = { er: 10, reach: 10, growth: 80 };
-  custom.bands[4].max = null;
+  custom.weights = { engagement: 10, visibility: 90 };
+  custom.references.views = 5000;
   const { res, calls } = await submit(await publicFixture(), { svc: { scoring: custom } });
   assert.equal(res.status, 201);
   const saved = decodeDoc(writes(calls)[0].body);
-  const doc = await frontendDocument();
+  const doc = await currentDocument();
   assert.equal(saved.socialScore, frontendScore(doc, custom).socialScore);
   assert.notEqual(saved.socialScore, frontendScore(doc).socialScore, 'lo scoring personalizzato cambia davvero il risultato');
 });
 
+test('Configurazione del modello precedente ancora su Firestore: ignorata, si applicano i valori predefiniti v2', async () => {
+  const old = { version: 2, weights: { er: 45, reach: 35, growth: 20 }, levels: [], bands: [] };
+  const { res, calls } = await submit(await publicFixture(), { svc: { scoring: old } });
+  assert.equal(res.status, 201);
+  const saved = decodeDoc(writes(calls)[0].body);
+  assert.equal(saved.socialScore, (await currentDocument()).socialScore);
+  assert.equal(saved.scoringVersion, 3);
+});
+
 test('Scoring su Firestore non valido → 503, nessuna scrittura', async () => {
-  const { res, json, calls } = await submit(await publicFixture(), { svc: { scoring: { version: 2, weights: 'x' } } });
+  const { res, json, calls } = await submit(await publicFixture(), { svc: { scoring: { version: 3, weights: 'x' } } });
   assert.equal(res.status, 503);
   assert.deepEqual(json, { ok: false, error: { code: 'SERVICE_UNAVAILABLE', path: '$' } });
   assert.equal(writes(calls).length, 0);

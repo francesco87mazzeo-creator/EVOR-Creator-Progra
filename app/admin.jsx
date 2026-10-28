@@ -111,139 +111,128 @@ const sendTelegram = async (message) => {
 };
 
 /* ============================================================================
-   5. SOCIAL PERFORMANCE SCORE
-   Valuta ESCLUSIVAMENTE i dati numerici Instagram.
-   Nessuna analisi delle risposte, nessuna keyword, nessun giudizio automatico.
+   5. PUNTEGGIO QUANTITATIVO — scoring v2 (Modello A), configurazione versione 3
+   Valuta ESCLUSIVAMENTE i dati numerici Instagram degli ultimi 30 giorni.
+   Nessuna analisi delle risposte, nessuna keyword, nessuna decisione automatica.
+   Formule identiche a server/collective/scoring.mjs (test di parità e di testo).
    ========================================================================== */
-const SCORING_VERSION = 2;   // incrementare quando cambiano formule o benchmark predefiniti
+const SCORING_VERSION = 3;   // incrementare quando cambiano formule o riferimenti predefiniti
 
 const DEFAULT_SCORING = {
   version: SCORING_VERSION,
-  // Le visualizzazioni vengono salvate e mostrate ma non entrano nel punteggio.
-  weights: { er:45, reach:35, growth:20 },
-  levels: [
-    {v:"HIGH",    l:"Performance numerica alta",  min:75, c:"#3A7BD5"},
-    {v:"GOOD",    l:"Performance numerica buona", min:55, c:"#27AE60"},
-    {v:"AVERAGE", l:"Performance numerica media", min:35, c:"#E67E22"},
-    {v:"LOW",     l:"Performance numerica bassa", min:0,  c:"#C0392B"}
-  ],
-  bands: [
-    { label:"0–1K",     max:1000,
-      er:{avg:3,good:6,excellent:10},    reach:{avg:60,good:120,excellent:250}, growth:{avg:1,good:3,excellent:7} },
-    { label:"1K–5K",    max:5000,
-      er:{avg:2.5,good:5,excellent:8},   reach:{avg:40,good:80,excellent:160},  growth:{avg:0.5,good:1.5,excellent:4} },
-    { label:"5K–20K",   max:20000,
-      er:{avg:2,good:4,excellent:7},     reach:{avg:30,good:60,excellent:120},  growth:{avg:0.3,good:1,excellent:3} },
-    { label:"20K–100K", max:100000,
-      er:{avg:1.5,good:3,excellent:5},   reach:{avg:20,good:40,excellent:80},   growth:{avg:0.15,good:0.5,excellent:1.5} },
-    { label:"100K+",    max:Infinity,
-      er:{avg:1,good:2,excellent:4},     reach:{avg:15,good:30,excellent:60},   growth:{avg:0.08,good:0.25,excellent:0.8} }
-  ]
+  // 65% coinvolgimento (interazioni / visualizzazioni), 35% visibilità (volume delle visualizzazioni).
+  weights: { engagement:65, visibility:35 },
+  // Riferimenti iniziali sperimentali: il valore di riferimento vale 50/100.
+  references: { engagementRate:2, views:30000 },
+  // Basi di osservazione estremamente ridotte: solo segnalate, il punteggio non viene corretto.
+  lowBase: { views:1000, interactions:10 }
 };
 
-// Normalizza config salvate con lo schema precedente (tiers ELITE/PRO/...).
+// Configurazione assente o del modello precedente (versione 1/2): valori predefiniti, senza conversione
+// delle vecchie soglie. Il documento su Firestore resta invariato finché l'admin non salva di nuovo.
 const normalizeScoring = (cfg) => {
-  // Una configurazione salvata con lo schema precedente (formule e benchmark diversi)
-  // non viene applicata: si riparte dai valori predefiniti aggiornati.
-  // Il documento su Firestore resta invariato finché l'admin non salva di nuovo.
-  if(!cfg || cfg.version !== SCORING_VERSION) return JSON.parse(JSON.stringify(DEFAULT_SCORING));
   const out = JSON.parse(JSON.stringify(DEFAULT_SCORING));
-  if(cfg.weights) out.weights = { ...out.weights, ...cfg.weights };
-  if(Array.isArray(cfg.bands) && cfg.bands.length){
-    out.bands = cfg.bands.map((b,i)=>({
-      label: b.label || out.bands[i] && out.bands[i].label || ("Fascia "+(i+1)),
-      max:   (b.max===null || b.max===undefined) ? Infinity : b.max,
-      er:    { ...out.bands[i] ? out.bands[i].er : {},     ...(b.er||{}) },
-      reach: { ...out.bands[i] ? out.bands[i].reach : {},  ...(b.reach||{}) },
-      growth:{ ...out.bands[i] ? out.bands[i].growth : {}, ...(b.growth||{}) }
-    }));
-    // Vecchio schema: soglia "poor" invece di "excellent"
-    out.bands.forEach(b=>["er","reach","growth"].forEach(m=>{
-      if(b[m].excellent===undefined && b[m].good!==undefined) b[m].excellent = b[m].good*2;
-      if(b[m].avg===undefined) b[m].avg = (b[m].poor!==undefined ? b[m].poor : 0);
-    }));
-  }
-  if(Array.isArray(cfg.levels) && cfg.levels.length) out.levels = cfg.levels;
-  else if(Array.isArray(cfg.tiers) && cfg.tiers.length){
-    const byMin = [...cfg.tiers].sort((a,b)=>b.min-a.min);
-    out.levels = out.levels.map((lv,i)=> byMin[i] ? { ...lv, min:byMin[i].min } : lv);
-  }
+  if(!cfg || cfg.version !== SCORING_VERSION) return out;
+  const ok = (v, min) => typeof v === "number" && Number.isFinite(v) && v >= min;
+  ["engagement","visibility"].forEach(k=>{ if(cfg.weights && ok(cfg.weights[k],0)) out.weights[k] = cfg.weights[k]; });
+  if(out.weights.engagement + out.weights.visibility <= 0) out.weights = { ...DEFAULT_SCORING.weights };
+  ["engagementRate","views"].forEach(k=>{ if(cfg.references && ok(cfg.references[k],0) && cfg.references[k] > 0) out.references[k] = cfg.references[k]; });
+  ["views","interactions"].forEach(k=>{ if(cfg.lowBase && ok(cfg.lowBase[k],0)) out.lowBase[k] = cfg.lowBase[k]; });
   return out;
 };
 
-const bandFor = (followers, cfg) =>
-  cfg.bands.find(b => followers <= (b.max===null?Infinity:b.max)) || cfg.bands[cfg.bands.length-1];
+/* scoring-core:start — testo identico in app/admin.jsx (verificato dai test) */
+// Normalizzazione continua e crescente, senza soglie né fasce: 0 → 0, riferimento → 50, verso 100 senza raggiungerlo.
+const saturate = (value, reference) => value > 0 ? 100 * value / (value + reference) : 0;
 
-// 4 livelli: <avg Scarso(0-25) · avg→good Medio(25-50) · good→excellent Buono(50-75) · >excellent Eccellente(75-100)
-const normalizeMetric = (value, th) => {
-  if(!th || value<=0) return 0;
-  const {avg,good,excellent} = th;
-  if(value >= excellent) return Math.min(100, 75 + ((value-excellent)/Math.max(excellent,0.01))*25);
-  if(value >= good)      return 50 + ((value-good)/Math.max(excellent-good,0.01))*25;
-  if(value >= avg)       return 25 + ((value-avg)/Math.max(good-avg,0.01))*25;
-  return Math.max(0, (value/Math.max(avg,0.01))*25);
+// Valori osservati: interi non negativi (numero o stringa di sole cifre nelle candidature storiche).
+// Un valore mancante o non valido resta null: non diventa mai zero.
+const count = v => {
+  if (typeof v === "number") return Number.isFinite(v) && v >= 0 ? v : null;
+  if (typeof v === "string" && /^\d+$/.test(v.trim())) return Number(v.trim());
+  return null;
 };
+const signedCount = v => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string" && /^[+-]?\d+$/.test(v.trim())) return Number(v.trim());
+  return null;
+};
+const round2 = v => v === null ? null : Math.round(v * 100) / 100;
 
-const METRIC_GRADES = [
-  {min:75, l:"Eccellente", c:"#3A7BD5", bg:"rgba(58,123,213,.12)"},
-  {min:50, l:"Buono",      c:"#27AE60", bg:"rgba(39,174,96,.12)"},
-  {min:25, l:"Medio",      c:"#E67E22", bg:"rgba(230,126,34,.12)"},
-  {min:0,  l:"Scarso",     c:"#C0392B", bg:"rgba(192,57,43,.12)"}
-];
-const gradeOf = s => METRIC_GRADES.find(g=>s>=g.min) || METRIC_GRADES[3];
+const computeWithConfig = (data, cfg) => {
+  const followers    = count(data.followers);
+  const views        = count(data.views);
+  const interactions = count(data.interactions);
+  const reached      = count(data.accountsReached);
+  const net          = signedCount(data.netFollowers);
 
-/**
- * Calcola il Social Performance Score.
- * Ricalcolato a ogni lettura: modificare i benchmark aggiorna anche i profili storici.
- */
-const computeSocial = (data, cfgRaw) => {
-  const cfg = cfgRaw || DEFAULT_SCORING;
-  const n = v => { const x = parseFloat(v); return Number.isFinite(x) ? x : 0; };
-  const has = v => !(v===undefined || v===null || v==="");
+  // Indicatore B: secondario, mai nel punteggio, solo con account raggiunti indicati e maggiori di zero.
+  const reachEngagementRate = interactions !== null && reached !== null && reached > 0 ? interactions / reached * 100 : null;
+  const missing = [];
+  if (views === null) missing.push("views");
+  if (interactions === null) missing.push("interactions");
+  const lowBaseReasons = [];
+  if (views !== null && views < cfg.lowBase.views) lowBaseReasons.push("views");
+  if (interactions !== null && interactions < cfg.lowBase.interactions) lowBaseReasons.push("interactions");
 
-  const followers    = n(data.followers);
-  const views        = n(data.views);
-  const interactions = n(data.interactions);
-  // Compatibilità con le candidature precedenti:
-  // se manca accountsReached si usano le visualizzazioni, se manca netFollowers si usa newFollowers.
-  const reached = has(data.accountsReached) ? n(data.accountsReached) : views;
-  const net     = has(data.netFollowers)    ? n(data.netFollowers)    : n(data.newFollowers);
+  const observed = { followers, views, interactions, netFollowers:net, accountsReached:reached };
+  if (missing.length) return {
+    scoringVersion:SCORING_VERSION, available:false, missing, socialScore:null,
+    engagementRate:null, engagementScore:null, visibilityScore:null, reachEngagementRate,
+    lowBase:lowBaseReasons.length > 0, lowBaseReasons, ...observed
+  };
 
-  const band   = bandFor(followers, cfg);
-  const er     = reached>0   ? (interactions/reached)*100 : 0;   // interazioni / account raggiunti
-  const reach  = followers>0 ? (reached/followers)*100    : 0;   // account raggiunti / follower
-  const growth = followers>0 ? (net/followers)*100        : 0;   // follower netti / follower
-
-  const erScore     = normalizeMetric(er, band.er);
-  const reachScore  = normalizeMetric(reach, band.reach);
-  const growthScore = normalizeMetric(Math.max(growth,0), band.growth);
-
+  // Senza visualizzazioni il coinvolgimento non è definito: componente 0 e base segnalata come ridotta.
+  const engagementRate  = views > 0 ? interactions / views * 100 : null;
+  const engagementScore = engagementRate === null ? 0 : saturate(engagementRate, cfg.references.engagementRate);
+  const visibilityScore = saturate(views, cfg.references.views);
   const w  = cfg.weights;
-  const tw = (+w.er||0)+(+w.reach||0)+(+w.growth||0) || 100;
-  const socialScore = Math.round((erScore*(+w.er||0) + reachScore*(+w.reach||0) + growthScore*(+w.growth||0)) / tw);
-
-  const level = [...cfg.levels].sort((a,b)=>b.min-a.min).find(l=>socialScore>=l.min) || cfg.levels[cfg.levels.length-1];
+  const tw = w.engagement + w.visibility;
+  const socialScore = Math.round((engagementScore * w.engagement + visibilityScore * w.visibility) / tw);
 
   return {
-    socialScore,
-    erScore:Math.round(erScore), reachScore:Math.round(reachScore), growthScore:Math.round(growthScore),
-    er, reach, growth,
-    views, reached, net, interactions, followers,
-    erGrade:gradeOf(erScore), reachGrade:gradeOf(reachScore), growthGrade:gradeOf(growthScore),
-    bandLabel:band.label, band,
-    perfLevel:level.v, perfLabel:level.l, perfColor:level.c
+    scoringVersion:SCORING_VERSION, available:true, missing, socialScore,
+    engagementRate, engagementScore, visibilityScore, reachEngagementRate,
+    lowBase:lowBaseReasons.length > 0, lowBaseReasons, ...observed
   };
 };
+
+/** Campi salvati sulla candidatura: stessi arrotondamenti nel Worker e nell'Admin. */
+const scoreDocumentFields = s => ({
+  scoringVersion: s.scoringVersion,
+  socialScore: s.socialScore,
+  engagementRate: round2(s.engagementRate),
+  engagementScore: s.engagementScore === null ? null : Math.round(s.engagementScore),
+  visibilityScore: s.visibilityScore === null ? null : Math.round(s.visibilityScore),
+  reachEngagementRate: round2(s.reachEngagementRate),
+  lowBase: s.lowBase
+});
+/* scoring-core:end */
+
+/**
+ * Calcola il punteggio quantitativo principale e l'indicatore B.
+ * Ricalcolato a ogni lettura con la configurazione corrente, anche per le candidature storiche.
+ */
+const computeScore = (data, cfgRaw) => computeWithConfig(data, cfgRaw || DEFAULT_SCORING);
 
 /* ============================================================================
    10. EXPORT CSV (compatibile Excel IT)
    ========================================================================== */
+// Valori mancanti mostrati come "—", mai come zero.
+const fmtMaybe = n => n===null || n===undefined ? "—" : fmtInt(n);
+const fmtPct   = v => v===null || v===undefined ? "—" : v.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+const csvNum   = (v, digits) => v===null || v===undefined ? "" : (digits===undefined ? String(v) : v.toFixed(digits));
+// Colore neutro: il punteggio non ha livelli né soglie di classificazione.
+const SCORE_COLOR = "var(--info)";
+const LOW_BASE_TEXT = "Base di osservazione molto ridotta: il punteggio è calcolato senza correzioni, ma è poco stabile.";
+
 const exportCSV = (rows, cfg) => {
   const head = [
     "Data","Ultima modifica","Stato","Nome","Età","Email","Città","Paese","Categorie","Altra categoria",
     "Instagram","Follower IG","TikTok","Follower TikTok",
     "Visualizzazioni","Account raggiunti","Interazioni","Follower netti",
-    "ER %","Reach %","Growth %","Social Performance Score","Livello performance","Fascia follower",
+    "Punteggio quantitativo","Versione scoring","Coinvolgimento % (interazioni/visualizzazioni)","Punteggio coinvolgimento","Punteggio visibilità",
+    "Base ridotta","Indicatore B % (interazioni/account raggiunti)",
     "Valutazione interna","Brand Fit","Qualità contenuti","Credibilità","Affidabilità","Potenziale","Valore strategico",
     "Codice creator","Note interne",
     "Contenuto 1","Contenuto 2","Contenuto 3",
@@ -256,16 +245,17 @@ const exportCSV = (rows, cfg) => {
     "Prodotti acquistati","Miglioramenti","Nota finale","Consenso privacy"
   ];
   const line = a => {
-    const s = computeSocial(a, cfg);
+    const s = computeScore(a, cfg);
     const ev = a.evaluation || {};
     const vals = EVAL_CRITERIA.map(c=>ev[c.k]).filter(v=>typeof v==="number" && v>0);
     const avg = vals.length ? (vals.reduce((x,y)=>x+y,0)/vals.length).toFixed(2) : "";
     return [
       fmtDate(a.date), a.updatedAt?fmtDateTime(a.updatedAt):"", statusMeta(a.status).l,
       a.fullName, a.age, a.email, a.city, a.country||"", categoriesOf(a).map(catLabel).join(" | "), a.otherProfileCategory||"",
-      a.instagram, a.followers, a.tiktok||"", a.tiktokFollowers||"",
-      s.views, s.reached, s.interactions, s.net,
-      s.er.toFixed(2), s.reach.toFixed(1), s.growth.toFixed(2), s.socialScore, s.perfLabel, s.bandLabel,
+      a.instagram, csvNum(s.followers), a.tiktok||"", a.tiktokFollowers||"",
+      csvNum(s.views), csvNum(s.accountsReached), csvNum(s.interactions), csvNum(s.netFollowers),
+      csvNum(s.socialScore), s.scoringVersion, csvNum(s.engagementRate,2), csvNum(s.engagementScore,0), csvNum(s.visibilityScore,0),
+      s.lowBase?"Sì":"No", csvNum(s.reachEngagementRate,2),
       avg, ev.brandFit||"", ev.contentQuality||"", ev.credibility||"", ev.reliability||"", ev.potential||"", ev.strategicValue||"",
       a.creatorCode||"", a.notes||"",
       a.contentUrl1||"", a.contentUrl2||"", a.contentUrl3||"",
@@ -298,8 +288,8 @@ const FOLLOWER_BANDS = [
   {v:"b4",l:"20K–100K", min:20001,  max:100000},
   {v:"b5",l:"100K+",    min:100001, max:Infinity}
 ];
-const PERF_FILTERS = [
-  {v:"HIGH",l:"Alta"},{v:"GOOD",l:"Buona"},{v:"AVERAGE",l:"Media"},{v:"LOW",l:"Bassa"}
+const BASE_FILTERS = [
+  {v:"low",l:"Solo base ridotta"},{v:"normal",l:"Escludi base ridotta"}
 ];
 const DATE_FILTERS = [
   {v:"all",l:"Sempre"},{v:"7",l:"Ultimi 7 giorni"},{v:"30",l:"Ultimi 30 giorni"},{v:"90",l:"Ultimi 90 giorni"}
@@ -315,7 +305,7 @@ function ApplicationsPanel({role, scoring}){
   const [fStatus,setFStatus] = useState("all");
   const [fCat,setFCat]       = useState("all");
   const [fBand,setFBand]     = useState("all");
-  const [fPerf,setFPerf]     = useState("all");
+  const [fBase,setFBase]     = useState("all");
   const [fDate,setFDate]     = useState("all");
   const [fPlace,setFPlace]   = useState("");
   const [fCollab,setFCollab] = useState("all");
@@ -334,7 +324,7 @@ function ApplicationsPanel({role, scoring}){
   useEffect(()=>{ load(); },[load]);
 
   // Metriche ricalcolate a runtime con i benchmark correnti
-  const enriched = useMemo(()=> apps.map(a=>({ ...a, _s:computeSocial(a,scoring), _status:normStatus(a.status) })), [apps,scoring]);
+  const enriched = useMemo(()=> apps.map(a=>({ ...a, _s:computeScore(a,scoring), _status:normStatus(a.status) })), [apps,scoring]);
 
   const overdue = useMemo(()=> enriched.filter(a=> a._status==="new" && daysSince(a.date)>7), [enriched]);
 
@@ -344,7 +334,8 @@ function ApplicationsPanel({role, scoring}){
     return enriched.filter(a=>{
       if(fStatus!=="all" && a._status!==fStatus) return false;
       if(fCat!=="all" && (a.category||"")!==fCat) return false;
-      if(fPerf!=="all" && a._s.perfLevel!==fPerf) return false;
+      if(fBase==="low" && !a._s.lowBase) return false;
+      if(fBase==="normal" && a._s.lowBase) return false;
       if(fBand!=="all"){
         const b = FOLLOWER_BANDS.find(x=>x.v===fBand); const n = parseInt(a.followers)||0;
         if(!(n>=b.min && n<=b.max)) return false;
@@ -360,21 +351,26 @@ function ApplicationsPanel({role, scoring}){
       }
       return true;
     });
-  },[enriched,q,fStatus,fCat,fBand,fPerf,fDate,fPlace,fCollab,fNotes]);
+  },[enriched,q,fStatus,fCat,fBand,fBase,fDate,fPlace,fCollab,fNotes]);
 
   const sorted = useMemo(()=>{
     const arr=[...filtered];
+    // Valori non disponibili sempre in fondo, in entrambe le direzioni: mai trattati come zero.
+    const desc = k => (a,b)=>{
+      const x=a._s[k], y=b._s[k];
+      if(x===null && y===null) return 0; if(x===null) return 1; if(y===null) return -1;
+      return y-x;
+    };
     const by = {
       date:      (a,b)=> new Date(b.date||0)-new Date(a.date||0),
-      followers: (a,b)=> (parseInt(b.followers)||0)-(parseInt(a.followers)||0),
-      score:     (a,b)=> b._s.socialScore-a._s.socialScore,
-      er:        (a,b)=> b._s.er-a._s.er,
-      reach:     (a,b)=> b._s.reach-a._s.reach,
-      growth:    (a,b)=> b._s.growth-a._s.growth,
-      views:        (a,b)=> b._s.views-a._s.views,
-      reached:      (a,b)=> b._s.reached-a._s.reached,
-      interactions: (a,b)=> b._s.interactions-a._s.interactions,
-      net:          (a,b)=> b._s.net-a._s.net,
+      followers:    desc("followers"),
+      score:        desc("socialScore"),
+      engagement:   desc("engagementRate"),
+      reachB:       desc("reachEngagementRate"),
+      views:        desc("views"),
+      reached:      desc("accountsReached"),
+      interactions: desc("interactions"),
+      net:          desc("netFollowers"),
       name:      (a,b)=> String(a.fullName||"").localeCompare(String(b.fullName||""),"it")
     };
     return arr.sort(by[sort]||by.date);
@@ -383,7 +379,7 @@ function ApplicationsPanel({role, scoring}){
   const pages = Math.max(1, Math.ceil(sorted.length/PER_PAGE));
   const cur   = Math.min(page,pages);
   const slice = sorted.slice((cur-1)*PER_PAGE, cur*PER_PAGE);
-  useEffect(()=>{ setPage(1); },[q,fStatus,fCat,fBand,fPerf,fDate,fPlace,fCollab,fNotes,sort]);
+  useEffect(()=>{ setPage(1); },[q,fStatus,fCat,fBand,fBase,fDate,fPlace,fCollab,fNotes,sort]);
 
   const counts = useMemo(()=>{
     const c={ total:enriched.length, new:0, review:0, shortlist:0, watchlist:0, approved:0, rejected:0 };
@@ -391,8 +387,8 @@ function ApplicationsPanel({role, scoring}){
     return c;
   },[enriched]);
 
-  const resetFilters = ()=>{ setQ("");setFStatus("all");setFCat("all");setFBand("all");setFPerf("all");setFDate("all");setFPlace("");setFCollab("all");setFNotes("all"); };
-  const activeFilters = [fStatus,fCat,fBand,fPerf,fDate,fCollab,fNotes].filter(v=>v!=="all").length + (fPlace?1:0);
+  const resetFilters = ()=>{ setQ("");setFStatus("all");setFCat("all");setFBand("all");setFBase("all");setFDate("all");setFPlace("");setFCollab("all");setFNotes("all"); };
+  const activeFilters = [fStatus,fCat,fBand,fBase,fDate,fCollab,fNotes].filter(v=>v!=="all").length + (fPlace?1:0);
 
   const patchApp = async (id, data) => {
     await FB.updateApp(id, data);
@@ -483,11 +479,10 @@ function ApplicationsPanel({role, scoring}){
               placeholder="Cerca nome, email o username…" value={q} onChange={e=>setQ(e.target.value)} aria-label="Cerca"/>
             <select value={sort} onChange={e=>setSort(e.target.value)} style={{width:"auto",minWidth:150,padding:"11px 34px 11px 12px",fontSize:13}} aria-label="Ordina per">
               <option value="date">Più recenti</option>
-              <option value="score">Social Score ↓</option>
+              <option value="score">Punteggio ↓</option>
               <option value="followers">Follower ↓</option>
-              <option value="er">Engagement ↓</option>
-              <option value="reach">Reach ↓</option>
-              <option value="growth">Growth ↓</option>
+              <option value="engagement">Coinvolgimento ↓</option>
+              <option value="reachB">Indicatore B ↓</option>
               <option value="views">Visualizzazioni ↓</option>
               <option value="reached">Account raggiunti ↓</option>
               <option value="interactions">Interazioni ↓</option>
@@ -515,9 +510,9 @@ function ApplicationsPanel({role, scoring}){
                   <option value="all">Tutte</option>
                   {FOLLOWER_BANDS.map(b=><option key={b.v} value={b.v}>{b.l}</option>)}
                 </select></Field>
-                <Field label="Performance numerica"><select value={fPerf} onChange={e=>setFPerf(e.target.value)}>
+                <Field label="Base di osservazione"><select value={fBase} onChange={e=>setFBase(e.target.value)}>
                   <option value="all">Tutte</option>
-                  {PERF_FILTERS.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
+                  {BASE_FILTERS.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
                 </select></Field>
                 <Field label="Periodo"><select value={fDate} onChange={e=>setFDate(e.target.value)}>
                   {DATE_FILTERS.map(d=><option key={d.v} value={d.v}>{d.l}</option>)}
@@ -537,7 +532,7 @@ function ApplicationsPanel({role, scoring}){
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <span className="label-xs">{sorted.length} risultati</span>
             <Tip text={METRIC_LEGEND}/>
-            <span className="body-sm" style={{fontSize:12}}>I colori indicano solo la performance numerica.</span>
+            <span className="body-sm" style={{fontSize:12}}>Il punteggio misura solo i dati numerici e non decide l'esito.</span>
           </div>
         </div>
       </div>
@@ -554,7 +549,7 @@ function ApplicationsPanel({role, scoring}){
         {slice.map(a=>{
           const s=a._s, st=statusMeta(a._status), late = a._status==="new" && daysSince(a.date)>7;
           return (
-            <button key={a.id} className="row" style={{borderLeftColor:s.perfColor}} onClick={()=>setSel(a)}>
+            <button key={a.id} className="row" style={{borderLeftColor:s.lowBase?"var(--warn)":"var(--brd)"}} onClick={()=>setSel(a)}>
               <div style={{padding:"13px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                 <div style={{flex:"1 1 190px",minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:3}}>
@@ -577,7 +572,8 @@ function ApplicationsPanel({role, scoring}){
                      })()}
                   </div>
                   <div className="label-xs" style={{marginTop:4,color:"var(--t3)",letterSpacing:".06em"}}>
-                    Visual. {fmtShort(s.views)} · Raggiunti {fmtShort(s.reached)} · Interaz. {fmtShort(s.interactions)} · Netti {s.net>0?"+":""}{fmtShort(Math.abs(s.net))}
+                    Visual. {s.views===null?"—":fmtShort(s.views)} · Interaz. {s.interactions===null?"—":fmtShort(s.interactions)} · Netti {s.netFollowers===null?"—":(s.netFollowers>0?"+":s.netFollowers<0?"−":"")+fmtShort(Math.abs(s.netFollowers))} · Raggiunti {s.accountsReached===null?"—":fmtShort(s.accountsReached)}
+                    {s.lowBase && <span style={{color:"var(--warn)"}}> · Base ridotta</span>}
                   </div>
                   <div className="label-xs" style={{marginTop:3,color: late ? "var(--warn)" : "var(--t4)"}}>
                     {fmtDate(a.date)} · {agoLabel(a.date)}
@@ -587,18 +583,15 @@ function ApplicationsPanel({role, scoring}){
                 <div style={{display:"flex",alignItems:"center",gap:14,flex:"1 1 320px",justifyContent:"flex-end"}}>
                   <div className="metric-cell" style={{minWidth:58}}>
                     <div className="metric-l">Follower</div>
-                    <div className="metric-v" style={{color:"var(--t1)"}}>{fmtShort(a.followers)}</div>
+                    <div className="metric-v" style={{color:"var(--t1)"}}>{s.followers===null?"—":fmtShort(s.followers)}</div>
                   </div>
-                  {[["ER",s.er.toFixed(1)+"%",s.erGrade],["Reach",s.reach.toFixed(0)+"%",s.reachGrade],["Growth",s.growth.toFixed(2)+"%",s.growthGrade]].map(([l,v,g])=>(
+                  {[["Coinvolg.",fmtPct(s.engagementRate)],["Indic. B",fmtPct(s.reachEngagementRate)]].map(([l,v])=>(
                     <div className="metric-cell" key={l} style={{minWidth:58}}>
                       <div className="metric-l">{l}</div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                        <span className="dot" style={{background:g.c}}/>
-                        <span className="metric-v" style={{color:g.c}}>{v}</span>
-                      </div>
+                      <div className="metric-v" style={{color:"var(--t1)"}}>{v}</div>
                     </div>
                   ))}
-                  <ScoreRing value={s.socialScore} color={s.perfColor} size={46} label="SPS"/>
+                  <ScoreRing value={s.socialScore} color={SCORE_COLOR} size={46} label="SCORE"/>
                 </div>
               </div>
             </button>
@@ -670,66 +663,109 @@ function KV({k,v,color}){
   return <div className="kv"><div className="kv-k">{k}</div><div className="kv-v" style={color?{color}:null}>{v||"—"}</div></div>;
 }
 
+// Valori raccolti nel modulo e correggibili dallo staff. Gli account raggiunti sono facoltativi.
+const INSIGHT_FIELDS = [
+  {k:"followers",       l:"Follower totali",   hint:"",                 required:true,  signed:false},
+  {k:"views",           l:"Visualizzazioni",   hint:"Ultimi 30 giorni", required:true,  signed:false},
+  {k:"interactions",    l:"Interazioni",       hint:"Ultimi 30 giorni", required:true,  signed:false},
+  {k:"netFollowers",    l:"Follower netti",    hint:"Ultimi 30 giorni · può essere negativo o zero", required:true, signed:true},
+  {k:"accountsReached", l:"Account raggiunti", hint:"Facoltativo · «Account che hanno visualizzato» · lascia vuoto se non disponibile", required:false, signed:false}
+];
+const INSIGHT_LABELS = Object.fromEntries(INSIGHT_FIELDS.map(f=>[f.k,f.l]));
+const MAX_INSIGHTS_HISTORY = 50;
+// Intero salvato, oppure null se manca o non è valido: mai sostituito con un altro campo.
+const storedInt = v => typeof v==="number" && Number.isSafeInteger(v) ? v
+  : typeof v==="string" && /^[+-]?\d+$/.test(v.trim()) ? Number(v.trim()) : null;
+const insightValues = app => Object.fromEntries(INSIGHT_FIELDS.map(f=>[f.k, storedInt(app[f.k])]));
+// Storico delle correzioni: le candidature corrette prima dello storico conservano solo l'ultima correzione.
+const insightsHistoryOf = app => Array.isArray(app.insightsHistory) ? app.insightsHistory
+  : (app.insightsCorrection ? [app.insightsCorrection] : []);
+const changedKeys = c => INSIGHT_FIELDS.map(f=>f.k).filter(k =>
+  c && c.newValues && c.previousValues && Object.hasOwn(c.newValues,k) && c.newValues[k] !== c.previousValues[k]);
+
+/** Provenienza del valore attualmente salvato: correzione dello staff, lettura automatica o candidato. */
+const valueOrigin = (app, key) => {
+  const current = storedInt(app[key]);
+  const last = [...insightsHistoryOf(app)].reverse().find(c => changedKeys(c).includes(key));
+  if(last && last.newValues[key] === current) return "Corretto dallo staff · "+fmtDateTime(last.correctedAt);
+  const read = key==="followers"
+    ? (app.ocrProfile && app.ocrProfile.result && app.ocrProfile.result.followers ? app.ocrProfile.result.followers.value : null)
+    : (app.ocrInsights && app.ocrInsights.merged ? app.ocrInsights.merged[key] : null);
+  if(current===null) return "Non indicato";
+  if(read===null || read===undefined) return "Inserito dal candidato";
+  if(Number(read)===current) return "Lettura automatica dello screenshot";
+  return "Modificato dal candidato · lettura automatica: "+fmtInt(read);
+};
+
+/** Convalida dei valori inseriti dallo staff: un campo vuoto non diventa mai zero. */
+const parseInsightInputs = vals => {
+  const values = {}, errors = {};
+  INSIGHT_FIELDS.forEach(f=>{
+    const raw = String(vals[f.k]===undefined||vals[f.k]===null ? "" : vals[f.k]).trim();
+    if(raw===""){ if(f.required) errors[f.k]="Dato obbligatorio"; else values[f.k]=null; return; }
+    if(!(f.signed ? /^[+-]?\d+$/ : /^\d+$/).test(raw)){ errors[f.k]= f.signed ? "Inserisci un numero intero" : "Inserisci un numero intero non negativo"; return; }
+    const n = Number(raw);
+    if(!Number.isSafeInteger(n) || Math.abs(n) > 1e12){ errors[f.k]="Valore fuori intervallo"; return; }
+    values[f.k] = n;
+  });
+  return { values, errors };
+};
+
 function InsightsEditor({app, scoring, onPatch}){
   const [editing,setEditing] = useState(false);
-  const [vals,setVals]       = useState({
-    views:           String(app.views||""),
-    netFollowers:    String(app.netFollowers!=null ? app.netFollowers : (app.newFollowers||"")),
-    interactions:    String(app.interactions||""),
-    accountsReached: String(app.accountsReached!=null ? app.accountsReached : (app.views||""))
-  });
+  const initial = () => Object.fromEntries(Object.entries(insightValues(app)).map(([k,v])=>[k, v===null ? "" : String(v)]));
+  const [vals,setVals]         = useState(initial);
+  const [fieldErr,setFieldErr] = useState({});
   const [note,setNote]     = useState("");
   const [busy,setBusy]     = useState(false);
   const [msg,setMsg]       = useState("");
+  const history = insightsHistoryOf(app);
+
+  const historyList = history.length>0 && (
+    <div style={{marginTop:10}}>
+      <div className="label-xs" style={{marginBottom:6}}>Storico correzioni ({history.length})</div>
+      {[...history].reverse().map((c,i)=>(
+        <div key={i} className="body-sm" style={{fontSize:12,padding:"6px 0",borderTop:"1px solid var(--brd)",color:"var(--t3)"}}>
+          {fmtDateTime(c.correctedAt)} · {c.correctedBy||"staff"}:{" "}
+          {changedKeys(c).length
+            ? changedKeys(c).map(k=>INSIGHT_LABELS[k]+" "+fmtMaybe(c.previousValues[k])+" → "+fmtMaybe(c.newValues[k])).join(" · ")
+            : "nessun valore cambiato"}
+          {c.note ? <> · <em>{c.note}</em></> : null}
+        </div>
+      ))}
+    </div>
+  );
 
   if(!editing) return (
     <div style={{marginTop:10}}>
-      <button className="btn btn-ghost btn-sm" onClick={()=>setEditing(true)}>Correggi dati Insights</button>
-      {app.insightsCorrection && (
-        <div className="body-sm" style={{fontSize:12,marginTop:6,color:"var(--t3)"}}>
-          Ultima correzione: {fmtDateTime(app.insightsCorrection.correctedAt)} da {app.insightsCorrection.correctedBy||"staff"}
-        </div>
-      )}
+      <button className="btn btn-ghost btn-sm" onClick={()=>{ setVals(initial()); setFieldErr({}); setMsg(""); setEditing(true); }}>Correggi dati Insights</button>
+      {msg && <span className="label-xs" role="status" style={{marginLeft:10,color:"var(--ok)"}}>{msg}</span>}
+      {historyList}
     </div>
   );
 
   const save = async () => {
     if(note.length>MANAGEMENT_LIMITS.insightsNote){ setMsg("La nota sulla correzione può contenere al massimo 2.000 caratteri. Riducila prima di salvare."); return; }
+    const { values, errors } = parseInsightInputs(vals);
+    setFieldErr(errors);
+    if(Object.keys(errors).length){ setMsg("Controlla i valori evidenziati."); return; }
+    const previousValues = insightValues(app);
+    // Come prima: una correzione senza valori cambiati si registra solo se ha una nota (es. "verificato sullo screenshot").
+    if(INSIGHT_FIELDS.every(f=>previousValues[f.k]===values[f.k]) && !note.trim()){ setMsg("Nessun valore modificato."); return; }
+    if(history.length >= MAX_INSIGHTS_HISTORY){ setMsg("Storico delle correzioni completo (50 correzioni)."); return; }
     setBusy(true); setMsg("");
-    const num = v => { const x = parseInt(v,10); return Number.isFinite(x) ? x : 0; };
-    const newVals = {
-      views:           num(vals.views),
-      netFollowers:    num(vals.netFollowers),
-      interactions:    num(vals.interactions),
-      accountsReached: num(vals.accountsReached)
-    };
-    const correction = {
-      correctedAt: new Date().toISOString(),
-      correctedBy: "staff",
-      previousValues: {
-        views:           parseInt(app.views)||0,
-        netFollowers:    parseInt(app.netFollowers!=null ? app.netFollowers : app.newFollowers)||0,
-        interactions:    parseInt(app.interactions)||0,
-        accountsReached: parseInt(app.accountsReached!=null ? app.accountsReached : app.views)||0
-      },
-      newValues: newVals,
-      note: note.trim()
-    };
-    // Ricalcola metriche con i nuovi valori
-    const tempDoc = { ...app, ...newVals };
-    const s = computeSocial(tempDoc, scoring);
+    const correction = { correctedAt:new Date().toISOString(), correctedBy:"staff", previousValues, newValues:values, note:note.trim() };
+    // Ricalcolo con il modello corrente; lo stato della candidatura non cambia.
+    const s = computeScore({ ...app, ...values }, scoring);
     try{
       await onPatch(app.id, {
-        ...newVals,
+        ...values,
         insightsCorrection: correction,
-        socialScore: s.socialScore,
-        perfLevel:   s.perfLevel,
-        erRate:      +s.er.toFixed(2),
-        reachRate:   +s.reach.toFixed(2),
-        growthRate:  +s.growth.toFixed(2)
+        insightsHistory: [...history, correction],
+        ...scoreDocumentFields(s)
       });
-      setMsg("Dati aggiornati. Score ricalcolato: "+s.socialScore+"/100");
-      setEditing(false);
+      setMsg("Dati aggiornati. Punteggio ricalcolato: "+(s.available ? s.socialScore+"/100" : "non calcolabile"));
+      setNote(""); setEditing(false);
     }catch(e){ setMsg("Errore nel salvataggio."); }
     finally{ setBusy(false); }
   };
@@ -739,28 +775,29 @@ function InsightsEditor({app, scoring, onPatch}){
       <div className="h-sm" style={{marginBottom:6}}>Correzione dati Insights</div>
       <p className="body-sm" style={{fontSize:12,marginBottom:14,color:"var(--t3)"}}>
         Confronta sempre i valori con gli screenshot originali prima di correggerli.
-        Dopo il salvataggio, metriche e Social Performance Score verranno ricalcolati automaticamente.
+        Dopo il salvataggio il punteggio quantitativo viene ricalcolato; lo stato della candidatura non cambia.
+        I valori precedenti restano nello storico delle correzioni.
       </p>
 
       {app.ocrInsights && app.ocrInsights.conflicts && app.ocrInsights.conflicts.length>0 && (
         <div className="status-box" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:12}}>
           <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
           <div className="body-sm" style={{fontSize:12}}>
-            La lettura automatica ha rilevato incongruenze tra i due screenshot su: {app.ocrInsights.conflicts.map(c=>c.key).join(", ")}
+            La lettura automatica ha rilevato incongruenze tra i due screenshot su: {app.ocrInsights.conflicts.map(c=>INSIGHT_LABELS[c.key]||c.key).join(", ")}
           </div>
         </div>
       )}
+      {app.newFollowers!==undefined && app.netFollowers===undefined && (
+        <p className="body-sm" style={{fontSize:12,marginBottom:12,color:"var(--t3)"}}>
+          Candidatura del modulo precedente: «nuovi follower» = {fmtMaybe(storedInt(app.newFollowers))}. Non equivale ai follower netti: inseriscili dallo screenshot.
+        </p>
+      )}
 
       <div className="g2-gap">
-        {[
-          ["views","Visualizzazioni",""],
-          ["netFollowers","Follower netti","Può essere negativo"],
-          ["interactions","Interazioni",""],
-          ["accountsReached","Account raggiunti",""]
-        ].map(([k,l,hint])=>(
-          <Field key={k} label={l} hint={hint||undefined}>
-            <input type="number" inputMode={k==="netFollowers"?"text":"numeric"}
-              value={vals[k]} onChange={e=>setVals(p=>({...p,[k]:e.target.value}))}/>
+        {INSIGHT_FIELDS.map(f=>(
+          <Field key={f.k} label={f.l} hint={f.hint||undefined} required={f.required} error={fieldErr[f.k]}>
+            <input type="text" inputMode={f.signed?"text":"numeric"} aria-label={f.l} aria-invalid={fieldErr[f.k]?"true":"false"}
+              value={vals[f.k]} onChange={e=>{ const v=e.target.value; setVals(p=>({...p,[f.k]:v})); setFieldErr(p=>({...p,[f.k]:undefined})); }}/>
           </Field>
         ))}
       </div>
@@ -776,12 +813,27 @@ function InsightsEditor({app, scoring, onPatch}){
         <button className="btn btn-ghost btn-sm" onClick={()=>setEditing(false)}>Annulla</button>
         {msg && <span className="label-xs" role="status" style={{color:msg.startsWith("Dati aggiornati.")?"var(--ok)":"var(--bad)"}}>{msg}</span>}
       </div>
+      {historyList}
+    </div>
+  );
+}
+
+/** Componente del punteggio: valore osservato e contributo, senza livelli né colori di giudizio. */
+function ScorePart({label, value, sub}){
+  return (
+    <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:15,minWidth:0}}>
+      <div style={{fontFamily:"var(--fh)",fontWeight:600,fontSize:9,letterSpacing:".14em",textTransform:"uppercase",color:"var(--t3)",marginBottom:5}}>{label}</div>
+      <div style={{fontFamily:"var(--fh)",fontWeight:800,fontSize:22,color:"var(--t1)",lineHeight:1}}>{value}</div>
+      <div className="body-sm" style={{fontSize:11,marginTop:6,lineHeight:1.5}}>{sub}</div>
     </div>
   );
 }
 
 function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
-  const s  = computeSocial(app, scoring);
+  const s  = computeScore(app, scoring);
+  const cfg = scoring || DEFAULT_SCORING;
+  const wTot = cfg.weights.engagement + cfg.weights.visibility;
+  const share = k => Math.round(cfg.weights[k] / wTot * 100);
   const st = statusMeta(app.status);
   const [notes,setNotes]   = useState(app.notes||"");
   const [code,setCode]     = useState(app.creatorCode||"");
@@ -820,23 +872,53 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             </div>
             <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
               <Badge color={st.c} filled>{st.l}</Badge>
-              <Badge color={s.perfColor}>{s.perfLabel}</Badge>
-              <Badge color="#5A5A5A">Fascia {s.bandLabel}</Badge>
+              {s.lowBase && <Badge color="#E67E22">Base ridotta</Badge>}
             </div>
           </div>
           <div style={{textAlign:"center"}}>
-            <ScoreRing value={s.socialScore} color={s.perfColor} size={76} label="SPS"/>
-            <div className="label-xs" style={{marginTop:6,maxWidth:110,lineHeight:1.3}}>Social Performance Score</div>
+            <ScoreRing value={s.socialScore} color={SCORE_COLOR} size={76} label="SCORE"/>
+            <div className="label-xs" style={{marginTop:6,maxWidth:110,lineHeight:1.3}}>Punteggio quantitativo</div>
           </div>
         </div>
 
-        {/* METRICHE */}
-        <Section title={<span>Performance numerica</span>}>
+        {/* PUNTEGGIO QUANTITATIVO */}
+        <Section title={<span>Punteggio quantitativo · scoring v2 (configurazione {s.scoringVersion})</span>}>
+          {!s.available && (
+            <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:10}}>
+              <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+              <div className="body-sm" style={{fontSize:12}}>
+                Punteggio non calcolabile: mancano valori validi per {s.missing.map(k=>INSIGHT_LABELS[k]).join(" e ")}. Correggi i dati Insights.
+              </div>
+            </div>
+          )}
           <div className="g3-keep" style={{marginBottom:10}}>
-            <MetricCard label="Engagement Rate" value={s.er.toFixed(2)+"%"}  grade={s.erGrade}     score={s.erScore}/>
-            <MetricCard label="Reach Rate"      value={s.reach.toFixed(1)+"%"} grade={s.reachGrade}  score={s.reachScore}/>
-            <MetricCard label="Growth Rate"     value={s.growth.toFixed(2)+"%"} grade={s.growthGrade} score={s.growthScore}/>
+            <ScorePart label={"Coinvolgimento · "+share("engagement")+"%"} value={fmtPct(s.engagementRate)}
+              sub={<>Interazioni / visualizzazioni{s.engagementScore!==null && <> · {Math.round(s.engagementScore)}/100</>}</>}/>
+            <ScorePart label={"Visibilità · "+share("visibility")+"%"} value={fmtMaybe(s.views)}
+              sub={<>Visualizzazioni in 30 giorni{s.visibilityScore!==null && <> · {Math.round(s.visibilityScore)}/100</>}</>}/>
+            <ScorePart label="Indicatore B" value={fmtPct(s.reachEngagementRate)}
+              sub={s.reachEngagementRate===null ? "Interazioni / account raggiunti · non disponibile" : "Interazioni / account raggiunti · non incide sul punteggio"}/>
           </div>
+          {s.lowBase && (
+            <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:10}}>
+              <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
+              <div className="body-sm" style={{fontSize:12}}>
+                {LOW_BASE_TEXT} {s.lowBaseReasons.map(k=>k==="views"
+                  ? "Visualizzazioni sotto "+fmtInt(cfg.lowBase.views)+"."
+                  : "Interazioni sotto "+fmtInt(cfg.lowBase.interactions)+".").join(" ")}
+              </div>
+            </div>
+          )}
+          {typeof app.socialScore==="number" && app.scoringVersion!==SCORING_VERSION && (
+            <p className="body-sm" style={{fontSize:12,marginBottom:10,color:"var(--t3)"}}>
+              Punteggio registrato all'invio con il modello precedente: {app.socialScore}/100. Non è confrontabile con quello attuale e non viene usato.
+            </p>
+          )}
+          {typeof app.socialScore==="number" && app.scoringVersion===SCORING_VERSION && s.available && app.socialScore!==s.socialScore && (
+            <p className="body-sm" style={{fontSize:12,marginBottom:10,color:"var(--t3)"}}>
+              Punteggio registrato all'ultimo salvataggio: {app.socialScore}/100 (calcolato con una configurazione diversa da quella attuale).
+            </p>
+          )}
           <div style={{display:"flex",gap:8,alignItems:"flex-start",padding:"11px 13px",border:"1px solid var(--brd)",background:"var(--bg-2)"}}>
             <Tip text={METRIC_LEGEND}/>
             <span className="body-sm" style={{fontSize:12}}>{METRIC_LEGEND}</span>
@@ -871,7 +953,7 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             <KV k="Instagram" v={(()=>{const ig=socialLink(app,"instagram");return ig.handle
               ? <a href={ig.url} target="_blank" rel="noopener noreferrer">@{ig.handle}</a>
               : "—";})()}/>
-            <KV k="Follower Instagram" v={fmtInt(app.followers)}/>
+            <KV k="Follower Instagram" v={<>{fmtMaybe(s.followers)}<div className="label-xs" style={{marginTop:4,color:"var(--t4)"}}>{valueOrigin(app,"followers")}</div></>}/>
             <KV k="TikTok" v={(()=>{const tt=socialLink(app,"tiktok");return tt.handle
               ? <a href={tt.url} target="_blank" rel="noopener noreferrer">@{tt.handle}</a>
               : "—";})()}/>
@@ -884,10 +966,11 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
 
           <div className="label-xs" style={{margin:"14px 0 8px"}}>Dati degli ultimi 30 giorni</div>
           <div className="g2">
-            <KV k="Visualizzazioni" v={fmtInt(s.views)}/>
-            <KV k="Account raggiunti" v={fmtInt(s.reached)}/>
-            <KV k="Interazioni" v={fmtInt(s.interactions)}/>
-            <KV k="Follower netti" v={(s.net>0?"+":"")+fmtInt(s.net)} color={s.net<0?"var(--bad)":undefined}/>
+            {[["views",fmtMaybe(s.views)],["interactions",fmtMaybe(s.interactions)],
+              ["netFollowers",s.netFollowers===null?"—":(s.netFollowers>0?"+":"")+fmtInt(s.netFollowers)],
+              ["accountsReached",fmtMaybe(s.accountsReached)]].map(([k,v])=>(
+              <KV key={k} k={INSIGHT_LABELS[k]} v={<>{v}<div className="label-xs" style={{marginTop:4,color:"var(--t4)"}}>{valueOrigin(app,k)}</div></>}/>
+            ))}
           </div>
 
           {/* Correzione manuale dei dati Insights */}
@@ -970,7 +1053,7 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
           <div className="panel" style={{padding:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6,flexWrap:"wrap"}}>
               <span className="body-sm" style={{fontSize:12,maxWidth:520}}>
-                Valutazione manuale del team. Non è collegata al Social Performance Score e non è visibile al candidato.
+                Valutazione manuale del team. Non è collegata al punteggio quantitativo e non è visibile al candidato.
               </span>
               {evalAvg!==null && (
                 <div style={{textAlign:"right"}}>
@@ -1057,147 +1140,107 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
 /* ============================================================================
    13. PANNELLO SCORING (solo admin)
    ========================================================================== */
-const BENCH_LEVELS = [
-  {k:"avg",       l:"Medio da",      c:"#E67E22", desc:b=>"Sotto "+b.avg+"% → Scarso"},
-  {k:"good",      l:"Buono da",      c:"#27AE60", desc:b=>"Da "+b.avg+"% a "+b.good+"% → Medio"},
-  {k:"excellent", l:"Eccellente da", c:"#3A7BD5", desc:b=>"Da "+b.good+"% a "+b.excellent+"% → Buono · oltre → Eccellente"}
+// Campi della configurazione (versione 3). Un campo vuoto o non valido blocca il salvataggio: nessuno zero implicito.
+const SCORING_FIELDS = [
+  {g:"weights",    k:"engagement",     l:"Coinvolgimento",            hint:"Interazioni / visualizzazioni", step:"1",   int:false},
+  {g:"weights",    k:"visibility",     l:"Visibilità",                hint:"Volume delle visualizzazioni",  step:"1",   int:false},
+  {g:"references", k:"engagementRate", l:"Coinvolgimento di riferimento (%)", hint:"Vale 50/100",       step:"0.1", int:false},
+  {g:"references", k:"views",          l:"Visualizzazioni di riferimento",    hint:"Valgono 50/100",    step:"1000",int:false},
+  {g:"lowBase",    k:"views",          l:"Visualizzazioni minime",    hint:"Sotto questa soglia la base è segnalata come ridotta", step:"100", int:true},
+  {g:"lowBase",    k:"interactions",   l:"Interazioni minime",        hint:"Sotto questa soglia la base è segnalata come ridotta", step:"1",   int:true}
 ];
+const toScoringDraft = cfg => Object.fromEntries(SCORING_FIELDS.map(f=>[f.g+"."+f.k, String(cfg[f.g][f.k])]));
+/** Configurazione completa dal modulo, oppure gli errori per campo. Il Worker la convalida di nuovo. */
+const scoringFromDraft = draft => {
+  const cfg = { version:SCORING_VERSION, weights:{}, references:{}, lowBase:{} }, errors = {};
+  SCORING_FIELDS.forEach(f=>{
+    const key = f.g+"."+f.k, raw = String(draft[key]||"").trim().replace(",",".");
+    const n = raw==="" ? NaN : Number(raw);
+    if(!Number.isFinite(n) || n<0 || (f.int && !Number.isInteger(n))) { errors[key] = f.int ? "Numero intero non negativo" : "Numero non negativo"; return; }
+    cfg[f.g][f.k] = n;
+  });
+  if(!errors["weights.engagement"] && !errors["weights.visibility"]){
+    if(cfg.weights.engagement>100) errors["weights.engagement"]="Massimo 100";
+    if(cfg.weights.visibility>100) errors["weights.visibility"]="Massimo 100";
+    if(cfg.weights.engagement+cfg.weights.visibility<=0) errors["weights.engagement"]="La somma dei pesi deve essere maggiore di zero";
+  }
+  if(!errors["references.engagementRate"] && (cfg.references.engagementRate<=0 || cfg.references.engagementRate>100)) errors["references.engagementRate"]="Tra 0 (escluso) e 100";
+  if(!errors["references.views"] && cfg.references.views<1) errors["references.views"]="Almeno 1";
+  return { cfg, errors };
+};
 
 function ScoringPanel({scoring, onSaved, onAuthRequired}){
-  const [cfg,setCfg]   = useState(()=>JSON.parse(JSON.stringify(scoring)));
-  const [tab,setTab]   = useState("er");
+  const [draft,setDraft]   = useState(()=>toScoringDraft(scoring));
+  const [errors,setErrors] = useState({});
   const [busy,setBusy] = useState(false);
   const [msg,setMsg]   = useState("");
 
-  const metrics = [
-    {k:"er",     l:"Engagement Rate", f:"interazioni / visualizzazioni × 100", step:"0.1"},
-    {k:"reach",  l:"Reach Rate",      f:"visualizzazioni / follower × 100",    step:"1"},
-    {k:"growth", l:"Growth Rate",     f:"nuovi follower / follower × 100",     step:"0.1"}
-  ];
-  const cur = metrics.find(m=>m.k===tab);
-  const wTot = (+cfg.weights.er||0)+(+cfg.weights.reach||0)+(+cfg.weights.growth||0);
-
-  const setBand = (i,key,val)=>{
-    const b=JSON.parse(JSON.stringify(cfg.bands));
-    b[i][tab][key]= val===""?0:parseFloat(val);
-    setCfg(p=>({...p,bands:b}));
-  };
-  const setLevel = (i,val)=>{
-    const l=JSON.parse(JSON.stringify(cfg.levels));
-    l[i].min = val===""?0:parseInt(val);
-    setCfg(p=>({...p,levels:l}));
-  };
+  const w = scoringFromDraft(draft).cfg.weights;
+  const wTot = (w.engagement||0)+(w.visibility||0);
 
   const save = async ()=>{
     if(busy) return;
+    const { cfg, errors:e } = scoringFromDraft(draft);
+    setErrors(e);
+    if(Object.keys(e).length){ setMsg("Controlla i valori evidenziati."); return; }
     setBusy(true); setMsg("");
     try{
-      const clean = { ...cfg, version: SCORING_VERSION, bands: cfg.bands.map(b=>({ ...b, max: b.max===Infinity ? null : b.max })) };
-      await FB.saveScoring(clean);
-      onSaved(normalizeScoring(clean));
+      await FB.saveScoring(cfg);
+      onSaved(normalizeScoring(cfg));
       setMsg("Configurazione salvata"); setTimeout(()=>setMsg(""),2200);
-    }catch(e){
-      const known=e instanceof CollectiveAdminScoring.ScoringSaveError;
-      setMsg(known ? e.message : "Errore nel salvataggio. Riprova più tardi.");
-      if(known && e.code==="LOGIN_REQUIRED") await onAuthRequired(e.message);
+    }catch(err){
+      const known=err instanceof CollectiveAdminScoring.ScoringSaveError;
+      setMsg(known ? err.message : "Errore nel salvataggio. Riprova più tardi.");
+      if(known && err.code==="LOGIN_REQUIRED") await onAuthRequired(err.message);
     }
     finally{ setBusy(false); }
   };
 
+  const fields = g => SCORING_FIELDS.filter(f=>f.g===g).map(f=>{
+    const key = f.g+"."+f.k;
+    return (
+      <Field key={key} label={f.l} hint={f.hint} error={errors[key]}>
+        <input type="number" min="0" step={f.step} value={draft[key]} aria-label={f.l} aria-invalid={errors[key]?"true":"false"}
+          onChange={e=>{ const v=e.target.value; setDraft(p=>({...p,[key]:v})); setErrors(p=>({...p,[key]:undefined})); }}/>
+      </Field>
+    );
+  });
+
   return (
     <div style={{flex:1,overflow:"auto"}}>
       <div className="wrap-panel" style={{padding:"22px 16px 80px",maxWidth:900}}>
-        <h2 className="h-md" style={{marginBottom:6}}>Configurazione Social Performance Score</h2>
+        <h2 className="h-md" style={{marginBottom:6}}>Configurazione del punteggio quantitativo</h2>
         <p className="body-sm" style={{marginBottom:24,maxWidth:640}}>
-          Il punteggio valuta esclusivamente i dati numerici del profilo Instagram.
-          Non analizza le risposte e non esprime giudizi sul candidato.
-          I benchmark sono indicativi e modificabili in qualsiasi momento.
+          Scoring v2 (configurazione {SCORING_VERSION}). Il punteggio valuta esclusivamente i dati numerici Instagram degli ultimi 30 giorni:
+          non analizza le risposte, non approva e non rifiuta candidature. Ogni componente è normalizzata in modo continuo:
+          il valore di riferimento vale 50/100, senza fasce follower né soglie. I riferimenti iniziali sono sperimentali.
+          Le modifiche ricalcolano anche i punteggi mostrati per le candidature già ricevute.
         </p>
 
-        {/* PESI */}
         <div className="panel" style={{padding:18,marginBottom:14}}>
-          <div className="h-sm" style={{marginBottom:4}}>Pesi delle metriche</div>
+          <div className="h-sm" style={{marginBottom:4}}>Pesi</div>
           <div className="body-sm" style={{marginBottom:16}}>
-            Somma attuale: <strong style={{color: wTot===100 ? "var(--ok)" : "var(--warn)"}}>{wTot}</strong>
+            Somma attuale: <strong style={{color: wTot===100 ? "var(--ok)" : "var(--warn)"}}>{Number.isFinite(wTot)?wTot:"—"}</strong>
             {wTot!==100 && " — i valori vengono comunque normalizzati automaticamente."}
           </div>
-          <div className="g3-keep">
-            {[["er","Engagement Rate"],["reach","Reach Rate"],["growth","Growth Rate"]].map(([k,l])=>(
-              <Field key={k} label={l}>
-                <input type="number" min="0" max="100" value={cfg.weights[k]}
-                  onChange={e=>setCfg(p=>({...p,weights:{...p.weights,[k]: e.target.value===""?0:parseFloat(e.target.value)}}))}/>
-              </Field>
-            ))}
-          </div>
+          <div className="g2-gap">{fields("weights")}</div>
         </div>
 
-        {/* LIVELLI */}
         <div className="panel" style={{padding:18,marginBottom:14}}>
-          <div className="h-sm" style={{marginBottom:4}}>Soglie di performance</div>
-          <div className="body-sm" style={{marginBottom:16}}>
-            Punteggio minimo per ciascun livello. Serve solo a dare priorità di lettura, non è una classificazione del candidato.
-          </div>
-          <div className="g2-gap">
-            {cfg.levels.map((lv,i)=>(
-              <Field key={lv.v} label={lv.l}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span className="dot" style={{background:lv.c,width:10,height:10}}/>
-                  <input type="number" min="0" max="100" value={lv.min} disabled={i===cfg.levels.length-1}
-                    onChange={e=>setLevel(i,e.target.value)}/>
-                </div>
-              </Field>
-            ))}
-          </div>
+          <div className="h-sm" style={{marginBottom:4}}>Riferimenti</div>
+          <div className="body-sm" style={{marginBottom:16}}>Punteggio di ciascuna componente = 100 × valore / (valore + riferimento).</div>
+          <div className="g2-gap">{fields("references")}</div>
         </div>
 
-        {/* BENCHMARK */}
         <div className="panel" style={{padding:18}}>
-          <div className="h-sm" style={{marginBottom:4}}>Benchmark per fascia follower</div>
-          <div className="body-sm" style={{marginBottom:16}}>{cur.l} = {cur.f}</div>
-
-          <div style={{display:"flex",gap:4,marginBottom:18,flexWrap:"wrap"}}>
-            {metrics.map(m=>(
-              <button key={m.k} className={"chip"+(tab===m.k?" chip-on":"")} style={{flex:"1 1 140px"}}
-                onClick={()=>setTab(m.k)}>{m.l}</button>
-            ))}
-          </div>
-
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
-            {[["Scarso","#C0392B"],["Medio","#E67E22"],["Buono","#27AE60"],["Eccellente","#3A7BD5"]].map(([l,c])=>(
-              <span key={l} className="badge" style={{color:c,borderColor:c+"66",background:c+"1A"}}>
-                <span className="dot" style={{background:c}}/>{l}
-              </span>
-            ))}
-          </div>
-
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {cfg.bands.map((band,i)=>(
-              <div key={i} style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:14}}>
-                <div className="h-sm" style={{marginBottom:12}}>Fascia {band.label}</div>
-                <div className="g3-keep">
-                  {BENCH_LEVELS.map(lv=>(
-                    <div key={lv.k} style={{background:lv.c+"14",border:"1px solid "+lv.c+"55",padding:12}}>
-                      <div style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:10,letterSpacing:".16em",textTransform:"uppercase",color:lv.c,marginBottom:8}}>{lv.l}</div>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <input type="number" step={cur.step} min="0" value={band[tab][lv.k]}
-                          onChange={e=>setBand(i,lv.k,e.target.value)}
-                          style={{borderColor:lv.c+"66",padding:"9px 10px"}}/>
-                        <span style={{fontFamily:"var(--fh)",fontWeight:700,color:lv.c}}>%</span>
-                      </div>
-                      <div style={{fontFamily:"var(--fb)",fontSize:11,color:lv.c,opacity:.85,marginTop:7,lineHeight:1.5}}>
-                        {lv.desc(band[tab])}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <div className="h-sm" style={{marginBottom:4}}>Base di osservazione ridotta</div>
+          <div className="body-sm" style={{marginBottom:16}}>Solo una segnalazione per lo staff: il punteggio non viene corretto.</div>
+          <div className="g2-gap">{fields("lowBase")}</div>
         </div>
 
         <div style={{display:"flex",gap:10,marginTop:20,flexWrap:"wrap",alignItems:"center"}}>
           <button className="btn btn-primary" onClick={save} disabled={busy}>{busy?"Salvataggio…":"Salva configurazione"}</button>
-          <button className="btn btn-ghost" onClick={()=>setCfg(JSON.parse(JSON.stringify(DEFAULT_SCORING)))}>Ripristina valori iniziali</button>
+          <button className="btn btn-ghost" onClick={()=>{ setDraft(toScoringDraft(DEFAULT_SCORING)); setErrors({}); }}>Ripristina valori iniziali</button>
           {msg && <span className="label-xs" role="status" style={{color:msg==="Configurazione salvata"?"var(--ok)":"var(--bad)"}}>{msg}</span>}
         </div>
       </div>
@@ -1279,7 +1322,7 @@ function SettingsPanel(){
                 Candidature · Stati · Note · Valutazione<br/>
                 Codici creator · Export<br/>
                 Eliminazione candidature<br/>
-                Benchmark e pesi · Impostazioni
+                Pesi e riferimenti dello scoring · Impostazioni
               </div>
             </div>
             <div>

@@ -12,6 +12,8 @@
   }
   function numeric(value,key) {
     if (key==='tiktokFollowers' && (value==='' || value===undefined)) return 0;
+    // Facoltativo: vuoto significa "non indicato" (null), mai zero.
+    if (key==='accountsReached' && (value===undefined || value===null || (typeof value==='string' && !value.trim()))) return null;
     if (typeof value==='string') {
       if (!/^[+-]?\d+$/.test(value.trim())) throw new SubmissionError('INVALID_NUMBER',key==='age'?"Inserisci un'età intera compresa tra 18 e 99 anni.":'Inserisci un numero intero valido.',{field:key});
       value=Number(value.trim());

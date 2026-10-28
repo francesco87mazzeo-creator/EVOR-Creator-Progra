@@ -32,7 +32,7 @@
  *   OCR_LIMITER, NOTIFY_LIMITER, APPLICATION_LIMITER, ADMIN_LIMITER
  */
 import { parsePublicApplicationJson, prepareApplication, ValidationError, MAX_JSON_BYTES } from "../../server/collective/application.mjs";
-import { computeSocial, validateScoringConfig } from "../../server/collective/scoring.mjs";
+import { computeScore, validateScoringConfig } from "../../server/collective/scoring.mjs";
 import { createFirestoreClient, FirestoreError } from "./firestore.mjs";
 import { b64url, importPrivateKey } from "./google-auth.mjs";
 import { verifyFirebaseIdToken, IdTokenError } from "./firebase-id-token.mjs";
@@ -425,29 +425,33 @@ const CATEGORY_LABELS = {
 
 const fmtInt = n => (parseInt(n) || 0).toLocaleString("it-IT");
 
-/** Stesso testo di notifyTelegram nel frontend, poi passato dal filtro di renderNotification. */
+const fmtPct = v => v === null ? "n/d" : v.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+
+/**
+ * Notifica della candidatura appena salvata, con il punteggio quantitativo v2 (configurazione 3).
+ * Il testo libero passa da plain() come in renderNotification; i link sono rigenerati dagli handle convalidati.
+ * Il modello del vecchio frontend resta solo in renderNotification, per /notify.
+ */
 function applicationMessage(doc, s) {
   const cats = doc.profileCategories.length ? doc.profileCategories.map(c => CATEGORY_LABELS[c] || "—").join(", ") : "—";
-  const igLine = doc.instagramUrl
-    ? "📱 Instagram: <a href=\"" + escapeTg(doc.instagramUrl) + "\">@" + escapeTg(doc.instagramHandle) + "</a>"
-    : "";
-  const ttLine = doc.tiktokUrl
-    ? "🎵 TikTok: <a href=\"" + escapeTg(doc.tiktokUrl) + "\">@" + escapeTg(doc.tiktokHandle) + "</a>"
-    : "";
-  const text =
-    "🔔 <b>" + PROGRAM + "</b>\nNuova candidatura\n\n" +
-    "👤 <b>" + escapeTg(doc.fullName) + "</b>\n" +
-    (igLine ? igLine + "\n" : "") +
-    (ttLine ? ttLine + "\n" : "") +
-    "🏷 " + escapeTg(cats) + "\n" +
-    "👥 " + fmtInt(doc.followers) + " follower · fascia " + escapeTg(s.bandLabel) + "\n\n" +
-    "👁 Visualizzazioni: " + fmtInt(doc.views) + "\n" +
-    "🎯 Account raggiunti: " + fmtInt(doc.accountsReached) + "\n" +
-    "💬 Interazioni: " + fmtInt(doc.interactions) + "\n" +
-    "📈 Follower netti: " + (doc.netFollowers > 0 ? "+" : "") + fmtInt(doc.netFollowers) + "\n\n" +
-    "ER " + s.er.toFixed(2) + "% · Reach " + s.reach.toFixed(1) + "% · Growth " + s.growth.toFixed(2) + "%\n" +
-    "📊 Social Performance Score: <b>" + s.socialScore + "/100</b> · " + escapeTg(s.perfLabel);
-  return renderNotification(text);
+  const lines = [
+    "🔔 <b>" + PROGRAM + "</b>", "Nuova candidatura", "",
+    "👤 <b>" + plain(doc.fullName, 200) + "</b>"
+  ];
+  if (doc.instagramHandle) lines.push("📱 Instagram: <a href=\"https://www.instagram.com/" + doc.instagramHandle + "/\">@" + doc.instagramHandle + "</a>");
+  if (doc.tiktokHandle) lines.push("🎵 TikTok: <a href=\"https://www.tiktok.com/@" + doc.tiktokHandle + "\">@" + doc.tiktokHandle + "</a>");
+  lines.push(
+    "🏷 " + plain(cats, 400),
+    "👥 " + fmtInt(doc.followers) + " follower", "",
+    "👁 Visualizzazioni: " + fmtInt(doc.views),
+    "💬 Interazioni: " + fmtInt(doc.interactions),
+    "📈 Follower netti: " + (doc.netFollowers > 0 ? "+" : "") + fmtInt(doc.netFollowers),
+    "🎯 Account raggiunti: " + (doc.accountsReached === null ? "non indicati" : fmtInt(doc.accountsReached)), "",
+    "📊 Punteggio quantitativo: <b>" + s.socialScore + "/100</b> (scoring v2)",
+    "Coinvolgimento " + fmtPct(s.engagementRate) + " · Indicatore B " + fmtPct(s.reachEngagementRate) + " (non incide)"
+  );
+  if (s.lowBase) lines.push("⚠️ Base di osservazione molto ridotta");
+  return lines.join("\n");
 }
 
 const ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -503,7 +507,7 @@ async function handleApplication(request, env, ctx) {
   try {
     const scoring = await loadScoring(client);
     doc = prepareApplication(candidate, { now: new Date().toISOString(), scoring });
-    social = computeSocial(doc, scoring);
+    social = computeScore(doc, scoring);
   } catch (e) {
     console.error(JSON.stringify({ evt: "application_prepare_failed", kind: e instanceof FirestoreError ? e.stage : (e.code || e.name) }));
     return fail(503, { code: "SERVICE_UNAVAILABLE", path: "$" });

@@ -1,19 +1,40 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validatePublicApplication,prepareApplication,parsePublicApplicationJson,PUBLIC_FIELDS,SERVER_FIELDS,ValidationError,MAX_JSON_BYTES} from '../application.mjs';
-import {publicFixture,frontendDocument,fullOcr,NOW,JPEG} from './frontend-reference.mjs';
+import {publicFixture,frontendDocument,currentDocument,frontendScoreFields,LEGACY_SCORE_FIELDS,fullOcr,NOW,JPEG} from './frontend-reference.mjs';
 const fixture=await publicFixture();
 const full=await publicFixture(fullOcr());
 const copy=()=>structuredClone(full);
 function denied(data,code,path) {
  assert.throws(()=>validatePublicApplication(data),error=>error instanceof ValidationError&&error.code===code&&(!path||error.path===path));
 }
-test('Server document matches all 71 fields of the historical frontend document',async()=>{
+test('Schema 5 document: historical 71 fields, without the previous-model fields, with the v2 score',async()=>{
  const actual=prepareApplication(fixture,{now:NOW});
- assert.deepEqual(actual,await frontendDocument());assert.equal(Object.keys(actual).length,71);
+ assert.deepEqual(actual,await currentDocument());assert.equal(Object.keys(actual).length,72);
+ assert.equal(actual.schemaVersion,5);assert.equal(actual.scoringVersion,3);
+ for(const key of LEGACY_SCORE_FIELDS) assert.ok(!(key in actual),key);
+ const legacy=await frontendDocument();
+ for(const key of Object.keys(legacy)) if(!LEGACY_SCORE_FIELDS.includes(key)&&!['schemaVersion','socialScore'].includes(key)) assert.deepEqual(actual[key],legacy[key],key);
 });
 test('Complete OCR candidate retains the same stored contract',async()=>{
- assert.deepEqual(prepareApplication(full,{now:NOW}),await frontendDocument(fullOcr()));
+ assert.deepEqual(prepareApplication(full,{now:NOW}),await currentDocument(fullOcr()));
+});
+test('Accounts reached are optional: missing or null is stored as null, never zero or views',()=>{
+ const d=copy();delete d.accountsReached;
+ const a=prepareApplication(d,{now:NOW});
+ assert.equal(a.accountsReached,null);assert.equal(a.reachEngagementRate,null);assert.equal(typeof a.socialScore,'number');
+ const b=prepareApplication({...copy(),accountsReached:null},{now:NOW});
+ assert.equal(b.accountsReached,null);assert.equal(b.socialScore,a.socialScore);
+ assert.deepEqual(frontendScoreFields(b),{scoringVersion:b.scoringVersion,socialScore:b.socialScore,engagementRate:b.engagementRate,engagementScore:b.engagementScore,visibilityScore:b.visibilityScore,reachEngagementRate:null,lowBase:b.lowBase});
+});
+for(const [name,patch,code,path] of [
+ ['views null',{views:null},'TYPE','$.views'],['interactions null',{interactions:null},'TYPE','$.interactions'],
+ ['followers null',{followers:null},'TYPE','$.followers'],['net followers null',{netFollowers:null},'TYPE','$.netFollowers'],
+ ['accounts reached empty string',{accountsReached:''},'TYPE','$.accountsReached'],['negative accounts reached',{accountsReached:-1},'RANGE','$.accountsReached'],
+ ['fraction accounts reached',{accountsReached:1.5},'TYPE','$.accountsReached']
+]) test(`Required metrics are never defaulted: ${name}`,()=>denied({...fixture,...patch},code,path));
+for(const key of ['followers','views','interactions','netFollowers']) test(`Missing ${key} is rejected, not stored as zero`,()=>{
+ const d=copy();delete d[key];denied(d,'MISSING_FIELD',`$.${key}`);
 });
 test('Missing optional fields get frontend-compatible defaults',()=>{
  const d=copy();for(const key of ['tiktok','tiktokFollowers','contentUrl1','contentUrl2','contentUrl3','screenshotName','screenshotName2','ocrInsights','ocrProfile','screenshotData2','profileScreenshotData','extra']) delete d[key];
@@ -59,6 +80,10 @@ test('Image budget covers all three images',()=>{
 test('Zero counts and negative net followers are allowed',()=>{
  const d=validatePublicApplication({...fixture,followers:0,views:0,interactions:0,accountsReached:0,netFollowers:-1e12});
  assert.equal(d.netFollowers,-1e12);
+ const z=prepareApplication({...fixture,views:0,interactions:0,netFollowers:0,accountsReached:0},{now:NOW});
+ assert.equal(z.socialScore,0);assert.equal(z.engagementRate,null);assert.equal(z.reachEngagementRate,null);assert.equal(z.lowBase,true);assert.equal(z.netFollowers,0);
+ const n=prepareApplication({...fixture,netFollowers:-250},{now:NOW});
+ assert.equal(n.netFollowers,-250);assert.equal(n.socialScore,prepareApplication(fixture,{now:NOW}).socialScore);
 });
 test('Boundary lengths are accepted and overflow is rejected',()=>{
  const d={...fixture,fullName:'x'.repeat(199),threeWords:'x'.repeat(120),motivation:'x'.repeat(900)};
@@ -95,7 +120,7 @@ test('JSON parsing checks raw UTF-8 bytes, syntax and schema',()=>{
 const optionalFields=new Set(['otherProfileCategory','tiktok','tiktokFollowers','screenshotName','screenshotName2',
  'brandCollabDetails','athleteImage','valueBeyondContent','howWouldTell','scenarioBrandContent','badContentReaction',
  'analysisElements','boughtProducts','improvements','extra','contentUrl1','contentUrl2','contentUrl3','screenshotData2',
- 'profileScreenshotData','ocrInsights','ocrProfile']);
+ 'profileScreenshotData','ocrInsights','ocrProfile','accountsReached']);
 for(const key of PUBLIC_FIELDS) test(`Missing-field contract for ${key}`,()=>{
  const d=structuredClone(fixture);delete d[key];
  if(key==='brandCollabDetails') denied(d,'CONDITION','$.brandCollabDetails');
