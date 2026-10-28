@@ -4,6 +4,21 @@ Sorgenti del Worker in produzione, finora conservati solo in locale. `wrangler.t
 
 - **Moduli:** `src/` contiene il Worker; importa la convalida da `../server/collective`.
 
+## Modifiche non ancora pubblicate: scoring v2
+
+Il branch `scoring/v2-engagement-views` modifica i sorgenti del Worker. **Dopo il merge il repository non corrisponde più alla versione in produzione descritta sotto**, finché il Worker non viene pubblicato con autorizzazione.
+
+- **Sorgenti modificati:**
+  - `worker/src/worker.js`: punteggio v2 e nuova notifica Telegram;
+  - `server/collective/scoring.mjs`;
+  - `server/collective/application.mjs`: account raggiunti facoltativi, schema 5.
+- **Prompt OCR:** non modificati; le impronte in `OCR_PROMPTS` restano quelle attuali.
+- **`/notify`:** il modello storico del messaggio resta accettato.
+- **Bundle locale:** `wrangler deploy --dry-run` con Wrangler 4.149.0, nessuna pubblicazione.
+  - `worker.js`: 59.405 byte;
+  - SHA-256 `adb2a8175010c5029c7af31c7bd320b6c0c22aa0b5cff40dd061f4808cc63cb8`, calcolato al commit di questa modifica.
+- **Ordine di pubblicazione:** prima le Rules, poi il Worker, poi il frontend. Dettagli in [docs/scoring-v2.md](../docs/scoring-v2.md).
+
 ## Provenienza (verificata il 2026-10-28)
 
 **Riferimenti Cloudflare** (non sono secret):
@@ -86,6 +101,6 @@ Si pubblica solo con autorizzazione esplicita.
    ```
 
 2. Pubblicazione: `wrangler deploy`.
-3. Ripristino: `wrangler rollback <versione> --name throbbing-feather-957f`.
+3. Dopo la migrazione V2: ripristino ordinario del solo frontend, mantenendo Worker/Rules V2. Se serve sostituire il runtime, usare il [Worker di compatibilità congelato](rollback/README.md); non ripristinare il Worker legacy che richiede gli account raggiunti.
 
 I secret restano su Cloudflare e non si scrivono mai in questo repository.

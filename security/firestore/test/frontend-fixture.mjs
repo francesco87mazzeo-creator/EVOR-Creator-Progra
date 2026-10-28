@@ -1,5 +1,7 @@
 // The 71-field persisted-document oracle is historical; current HTTP payloads are tested in test/frontend.
 import {legacySubmit} from '../../../test/frontend/legacy-submit-reference.mjs';
+import {legacyScoring} from '../../../test/frontend/legacy-scoring-reference.mjs';
+import {computeScore,scoreDocumentFields,DEFAULT_SCORING} from '../../../server/collective/scoring.mjs';
 // Evaluate only the pure form/scoring/submit fragments, never Firebase config or JSX.
 import vm from 'node:vm';
 import { frontendSource as html, admin, publicForm } from '../../../test/frontend/app-source.mjs';
@@ -9,8 +11,9 @@ function fragment(start, end, from = html) {
   return from.slice(a,b);
 }
 const empty = fragment('const EMPTY_FORM =', 'const YESNO =');
-// Scoring: area staff (app/admin.jsx). Esempio di prova: modulo pubblico (app/public-form.jsx).
-const scoring = fragment('const SCORING_VERSION =', '/* ============================================================================\n   10. EXPORT CSV', admin);
+// Documenti e configurazione già presenti in produzione: scoring del modello precedente (schema 4,
+// configurazione 2), congelato in legacy-scoring-reference.mjs. Esempio di prova: modulo pubblico.
+const scoring = legacyScoring;
 const social = fragment('const parseSocial =', '/** Sfugge');
 const submit = legacySubmit;
 const example = fragment('const TEST_FORM =', '/* ---------- fine di app/public-form.jsx', publicForm);
@@ -41,3 +44,11 @@ export function completeOcr() {
     ocrProfile:{result:{screenType:'profile_ok',displayName:{value:'Synthetic Candidate',visibility:'complete',truncated:false},username:{value:'synthetic_profile',visibility:'partial',truncated:true},followers:n(8500)},readAt:stamp}
   };
 }
+
+// Documento di schema 5 scritto dal Worker con lo scoring v2: senza i campi del modello precedente.
+export async function currentSubmission(overrides = {}) {
+  const data = await submission(overrides);
+  for (const key of ['perfLevel','bandLabel','erRate','reachRate','growthRate']) delete data[key];
+  return { ...data, schemaVersion: 5, ...scoreDocumentFields(computeScore(data)) };
+}
+export function currentScoring() { return structuredClone(DEFAULT_SCORING); }

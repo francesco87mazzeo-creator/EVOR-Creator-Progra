@@ -81,7 +81,7 @@ const EVAL_CRITERIA = [
   {k:"strategicValue",l:"Valore strategico"}
 ];
 
-const METRIC_LEGEND = "I colori rappresentano esclusivamente la performance numerica del profilo. Compatibilità, qualità dei contenuti e affidabilità vengono valutate manualmente.";
+const METRIC_LEGEND = "Il punteggio quantitativo misura solo i dati numerici Instagram degli ultimi 30 giorni (65% coinvolgimento, 35% visibilità, con i pesi predefiniti). Non approva né rifiuta: compatibilità, qualità dei contenuti e affidabilità vengono valutate manualmente.";
 
 /* ============================================================================
    6. UTILITY
@@ -128,17 +128,21 @@ const escTg = v => String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;
  * Gestisce: 3.648 · 3,648 · 1.234.567 · +5 · -3 · 1,2K · 3,6 Mln
  */
 const toNum = (raw) => {
-  if(raw===null || raw===undefined) return 0;
-  if(typeof raw==="number") return Number.isFinite(raw) ? Math.round(raw) : 0;
-  let s = String(raw).trim().toLowerCase().replace(/\s+/g,"");
-  if(!s) return 0;
+  // Mancante o non numerico → null, mai zero: un valore inventato non deve risultare letto.
+  if(raw===null || raw===undefined) return null;
+  if(typeof raw==="number") return Number.isFinite(raw) ? Math.round(raw) : null;
+  if(typeof raw!=="string") return null;
+  let s = raw.trim().toLowerCase().replace(/\s+/g,"");
+  if(!s) return null;
+  // Solo cifre, separatori, segno e suffissi (mila, k, mln, mio, m): "—", "n/d" o altro testo non sono numeri.
+  if(!/^[+-]?[0-9][0-9.,]*(mln|mio|mila|k|m)?$/.test(s)) return null;
   const sign = s.charAt(0)==="-" ? -1 : 1;
   s = s.replace(/^[+-]/,"");
   let mult = 1;
   if(/(mln|mio|m)$/.test(s)){ mult = 1e6; s = s.replace(/(mln|mio|m)$/,""); }
   else if(/(mila|k)$/.test(s)){ mult = 1e3; s = s.replace(/(mila|k)$/,""); }
   s = s.replace(/[^0-9.,]/g,"");
-  if(!s) return 0;
+  if(!s) return null;
   let value;
   if(mult>1){
     value = parseFloat(s.replace(",",".")) || 0;
@@ -325,8 +329,9 @@ function ChipGroup({options, value, onChange, name}){
   );
 }
 
+// value null: punteggio non calcolabile, mostrato come "—" e mai come zero.
 function ScoreRing({value=0, color="var(--red)", size=52, label="SCORE"}){
-  const r=(size/2)-4, c=2*Math.PI*r, dash=c*(Math.max(0,Math.min(100,value))/100);
+  const r=(size/2)-4, c=2*Math.PI*r, dash=value===null ? 0 : c*(Math.max(0,Math.min(100,value))/100);
   return (
     <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
       <svg width={size} height={size} style={{transform:"rotate(-90deg)"}} aria-hidden="true">
@@ -335,21 +340,8 @@ function ScoreRing({value=0, color="var(--red)", size=52, label="SCORE"}){
           strokeDasharray={dash+" "+c} strokeLinecap="round"/>
       </svg>
       <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-        <span style={{fontFamily:"var(--fh)",fontWeight:800,fontSize:size*.30,color,lineHeight:1}}>{value}</span>
+        <span style={{fontFamily:"var(--fh)",fontWeight:800,fontSize:size*.30,color,lineHeight:1}}>{value===null ? "—" : value}</span>
         {size>=48 && <span style={{fontFamily:"var(--fh)",fontSize:size*.13,color,opacity:.55,letterSpacing:".06em"}}>{label}</span>}
-      </div>
-    </div>
-  );
-}
-
-function MetricCard({label, value, grade, score, compact=false}){
-  return (
-    <div style={{background:grade.bg, border:"1px solid "+grade.c+"55", padding:compact?12:15, minWidth:0}}>
-      <div style={{fontFamily:"var(--fh)",fontWeight:600,fontSize:9,letterSpacing:".14em",textTransform:"uppercase",color:grade.c,opacity:.9,marginBottom:5}}>{label}</div>
-      <div style={{fontFamily:"var(--fh)",fontWeight:800,fontSize:compact?18:22,color:grade.c,lineHeight:1}}>{value}</div>
-      <div style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:10,letterSpacing:".08em",color:grade.c,marginTop:5}}>{grade.l}</div>
-      <div style={{height:3,background:"rgba(0,0,0,.35)",marginTop:9}}>
-        <div style={{height:"100%",background:grade.c,width:Math.max(2,score)+"%"}}/>
       </div>
     </div>
   );

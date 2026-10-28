@@ -89,14 +89,14 @@ const patches = calls => calls.filter(c => c.url === `${ROOT}/settings/scoring` 
 const outbound = calls => calls.map(c => c.url);
 const config = () => structuredClone(DEFAULT_SCORING);
 
-/** Oggetto `clean` che ScoringPanel.save() invia oggi a FB.saveScoring, ricostruito dal sorgente reale. */
-function frontendClean(stored = null, edit = cfg => cfg) {
-  const a = frontendSource.indexOf('const SCORING_VERSION');
-  const b = frontendSource.indexOf('const bandFor', a);
-  const code = frontendSource.slice(a, b) + `
-    const cfg = edit(JSON.parse(JSON.stringify(normalizeScoring(stored))));
-    const clean = { ...cfg, version: SCORING_VERSION, bands: cfg.bands.map(b=>({ ...b, max: b.max===Infinity ? null : b.max })) };
-    JSON.stringify(clean);`;
+/**
+ * Configurazione che ScoringPanel.save() invia a FB.saveScoring, ricostruita dal sorgente reale:
+ * valori del modulo (stringhe, come negli input) → scoringFromDraft.
+ */
+function frontendClean(stored = null, edit = draft => draft) {
+  const part = (start, end) => { const a = frontendSource.indexOf(start), b = frontendSource.indexOf(end, a); assert.ok(a >= 0 && b > a, start); return frontendSource.slice(a, b); };
+  const code = part('const SCORING_VERSION', '/* scoring-core:start') + part('const SCORING_FIELDS = [', 'function ScoringPanel(') +
+    '\n    const result = scoringFromDraft(edit(toScoringDraft(normalizeScoring(stored))));\n    JSON.stringify(result);';
   return JSON.parse(vm.runInNewContext(code, { stored, edit }));
 }
 
@@ -114,27 +114,39 @@ test('Admin salva la configurazione: 200, PATCH completo di settings/scoring, ne
 });
 
 test('Compatibilità: il payload reale di ScoringPanel.save() (default e "Ripristina") è accettato', async () => {
-  const clean = frontendClean(null);
-  assert.equal(clean.bands[4].max, null, 'Infinity convertito in null dal pannello');
+  const { cfg: clean, errors } = frontendClean(null);
+  assert.deepEqual(errors, {});
+  assert.deepEqual(clean, config(), 'il pannello invia esattamente la configurazione predefinita');
   const { res, calls } = await save(clean);
   assert.equal(res.status, 200);
   assert.deepEqual(fromFirestoreValue({ mapValue: patches(calls)[0].body }), clean);
 });
 
-test('Compatibilità: modifiche tipiche del pannello (pesi decimali, soglie, livelli) salvate come inviate', async () => {
-  const clean = frontendClean(null, cfg => {
-    cfg.weights = { er: 50.5, reach: 30, growth: 19.5 };
-    cfg.levels[0].min = 80; cfg.levels[1].min = 60;
-    cfg.bands[2].er = { avg: 2.2, good: 4.4, excellent: 7.7 };
-    return cfg;
-  });
+test('Compatibilità: modifiche tipiche del pannello (pesi decimali, riferimenti, soglie) salvate come inviate', async () => {
+  const { cfg: clean, errors } = frontendClean(null, d => ({ ...d,
+    'weights.engagement': '70.5', 'weights.visibility': '29.5', 'references.engagementRate': '2,5', 'references.views': '50000', 'lowBase.views': '500' }));
+  assert.deepEqual(errors, {});
   const { res, calls } = await save(clean);
   assert.equal(res.status, 200);
   const fields = patches(calls)[0].body.fields;
-  assert.deepEqual(fields.weights.mapValue.fields.er, { doubleValue: 50.5 });
-  assert.deepEqual(fields.weights.mapValue.fields.reach, { integerValue: '30' }, 'interi come integerValue, come l\'SDK web');
-  assert.deepEqual(fields.bands.arrayValue.values[4].mapValue.fields.max, { nullValue: null });
+  assert.deepEqual(fields.weights.mapValue.fields.engagement, { doubleValue: 70.5 });
+  assert.deepEqual(fields.references.mapValue.fields.views, { integerValue: '50000' }, "interi come integerValue, come l'SDK web");
+  assert.deepEqual(fields.references.mapValue.fields.engagementRate, { doubleValue: 2.5 }, 'virgola decimale accettata dal pannello');
   assert.deepEqual(fromFirestoreValue({ mapValue: patches(calls)[0].body }), clean);
+});
+
+test('Il pannello non invia campi vuoti come zero: errori per campo e nessuna richiesta', () => {
+  for (const key of ['weights.engagement', 'references.engagementRate', 'references.views', 'lowBase.views']) {
+    const { errors } = frontendClean(null, d => ({ ...d, [key]: '' }));
+    assert.ok(errors[key], key);
+  }
+  assert.ok(frontendClean(null, d => ({ ...d, 'weights.engagement': '0', 'weights.visibility': '0' })).errors['weights.engagement']);
+  assert.ok(frontendClean(null, d => ({ ...d, 'lowBase.interactions': '2.5' })).errors['lowBase.interactions']);
+});
+
+test('Una configurazione del modello precedente salvata su Firestore apre il pannello con i valori predefiniti', () => {
+  const old = { version: 2, weights: { er: 45, reach: 35, growth: 20 }, levels: [], bands: [] };
+  assert.deepEqual(frontendClean(old).cfg, config());
 });
 
 test('Dopo il salvataggio /applications usa subito il nuovo scoring nella stessa istanza', async () => {
@@ -145,7 +157,7 @@ test('Dopo il salvataggio /applications usa subito il nuovo scoring nella stessa
     assert.equal((await apply('198.51.100.1')).status, 201);
     const before = mock.state.lastApplication.fields.socialScore;
     const custom = config();
-    custom.weights = { er: 0, reach: 0, growth: 100 };
+    custom.weights = { engagement: 0, visibility: 100 };
     assert.equal((await worker.fetch(adminPost(custom), env(), {})).status, 200);
     assert.equal((await apply('198.51.100.2')).status, 201);
     assert.notDeepEqual(mock.state.lastApplication.fields.socialScore, before, 'cache dello scoring invalidata');
@@ -272,18 +284,16 @@ const invalidCases = [
   bad('versione precedente', c => { c.version = 1; }, 'VERSION', '$scoring.version'),
   bad('chiave aggiuntiva (tiers)', c => { c.tiers = []; }, 'UNKNOWN_FIELD', '$scoring'),
   bad('metadati di autore inviati dal client', c => { c.updatedBy = 'x'; }, 'UNKNOWN_FIELD', '$scoring'),
-  bad('peso come stringa', c => { c.weights.er = '45'; }, 'TYPE', '$scoring.weights.er'),
-  bad('pesi tutti a zero', c => { c.weights = { er: 0, reach: 0, growth: 0 }; }, 'RANGE', '$scoring.weights'),
-  bad('peso oltre 100', c => { c.weights.er = 101; }, 'RANGE', '$scoring.weights.er'),
-  bad('soglia vuota nel pannello (diventa 0)', c => { c.bands[0].er.avg = 0; }, 'ORDER', '$scoring.bands[0].er'),
-  bad('soglie non crescenti', c => { c.bands[1].reach = { avg: 50, good: 40, excellent: 160 }; }, 'ORDER', '$scoring.bands[1].reach'),
-  bad('livelli non decrescenti', c => { c.levels[1].min = 80; }, 'ORDER', '$scoring.levels[1].min'),
-  bad('livello minimo diverso da 0', c => { c.levels[3].min = 5; }, 'RANGE', '$scoring.levels[3].min'),
-  bad('livello decimale', c => { c.levels[0].min = 75.5; }, 'TYPE', '$scoring.levels[0].min'),
-  bad('colore non esadecimale', c => { c.levels[0].c = 'red'; }, 'FORMAT', '$scoring.levels[0].c'),
-  bad('ultima fascia limitata', c => { c.bands[4].max = 1e9; }, 'RANGE', '$scoring.bands[4].max'),
-  bad('fascia intermedia illimitata', c => { c.bands[1].max = null; }, 'TYPE', '$scoring.bands[1].max'),
-  bad('quattro fasce', c => { c.bands.pop(); }, 'LENGTH', '$scoring.bands'),
+  bad('configurazione del modello precedente (versione 2)', c => { c.version = 2; }, 'VERSION', '$scoring.version'),
+  bad('fasce follower del modello precedente', c => { c.bands = []; }, 'UNKNOWN_FIELD', '$scoring'),
+  bad('livelli di classificazione del modello precedente', c => { c.levels = []; }, 'UNKNOWN_FIELD', '$scoring'),
+  bad('peso come stringa', c => { c.weights.engagement = '65'; }, 'TYPE', '$scoring.weights.engagement'),
+  bad('pesi tutti a zero', c => { c.weights = { engagement: 0, visibility: 0 }; }, 'RANGE', '$scoring.weights'),
+  bad('peso oltre 100', c => { c.weights.visibility = 101; }, 'RANGE', '$scoring.weights.visibility'),
+  bad('coinvolgimento di riferimento zero', c => { c.references.engagementRate = 0; }, 'RANGE', '$scoring.references.engagementRate'),
+  bad('visualizzazioni di riferimento zero', c => { c.references.views = 0; }, 'RANGE', '$scoring.references.views'),
+  bad('soglia base ridotta decimale', c => { c.lowBase.views = 99.5; }, 'TYPE', '$scoring.lowBase.views'),
+  bad('soglia base ridotta mancante', c => { delete c.lowBase.interactions; }, 'MISSING_FIELD', '$scoring.lowBase.interactions'),
   bad('corpo non oggetto', () => [], 'TYPE', '$scoring'),
 ];
 for (const [name, mutate, code, path] of invalidCases) {

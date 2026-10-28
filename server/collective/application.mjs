@@ -1,6 +1,6 @@
 import {record,text,number,enumeration,url,iso,freeze,fail,array,ValidationError} from './validation.mjs';
 import {validateOcrInsights,validateOcrProfile} from './ocr.mjs';
-import {computeSocial} from './scoring.mjs';
+import {computeScore,scoreDocumentFields} from './scoring.mjs';
 export {ValidationError};
 export const MAX_JSON_BYTES=1048576;
 const CATEGORIES=['creator','coach','agonista','non_agonista','lifestyle','palestra','professionista','altro'];
@@ -21,16 +21,19 @@ const ENUMS={
  availShooting:['yes','no','maybe'],availUgc:['yes','no','maybe'],availRawFiles:['yes','no','maybe']
 };
 const COUNTS=['followers','tiktokFollowers','views','netFollowers','interactions','accountsReached'];
+// Facoltativo (solo per l'indicatore B): null quando non indicato, mai zero.
+const OPTIONAL_COUNTS=['accountsReached'];
 const LINKS=['contentUrl1','contentUrl2','contentUrl3'];
 const IMAGES=['screenshotData','screenshotData2','profileScreenshotData'];
 const OTHER=['age','isAdult','privacyConsent','profileCategories','ocrInsights','ocrProfile'];
 export const PUBLIC_FIELDS=freeze([...Object.keys(TEXT_FIELDS),...Object.keys(ENUMS),...COUNTS,...LINKS,...IMAGES,...OTHER]);
 export const SERVER_FIELDS=freeze(['id','schemaVersion','date','updatedAt','status','notes','creatorCode','evaluation',
  'socialScore','perfLevel','bandLabel','erRate','reachRate','growthRate',
+ 'scoringVersion','engagementRate','engagementScore','visibilityScore','reachEngagementRate','lowBase','insightsHistory',
  'instagramHandle','instagramUrl','tiktokHandle','tiktokUrl','insightsCorrection']);
 const DEFAULTS=freeze({
  ...Object.fromEntries(Object.entries(TEXT_FIELDS).filter(([,v])=>!v[1]).map(([k])=>[k,''])),
- tiktokFollowers:0,contentUrl1:'',contentUrl2:'',contentUrl3:'',screenshotData2:'',profileScreenshotData:'',
+ tiktokFollowers:0,accountsReached:null,contentUrl1:'',contentUrl2:'',contentUrl3:'',screenshotData2:'',profileScreenshotData:'',
  ocrInsights:null,ocrProfile:null
 });
 const REQUIRED=PUBLIC_FIELDS.filter(key=>!Object.hasOwn(DEFAULTS,key));
@@ -63,7 +66,10 @@ export function validatePublicApplication(input) {
  for (const [key,[limit,required]] of Object.entries(TEXT_FIELDS)) text(data[key],limit,`$.${key}`,required);
  if (data.fullName.length<2) fail('RANGE','$.fullName');
  for (const [key,options] of Object.entries(ENUMS)) enumeration(data[key],options,`$.${key}`);
- for (const key of COUNTS) number(data[key],key==='netFollowers'?-1e12:0,1e12,`$.${key}`,true);
+ for (const key of COUNTS) {
+  if (OPTIONAL_COUNTS.includes(key) && data[key]===null) continue;
+  number(data[key],key==='netFollowers'?-1e12:0,1e12,`$.${key}`,true);
+ }
  number(data.age,18,99,'$.age',true);
  enumeration(data.isAdult,[true],'$.isAdult');enumeration(data.privacyConsent,[true],'$.privacyConsent');
  array(data.profileCategories,1,8,'$.profileCategories');
@@ -93,13 +99,14 @@ export function parsePublicApplicationJson(raw) {
 export function prepareApplication(input,{now,scoring=null}={}) {
  const data=validatePublicApplication(input);
  const date=iso(now,'$server.now');
- const score=computeSocial(data,scoring);
+ const score=computeScore(data,scoring);
  const ig=social(data.instagram,'instagram','$.instagram',true),tt=social(data.tiktok,'tiktok','$.tiktok',false);
  const document={...data,
   instagramHandle:ig.handle,instagramUrl:ig.url,tiktokHandle:tt.handle,tiktokUrl:tt.url,
-  schemaVersion:4,date,updatedAt:date,status:'new',notes:'',creatorCode:'',evaluation:{},
-  socialScore:score.socialScore,perfLevel:score.perfLevel,bandLabel:score.bandLabel,
-  erRate:+score.er.toFixed(2),reachRate:+score.reach.toFixed(2),growthRate:+score.growth.toFixed(2)
+  // Schema 5: account raggiunti facoltativi, punteggio quantitativo v2 (configurazione 3).
+  // I campi del modello precedente (perfLevel, bandLabel, erRate, reachRate, growthRate) non sono più scritti.
+  schemaVersion:5,date,updatedAt:date,status:'new',notes:'',creatorCode:'',evaluation:{},
+  ...scoreDocumentFields(score)
  };
  if (new TextEncoder().encode(JSON.stringify(document)).byteLength>MAX_JSON_BYTES) fail('DOCUMENT_TOO_LARGE','$');
  return document;

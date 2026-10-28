@@ -117,35 +117,29 @@ Campi facoltativi, con default compatibili con il frontend:
 
 Sono riservati: `id`, `schemaVersion`, `date`, `updatedAt`, `status`, `notes`,
 `creatorCode`, `evaluation`, `socialScore`, `perfLevel`, `bandLabel`, `erRate`,
-`reachRate`, `growthRate`, `instagramHandle`, `instagramUrl`, `tiktokHandle`,
-`tiktokUrl`, `insightsCorrection`. Il payload operativo attuale che contiene
+`reachRate`, `growthRate`, `scoringVersion`, `engagementRate`, `engagementScore`,
+`visibilityScore`, `reachEngagementRate`, `lowBase`, `insightsHistory`, `instagramHandle`,
+`instagramUrl`, `tiktokHandle`, `tiktokUrl`, `insightsCorrection`. Il payload operativo attuale che contiene
 questi campi NON può essere inoltrato invariato al nuovo validatore.
 
-Il server aggiunge i 17 campi derivati/gestionali necessari per ottenere gli stessi
-71 campi del documento corrente: schema v4, date server, `new`, note/codice vuoti,
-valutazione vuota, riferimenti social e metriche calcolate. ID e correzioni non
+Il server aggiunge i campi derivati/gestionali del documento di schema 5 (72 campi):
+date server, `new`, note/codice vuoti, valutazione vuota, riferimenti social e i sette
+campi del punteggio v2. ID e correzioni non
 vengono aggiunti al documento di prima candidatura. Non è una migrazione dati.
 
 ## Scoring e compatibilità
 
-Formule conservate: ER = interazioni/account raggiunti; reach = raggiunti/follower;
-growth = follower netti/follower; normalizzazione per fascia, crescita negativa
-azzerata solo nel punteggio, pesi normalizzati, arrotondamenti e livelli invariati.
-Sono conservati i fallback storici views/newFollowers e la lettura numerica legacy.
-Le visualizzazioni non entrano direttamente nello score moderno.
+Scoring v2 (Modello A), configurazione versione 3: vedi [docs/scoring-v2.md](../../docs/scoring-v2.md).
 
-- `validateScoringConfig`: nuovo config completo v2, schema esatto, 4 livelli,
-  5 fasce, ordinamento, pesi positivi complessivamente, limiti e colori validi.
-  È validazione, **non autorizzazione** per lo scoring amministrativo.
-- `resolveScoringConfig`: config server assente/versione precedente → default,
-  come frontend; supporta v2 parziali validi completati con i default e il fallback
-  tiers usato dal codice corrente. La fascia illimitata è serializzata come null.
-- Config v2 malformati vengono rifiutati anziché essere usati per produrre score
-  errati. Limiti di profondità e dimensione impediscono strutture cicliche/anomale.
-
-I test confrontano l'intero risultato con le funzioni realmente lette dal frontend,
-non con una seconda copia della fixture: fasce ai confini, interpolazione, pesi
-personalizzati, fallback legacy, zeri e 120 combinazioni deterministiche aggiuntive.
+- **Formula:** 65% coinvolgimento (interazioni/visualizzazioni) e 35% visibilità (visualizzazioni). Ogni componente è normalizzata con la curva logaritmica `H(x;s) = 100·ln(1+x/s)/[ln(1+x/s)+ln 2]`; riferimenti iniziali 2% e 30.000. Non ci sono fasce follower né livelli. Con zero visualizzazioni il punteggio non è disponibile (`null`), distinto dai dati mancanti.
+- **Indicatore B** (interazioni/account raggiunti): calcolato solo se gli account raggiunti sono indicati e maggiori di zero; non entra nel punteggio.
+- **Valori mancanti:** le visualizzazioni o interazioni mancanti o non valide rendono il punteggio non calcolabile (`null`), mai zero. I fallback storici views→reached e newFollowers→netFollowers non esistono più.
+- **`validateScoringConfig`:** schema esatto della versione 3 (pesi, riferimenti, soglie della base ridotta). È convalida, **non autorizzazione**.
+- **`resolveScoringConfig`:** configurazione assente o del modello precedente (versione 1 o 2) → valori predefiniti, senza conversione delle vecchie soglie. Una versione 3 non valida viene rifiutata.
+- **`scoreDocumentFields`:** i campi salvati sul documento, con gli stessi arrotondamenti nel Worker e nell'Admin.
+- **Account raggiunti:** campo pubblico facoltativo (`null` se assente). Il documento preparato ha schema 5 e 72 campi; i campi del modello precedente (`perfLevel`, `bandLabel`, `erRate`, `reachRate`, `growthRate`) non sono più scritti.
+- **Test di parità:** il testo delle formule tra i marcatori `scoring-core` è identico in `scoring.mjs` e `app/admin.jsx`, e i risultati sono confrontati su 200 combinazioni deterministiche.
+- **Riferimento storico:** il modello precedente è congelato in `test/frontend/legacy-scoring-reference.mjs` per l'oracolo dei documenti di schema 4.
 
 ## Incompatibilità esplicite e integrazione futura
 

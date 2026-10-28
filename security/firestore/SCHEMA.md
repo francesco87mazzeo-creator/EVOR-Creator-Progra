@@ -1,5 +1,28 @@
 # Contratto dei documenti — candidato per revisione
 
+## Schema 5 e scoring v2 (branch `scoring/v2-engagement-views`, non pubblicato)
+
+Il Worker scrive i nuovi documenti con `schemaVersion: 5`. Rispetto allo schema 4 descritto sotto:
+
+- **`accountsReached`:** intero 0–10¹² **oppure `null`** se non indicato. Non è mai sostituito con le visualizzazioni.
+- **Campi del punteggio v2:**
+  - `scoringVersion` (`3`);
+  - `socialScore` (intero 0–100, oppure `null` con zero visualizzazioni);
+  - `engagementRate` (numero o `null`);
+  - `engagementScore` e `visibilityScore` (interi 0–100 o `null`);
+  - `reachEngagementRate` (numero o `null`);
+  - `lowBase` (booleano).
+- **Campi del modello precedente:** `perfLevel`, `bandLabel`, `erRate`, `reachRate` e `growthRate` non sono più scritti nei nuovi documenti. Restano invariati nei documenti di schema 4.
+- **Correzioni dello staff:**
+  - correggibili: `followers`, i quattro dati Insights e i campi del punteggio v2;
+  - `insightsCorrection` con cinque valori (`followers`, `views`, `netFollowers`, `interactions`, `accountsReached`);
+  - `insightsHistory`, lista append-only di massimo 50 correzioni, la cui ultima voce coincide con `insightsCorrection`.
+  - Le correzioni a quattro valori del pannello precedente restano ammesse.
+
+Rules in `migration/firestore.rules`; dettagli e ordine di pubblicazione in [docs/scoring-v2.md](../../docs/scoring-v2.md).
+
+## Schema 4 (storico)
+
 Questa tabella documenta le regole proposte, non lo stato dei dati online.
 La compilazione e i test Emulator restano bloccati dal download HTTP 403.
 

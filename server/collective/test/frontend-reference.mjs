@@ -1,5 +1,6 @@
 // The 71-field persisted-document oracle is historical; current HTTP payloads are tested in test/frontend.
 import {legacySubmit} from '../../../test/frontend/legacy-submit-reference.mjs';
+import {legacyScoring} from '../../../test/frontend/legacy-scoring-reference.mjs';
 // Evaluate only pure fragments from the checked-out frontend; no Firebase config,
 // no JSX, no Worker calls and no production credentials are evaluated.
 import vm from 'node:vm';
@@ -10,7 +11,8 @@ function extract(start,end,from=source) {
  if(a<0||b<0)throw new Error(`Frontend contract changed: ${start}`);
  return from.slice(a,b);
 }
-// Scoring: area staff (app/admin.jsx). Esempio di prova: modulo pubblico (app/public-form.jsx).
+// Scoring v2 attuale: area staff (app/admin.jsx). Esempio di prova: modulo pubblico (app/public-form.jsx).
+// Il documento storico a 71 campi usa lo scoring precedente, congelato in legacy-scoring-reference.mjs.
 const scoring=extract('const SCORING_VERSION =','/* ============================================================================\n   10. EXPORT CSV',admin);
 const form=extract('const EMPTY_FORM =','const YESNO =');
 const example=extract('const TEST_FORM =','/* ---------- fine di app/public-form.jsx',publicForm);
@@ -24,7 +26,7 @@ export async function frontendDocument(overrides={}) {
   setErrors(){},scrollTop(){},setSaving(){},setSaveErr(){},setDone(){},notifyTelegram:async()=>{},
   FB:{getScoring:async()=>null,saveApp:async value=>{saved=value;}}};
  vm.createContext(sandbox);
- await vm.runInContext(`${scoring}\n${form}\n${example}\n${social}\nconst form={...TEST_FORM,screenshotData:${JSON.stringify(JPEG)},...overrides};\n${submit}\nsubmit();`,sandbox);
+ await vm.runInContext(`${legacyScoring}\n${form}\n${example}\n${social}\nconst form={...TEST_FORM,screenshotData:${JSON.stringify(JPEG)},...overrides};\n${submit}\nsubmit();`,sandbox);
  if(!saved) throw new Error('Frontend submit did not produce a document');
  const {id,...document}=JSON.parse(JSON.stringify(saved));
  document.date=NOW;document.updatedAt=NOW;
@@ -35,8 +37,23 @@ export async function publicFixture(overrides={}) {
  return {...Object.fromEntries(PUBLIC_FIELDS.map(key=>[key,document[key]])),...overrides};
 }
 export function frontendScore(data,config=null) {
- return JSON.parse(vm.runInNewContext(`${scoring}\nJSON.stringify(computeSocial(data, normalizeScoring(config)))`,{data,config}));
+ return JSON.parse(vm.runInNewContext(`${scoring}\nJSON.stringify(computeScore(data, normalizeScoring(config)))`,{data,config}));
 }
+export function frontendScoreFields(data,config=null) {
+ return JSON.parse(vm.runInNewContext(`${scoring}\nJSON.stringify(scoreDocumentFields(computeScore(data, normalizeScoring(config))))`,{data,config}));
+}
+export const LEGACY_SCORE_FIELDS=['perfLevel','bandLabel','erRate','reachRate','growthRate'];
+// Documento di schema 5: lo storico a 71 campi senza i campi del modello precedente, con il punteggio v2.
+export async function currentDocument(overrides={},config=null) {
+ const document=await frontendDocument(overrides);
+ for(const key of LEGACY_SCORE_FIELDS) delete document[key];
+ return {...document,schemaVersion:5,...frontendScoreFields(document,config)};
+}
+// Punteggio del modello precedente, per le candidature storiche.
+export function legacyScore(data,config=null) {
+ return JSON.parse(vm.runInNewContext(`${legacyScoring}\nJSON.stringify(computeSocial(data, normalizeScoring(config)))`,{data,config}));
+}
+export {scoring as frontendScoringSource};
 export function frontendDefault() {return JSON.parse(vm.runInNewContext(`${scoring}\nJSON.stringify(DEFAULT_SCORING)`));}
 export function fullOcr() {
  const n=value=>({value,visibility:'complete'});

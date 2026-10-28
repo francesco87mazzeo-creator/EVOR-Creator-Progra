@@ -24,6 +24,19 @@ test('String form numbers become JSON numbers; negative net and optional TikTok 
  for(const k of ['age','followers','views','netFollowers','interactions','accountsReached','tiktokFollowers'])assert.equal(typeof d[k],'number');
  assert.equal(d.netFollowers,-12);assert.equal(d.tiktokFollowers,0);
 });
+test('Optional accounts reached: empty becomes null (never zero) and passes the server validator',()=>{
+ for(const accountsReached of ['','   ',null,undefined]) {
+  const d=plain(buildPayload({...fixture,accountsReached}));
+  assert.equal(d.accountsReached,null,JSON.stringify(accountsReached));
+  assert.equal(validatePublicApplication(d).accountsReached,null);
+ }
+ assert.equal(plain(buildPayload({...fixture,accountsReached:'0'})).accountsReached,0);
+ assert.throws(()=>buildPayload({...fixture,accountsReached:'1.5'}),e=>e.code==='INVALID_NUMBER'&&e.field==='accountsReached');
+});
+test('Required Insights values are never sent as zero when empty',()=>{
+ for(const key of ['followers','views','interactions','netFollowers']) for(const value of ['','  ',undefined,null])
+  assert.throws(()=>buildPayload({...fixture,[key]:value}),e=>e.code==='INVALID_NUMBER'&&e.field===key,`${key}=${value}`);
+});
 for(const value of ['',null,undefined,'2.5','1e3','0x10','abc',NaN,Infinity,-1,1e12+1])test(`No silent numeric fallback for ${String(value)}`,()=>{
  assert.throws(()=>buildPayload({...fixture,followers:value}),e=>e.code==='INVALID_NUMBER'&&e.field==='followers');
 });

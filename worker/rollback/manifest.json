@@ -1,0 +1,14 @@
+{
+  "sourceCommit": "c29d05b5d75f176906288c5bc16be0b7fe9f7bbc",
+  "entry": "worker/src/worker.js",
+  "files": {
+    "worker/src/worker.js": "c54cd57426e732a2371440c1b5c4527e9fb7913ee667507fe3a6bb4d65c04331",
+    "worker/src/firebase-id-token.mjs": "dcc035a4df9dd41a2fc86583c68f5f34ad2ac0882ffa46bda7085b176d66a06a",
+    "worker/src/firestore.mjs": "a64c68c66522c844d523caf4635a237c80e5fadc5b926a8a2b436add7649715c",
+    "worker/src/google-auth.mjs": "d8ff464a29a66439c5f5c37c07973a0329fba2d53ca0935d1d82e1e86f3b2486",
+    "server/collective/application.mjs": "d1eb165cf06be950902f0e7f04b6df3382e5eabadc62e40c6f93e13209ec57be",
+    "server/collective/ocr.mjs": "27e045fbcdadb2eb4348a87b9ee45570213d6931ac1e9c5ef84bb3ccd7a1e645",
+    "server/collective/scoring.mjs": "b7332ec69a81227e4ef0e0ea4dddb58a19123406831c5efb237cae56740462ad",
+    "server/collective/validation.mjs": "e7b9397a3c5258330ecbc5bcc858f17ef53883a21bd530e4d72649a84e927a76"
+  }
+}

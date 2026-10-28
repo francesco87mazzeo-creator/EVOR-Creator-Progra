@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { DEFAULT_SCORING, computeSocial } from '../../server/collective/scoring.mjs';
+import { DEFAULT_SCORING, computeScore } from '../../server/collective/scoring.mjs';
 import { publicFixture } from '../../server/collective/test/frontend-reference.mjs';
 import { fromFirestoreValue } from '../src/firestore.mjs';
 import { freshWorker, baseEnv, post } from './helpers.mjs';
@@ -46,8 +46,8 @@ const readScoring = async () => {
 test('Emulator: admin salva lo scoring, il documento riletto è identico e /applications lo applica', async () => {
   const worker = await freshWorker();
   const cfg = structuredClone(DEFAULT_SCORING);
-  cfg.weights = { er: 10, reach: 10, growth: 80.5 };
-  cfg.levels[0].min = 90;
+  cfg.weights = { engagement: 10.5, visibility: 89.5 };
+  cfg.references.views = 5000;
   const res = await saveScoring(worker, cfg, 'admin', '192.0.2.90');
   assert.equal(res.status, 200);
   assert.deepEqual(await readScoring(), cfg);
@@ -57,15 +57,15 @@ test('Emulator: admin salva lo scoring, il documento riletto è identico e /appl
   const { id } = await app.json();
   const r = await realFetch(`${ROOT}/candidature/${id}`, { headers: { Authorization: 'Bearer owner' } });
   const saved = fromFirestoreValue({ mapValue: { fields: (await r.json()).fields } });
-  assert.equal(saved.socialScore, computeSocial(saved, cfg).socialScore);
-  assert.notEqual(saved.socialScore, computeSocial(saved, null).socialScore, 'score diverso da quello predefinito');
+  assert.equal(saved.socialScore, computeScore(saved, cfg).socialScore);
+  assert.notEqual(saved.socialScore, computeScore(saved, null).socialScore, 'score diverso da quello predefinito');
 });
 
 test('Emulator: manager e token alterato non modificano il documento', async () => {
   const worker = await freshWorker();
   const before = await readScoring();
   const changed = structuredClone(DEFAULT_SCORING);
-  changed.weights = { er: 100, reach: 0, growth: 0 };
+  changed.weights = { engagement: 100, visibility: 0 };
   assert.equal((await saveScoring(worker, changed, 'manager', '192.0.2.92')).status, 403);
   const forged = idToken('manager').split('.');
   forged[1] = b64({ ...JSON.parse(Buffer.from(forged[1], 'base64url')), role: 'admin' });

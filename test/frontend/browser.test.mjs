@@ -4,9 +4,10 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {validatePublicApplication,prepareApplication} from '../../server/collective/application.mjs';
-import {publicFixture,NOW} from '../../server/collective/test/frontend-reference.mjs';
+import {publicFixture,frontendDocument,NOW} from '../../server/collective/test/frontend-reference.mjs';
 import {SINGLE_PAGE} from './app-source.mjs';
 import {buildSinglePage,buildAdminPage} from '../../tools/frontend-mode.mjs';
+import {rollbackServices} from '../../worker/test/rollback-services.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
@@ -49,7 +50,7 @@ before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA
 after(async()=>browser?.close());
 // ocr: ({kind,index,route,cors,synthetic}) può rispondere al posto del Worker simulato (errore, ritardo, nessuna risposta);
 // se restituisce undefined vale la risposta sintetica. applicationResponses: risposte in sequenza per /applications.
-async function pageFor(t,{admin=false,applicationResponse,applicationResponses,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
+async function pageFor(t,{admin=false,applicationResponse,applicationResponses,applicationHandler=null,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
  const calls=[],errors=[],blocked=[],served=[],ocrIndex={};let applications=0;
@@ -79,6 +80,10 @@ async function pageFor(t,{admin=false,applicationResponse,applicationResponses,s
    if(url===mockWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
    if(url.endsWith('/applications')){
+    if(applicationHandler){
+     const response=await applicationHandler(new Request(url,{method:'POST',headers:req.headers(),body:req.postData()}));
+     return route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
+    }
     const r=applicationResponses?applicationResponses[Math.min(applications++,applicationResponses.length-1)]:applicationResponse;
     return route.fulfill({status:r?.status||201,headers:cors,contentType:'application/json',body:JSON.stringify(r?.body||{ok:true,id:'synthetic-result'})});
    }
@@ -187,18 +192,22 @@ test('Browser age checks reject minors and invalid ages without an applications 
 test('Admin scoring uses authenticated Worker save; read and reset remain unchanged',{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{admin:true});
  await page.getByRole('button',{name:'Scoring',exact:true}).click();
- const weight=page.locator('input[type="number"]').first();await weight.fill('12');
+ const weight=page.getByLabel('Coinvolgimento',{exact:true});await weight.fill('12');
  await page.getByRole('button',{name:'Ripristina valori iniziali',exact:true}).click();
- assert.equal(await weight.inputValue(),'45');assert.equal(calls.length,0);
+ assert.equal(await weight.inputValue(),'65');assert.equal(calls.length,0);
  const reads=await page.evaluate(()=>window.testCounters.reads);
  await page.getByRole('button',{name:'Salva configurazione',exact:true}).click();
  await page.getByText('Configurazione salvata',{exact:true}).waitFor();
  const sent=calls.filter(c=>c.url.endsWith('/admin/scoring'));assert.equal(sent.length,1);
  assert.equal(sent[0].headers.authorization,'Bearer synthetic-firebase-id-token');
- assert.equal(sent[0].body.version,2);assert.equal(sent[0].body.weights.er,45);assert.equal(sent[0].body.bands[4].max,null);
+ assert.deepEqual(sent[0].body,{version:3,weights:{engagement:65,visibility:35},references:{engagementRate:2,views:30000},lowBase:{views:1000,interactions:10}});
+ // Un campo vuoto non viene inviato come zero.
+ await weight.fill('');await page.getByRole('button',{name:'Salva configurazione',exact:true}).click();
+ await page.getByText('Controlla i valori evidenziati.',{exact:true}).waitFor();
+ assert.equal(calls.filter(c=>c.url.endsWith('/admin/scoring')).length,1);
  assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads,writes:0});
 });
-for(const [status,message] of [[400,'Configurazione non valida. Controlla pesi, soglie e fasce.'],[403,'Non sei autorizzato a modificare lo scoring. È richiesto il ruolo admin.']]) {
+for(const [status,message] of [[400,'Configurazione non valida. Controlla pesi, riferimenti e soglie.'],[403,'Non sei autorizzato a modificare lo scoring. È richiesto il ruolo admin.']]) {
  test(`Admin scoring HTTP ${status} shows error without saving or logging out`,{timeout:60000},async t=>{
   const {page,calls}=await pageFor(t,{admin:true,scoringResponse:{status,body:{error:'server internal detail'}}});
   await page.getByRole('button',{name:'Scoring',exact:true}).click();
@@ -254,6 +263,8 @@ test('Legacy overlong notes/code show clear errors and never trigger writes',{ti
 
 test('Mocked Worker URL is used for auth and notification error responses',async t=>{
  const {page,calls}=await pageFor(t,{admin:true});
+ // Il redirect termina prima che Babel abbia necessariamente caricato il modulo Admin.
+ await page.waitForFunction(()=>typeof AUTH!=='undefined' && typeof sendTelegram==='function');
  const result=await page.evaluate(async()=>{
   let error;try{await AUTH.login('synthetic-invalid');}catch(e){error=e.message;}
   return {error,notification:await sendTelegram('Synthetic test only')};
@@ -402,7 +413,7 @@ test('OCR 429 on the profile and 502 on Insight: both entered by hand, nothing m
  await fillPublic(page,{manual:true,beforeContinue:async()=>{
   await page.getByText(/^Troppe richieste di lettura in questo momento. Lo screenshot è caricato/).waitFor();
   await page.getByText(/^Il servizio di lettura automatica non è disponibile in questo momento. Lo screenshot è caricato/).waitFor();
-  await page.getByText(/inserire tu username, follower e i quattro dati Insight/).waitFor();
+  await page.getByText(/inserire tu username, follower e i dati Insight/).waitFor();
  },step1:async()=>{
   await page.getByText('La lettura automatica del profilo non era disponibile: inserisci username e follower come appaiono nello screenshot.',{exact:true}).waitFor();
   assert.equal(await page.locator('#f-ig').inputValue(),'');assert.equal(await page.locator('#f-fol').inputValue(),'');
@@ -687,4 +698,230 @@ test('Compression keeps the real readability floors and refuses budgets it canno
  assert.match(r.impossible.error,/troppo grande/,'an impossible budget is refused instead of going below the floors');
  assert.match(r.smallTight.error,/troppo grande/,'a narrow image is never shrunk below its own width');
  assert.equal(r.smallFree.width,300);assert.equal(r.smallFree.height,500);
+});
+
+/* ---------- Scoring v2: account raggiunti facoltativi, letture incerte, Admin ---------- */
+const complete=value=>({value,visibility:'complete'});
+const insightsRead=over=>({screen_type:'insights_ok',views:complete(24800),netFollowers:complete(260),interactions:complete(1120),accountsReached:complete(18400),...over});
+
+test('Accounts reached not in the screenshot: one screenshot is enough, the field stays empty and is sent as null',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:{value:null,visibility:'not_visible'}})):undefined});
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('È un dato facoltativo: puoi proseguire.',{exact:false}).first().waitFor();
+  assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),false);
+  assert.equal(await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).count(),1,'a second screenshot is offered, not required');
+  assert.equal(await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).count(),0);
+ },step1:async()=>{
+  assert.equal(await page.locator('#f-accountsReached').inputValue(),'');
+  assert.equal(await page.locator('#f-views').inputValue(),'24800');
+ }});
+ await page.getByText('Non indicato',{exact:true}).waitFor();   // riepilogo: nessuno zero mostrato
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.accountsReached,null);assert.equal(sent.body.ocrInsights.merged.accountsReached,null);
+ assert.equal(sent.body.views,24800);
+});
+
+test('Unreadable OCR values are never zero: a missing value asks for a second screenshot, which completes only that value',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,index,synthetic})=>kind!=='insights'?undefined
+  :index===0?synthetic(insightsRead({views:{value:'—',visibility:'complete'},accountsReached:{value:'non visibile'}}))
+  :synthetic(insightsRead({views:complete('31.000'),netFollowers:{value:null,visibility:'not_visible'},interactions:{value:null,visibility:'not_visible'}}))});
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).first().waitFor();
+  assert.equal(await page.locator('.status-box strong',{hasText:'Visualizzazioni'}).count()>0,true);
+  assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true,'no invented value lets the candidate through');
+  assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),1,'manual completion is offered, a second screenshot remains possible');
+  await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles({name:'second.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)});
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+ },step1:async()=>{
+  assert.equal(await page.locator('#f-views').inputValue(),'31000');
+  assert.equal(await page.locator('#f-interactions').inputValue(),'1120','the first reading is kept for the values it had');
+  assert.equal(await page.locator('#f-accountsReached').inputValue(),'18400','completed by the second screenshot');
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.views,31000);assert.equal(sent.body.ocrInsights.screenshot1.views.value,null);
+ assert.equal(sent.body.ocrInsights.screenshot1.accountsReached.value,null);
+});
+
+test('OCR values without an explicit visibility are read but must be double-checked, never shown as verified',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'?synthetic({screen_type:'insights_ok',views:'24.800',netFollowers:'+260',interactions:'1.120',accountsReached:'18.400'}):undefined});
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('✓ Dati letti · da ricontrollare',{exact:true}).waitFor();
+  assert.equal(await page.getByText('✓ Insight verificati',{exact:true}).count(),0);
+ },step1:async()=>{assert.equal(await page.locator('#f-views').inputValue(),'24800');}});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);
+ assert.equal(sent.body.ocrInsights.screenshot1.views.visibility,'partial');
+});
+
+test('Form step blocks empty or non-integer Insights values; zero and negative net followers are accepted',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t);
+ await fillPublic(page,{step1:async()=>{
+  await page.locator('#f-views').fill('');await page.locator('#f-interactions').fill('12.5');
+  await page.locator('#f-netFollowers').fill('0');await page.locator('#f-accountsReached').fill('');
+  await page.getByRole('button',{name:'Avanti',exact:true}).click();
+  await page.getByText('Dato mancante',{exact:true}).waitFor();
+  await page.getByText('Inserisci un numero intero',{exact:true}).waitFor();
+  assert.equal(await page.locator('#f-views').getAttribute('aria-invalid'),'true');
+  assert.equal(await page.locator('#f-accountsReached').getAttribute('aria-invalid'),'false','optional and empty is valid');
+  assert.equal(sentApplication(calls).length,0);
+  await page.locator('#f-views').fill('24800');await page.locator('#f-interactions').fill('1120');
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.netFollowers,0);assert.equal(sent.body.accountsReached,null);assert.equal(sent.body.interactions,1120);
+});
+
+test('Admin shows the v2 score, indicator B and low observation base; a correction keeps provenance and history',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Score',views:400,interactions:6,accountsReached:null},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate,allowWrites:true});
+ const row=page.locator('button.row').filter({hasText:'Synthetic Score'});
+ await row.getByText('Base ridotta',{exact:false}).waitFor();
+ await row.click();
+ await page.getByText('Punteggio quantitativo',{exact:true}).first().waitFor();
+ await page.getByText('Interazioni / account raggiunti · non disponibile',{exact:true}).waitFor();
+ await page.getByText('Base di osservazione molto ridotta',{exact:false}).first().waitFor();
+ for(const old of ['Social Performance Score','Fascia ','Engagement Rate','Performance numerica'])
+  assert.equal(await page.getByText(old,{exact:false}).count(),0,old);
+ await page.getByText('Inserito dal candidato',{exact:false}).first().waitFor();
+ await page.getByRole('button',{name:'Correggi dati Insights',exact:true}).click();
+ assert.equal(await page.getByLabel('Account raggiunti',{exact:true}).inputValue(),'','never prefilled with views');
+ await page.getByLabel('Visualizzazioni',{exact:true}).fill('');
+ await page.getByRole('button',{name:'Salva e ricalcola',exact:true}).click();
+ await page.getByText('Controlla i valori evidenziati.',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'an empty value is not saved as zero');
+ await page.getByLabel('Visualizzazioni',{exact:true}).fill('400');
+ await page.getByLabel('Account raggiunti',{exact:true}).fill('300');
+ await page.getByRole('button',{name:'Salva e ricalcola',exact:true}).click();
+ await page.getByText(/^Dati aggiornati\. Punteggio ricalcolato: \d+\/100$/).waitFor();
+ const w=await page.evaluate(()=>window.testCounters.lastWrite);
+ assert.equal(w.accountsReached,300);assert.equal(w.reachEngagementRate,2);assert.equal(w.scoringVersion,3);
+ assert.equal(w.insightsHistory.length,1);assert.deepEqual(w.insightsHistory[0],w.insightsCorrection);
+ assert.equal(w.insightsCorrection.previousValues.accountsReached,null);
+ assert.ok(!('status' in w),'the application status is never changed by scoring');
+ await page.getByText('Storico correzioni (1)',{exact:true}).waitFor();
+ await page.getByText('Corretto dallo staff',{exact:false}).first().waitFor();
+});
+
+test('Historical application: v2 score shown, the previous stored score is labelled and nothing is written',{timeout:60000},async t=>{
+ const candidate=await frontendDocument({fullName:'Synthetic Historic'});
+ assert.equal(candidate.schemaVersion,4);assert.equal(typeof candidate.perfLevel,'string');
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic Historic'}).click();
+ await page.getByText(`Punteggio registrato all'invio con il modello precedente: ${candidate.socialScore}/100.`,{exact:false}).waitFor();
+ await page.getByText('Interazioni / account raggiunti · non incide sul punteggio',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+/* ---------- Completamento manuale dopo letture OCR incomplete (audit PR #6) ---------- */
+const notVisible={value:null,visibility:'not_visible'};
+test('Two incomplete Insight readings of a valid screen: the candidate completes only the missing values by hand',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({views:notVisible,interactions:{value:'—',visibility:'complete'}})):undefined});
+ await fillPublic(page,{manual:true,beforeContinue:async()=>{
+  await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).first().waitFor();
+  await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles({name:'second.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)});
+  await page.getByText('La schermata è corretta, ma non siamo riusciti a leggere tutti i dati richiesti',{exact:false}).first().waitFor();
+  assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+ },step1:async()=>{
+  await page.getByText('Completa i dati Insight',{exact:true}).waitFor();
+  assert.equal(await page.locator('#f-views').inputValue(),'');assert.equal(await page.locator('#f-interactions').inputValue(),'');
+  assert.equal(await page.locator('#f-netFollowers').inputValue(),'260','values that were read are kept');
+  // Senza i dati obbligatori non si prosegue.
+  await page.getByRole('button',{name:'Avanti',exact:true}).click();
+  await page.getByText('Dato mancante',{exact:true}).first().waitFor();
+  await page.locator('#f-views').fill('23000');await page.locator('#f-interactions').fill('900');
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.deepEqual([sent.body.views,sent.body.interactions,sent.body.netFollowers,sent.body.accountsReached],[23000,900,260,18400]);
+ assert.equal(sent.body.ocrInsights.merged.views,null,'the OCR evidence shows the value was not read');
+ assert.ok(sent.body.ocrInsights.screenshot2,'both readings are kept');
+});
+
+test('Profile screen read without the follower count: followers entered by hand, username kept',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='profile'?synthetic({screen_type:'profile_ok',displayName:{value:'Synthetic Candidate',visibility:'complete',truncated:false},username:{value:'synthetic',visibility:'complete',truncated:false},followers:{value:'—',visibility:'partial'}}):undefined});
+ await fillPublic(page,{manual:true,beforeContinue:async()=>{
+  await page.getByText('La schermata è corretta, ma non siamo riusciti a leggere tutti i dati richiesti',{exact:false}).first().waitFor();
+  assert.equal(await page.locator('.status-box strong',{hasText:'Follower'}).count()>0,true);
+ },step1:async()=>{
+  await page.getByText('Non siamo riusciti a leggere tutti i dati del profilo: completa username e follower come appaiono nello screenshot.',{exact:true}).waitFor();
+  assert.equal(await page.locator('#f-ig').inputValue(),'@synthetic');assert.equal(await page.locator('#f-fol').inputValue(),'');
+  await page.getByRole('button',{name:'Avanti',exact:true}).click();
+  await page.getByText('Inserisci il numero di follower',{exact:true}).waitFor();
+  await page.locator('#f-fol').fill('7300');
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.followers,7300);assert.equal(sent.body.ocrProfile.result.followers.value,null);
+ assert.ok(sent.body.ocrInsights,'the complete Insight reading is kept');
+});
+
+test('Manual completion is never offered for wrong or uncertain screens',{timeout:60000},async t=>{
+ const {page}=await pageFor(t,{ocr:({kind,index,synthetic})=>kind!=='insights'?undefined
+  :index===0?synthetic(insightsRead({screen_type:'uncertain',views:notVisible})):synthetic({...insightsRead({views:notVisible}),screen_type:'dashboard_wrong'})});
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ const file={name:'synthetic.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)};
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(file);
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(file);
+ await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).first().waitFor();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'uncertain screen');
+ await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(file);
+ await page.getByRole('dialog').getByText('Schermata non corretta',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Ho capito',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'wrong screen');
+ assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+});
+
+/* ---------- Ripristino: pagina nuova aperta con un Worker precedente ---------- */
+test('Legacy endpoint rejection guidance: preserves the application if the candidate can add reach (not the rollback strategy)',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{applicationResponses:[{status:400,body:{ok:false,error:{code:'TYPE',path:'$.accountsReached'}}},{status:201}],
+  ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:notVisible})):undefined});
+ await fillPublic(page);
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByText('In questo momento serve anche questo dato: inseriscilo come appare nello screenshot e invia di nuovo.',{exact:true}).waitFor();
+ assert.equal(await page.locator('#f-accountsReached').getAttribute('aria-invalid'),'true');
+ await page.locator('#f-accountsReached').fill('15000');
+ for(let i=0;i<5;i++)await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ await page.locator('label.check input').check();
+ await submitAndConfirm(page);
+ const sent=sentApplication(calls);
+ assert.equal(sent.length,2);assert.equal(sent[0].body.accountsReached,null);assert.equal(sent[1].body.accountsReached,15000);
+ assert.notEqual(sent[0].headers['idempotency-key'],sent[1].headers['idempotency-key'],'a definitive 400 allows the corrected payload');
+});
+
+test('Compatibility rollback: a new page already open submits unavailable reach without inventing a value',{timeout:60000},async t=>{
+ const services=rollbackServices(),originalFetch=globalThis.fetch;
+ globalThis.fetch=services.fetch;t.after(()=>{globalThis.fetch=originalFetch;});
+ const currentWorker=(await import('../../worker/src/worker.js?browser-rollback=current')).default;
+ const compatWorker=(await import('../../worker/rollback/compat/worker/src/worker.js?browser-rollback=compat')).default;
+ let activeWorker=currentWorker;const pending=[];
+ const {page,calls}=await pageFor(t,{
+  applicationHandler:request=>activeWorker.fetch(request,services.env,{waitUntil:p=>pending.push(p)}),
+  ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:notVisible})):undefined
+ });
+ await fillPublic(page);
+ assert.equal(sentApplication(calls).length,0,'la pagina è già aperta e compilata prima del ripristino');
+ const pageState=await page.evaluate(()=>({url:location.href,started:performance.timeOrigin}));
+ activeWorker=compatWorker; // Ripristino del runtime, senza ricaricare né modificare la pagina aperta.
+ await submitAndConfirm(page);await Promise.all(pending);
+ const sent=sentApplication(calls);assert.equal(sent.length,1);
+ assert.equal(sent[0].body.accountsReached,null,'nessun valore inventato o richiesto al candidato');
+ assert.deepEqual(await page.evaluate(()=>({url:location.href,started:performance.timeOrigin})),pageState,'nessun reload');
+ assert.equal(services.store.size,1);
+ const saved=[...services.store.values()][0];
+ assert.equal(saved.accountsReached,null);assert.equal(saved.reachEngagementRate,null);
+ assert.equal(saved.schemaVersion,5);assert.equal(saved.scoringVersion,3);assert.equal(saved.status,'new');
+ assert.equal(services.calls.some(u=>u.includes('telegram')),false,'nessuna notifica reale');
+ await assertNoFirebase(page);
+});
+
+test('Admin: zero views show the overall score as not available, the zero stays visible as data',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Zero',views:0,interactions:0},{now:NOW});
+ assert.equal(candidate.socialScore,null);assert.equal(candidate.views,0);
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic Zero'}).click();
+ await page.getByText('Punteggio non disponibile: con zero visualizzazioni il coinvolgimento non è calcolabile. Lo zero resta salvato come dato osservato.',{exact:true}).waitFor();
+ assert.equal(await page.getByText('Punteggio non calcolabile',{exact:false}).count(),0,'not reported as missing data');
+ assert.equal(await page.locator('div.kv').filter({hasText:'Visualizzazioni'}).first().locator('.kv-v').innerText().then(v=>v.split('\n')[0]),'0');
 });

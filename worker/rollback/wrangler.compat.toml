@@ -1,0 +1,11 @@
+# SOLO preparazione locale. Pubblicazione esclusivamente con autorizzazione separata.
+# Ripristino del runtime, non downgrade del contratto a quello legacy obbligatorio-reach.
+# Binding/secret/limiti dell'istanza devono essere verificati e conservati prima del rilascio.
+name = "throbbing-feather-957f"
+main = "compat/worker/src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGIN = "https://collective.evorafitness.it"
+FIRESTORE_PROJECT_ID = "evora-athletes"

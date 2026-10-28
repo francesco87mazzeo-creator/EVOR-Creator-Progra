@@ -27,31 +27,92 @@ service cloud.firestore {
       return exact(d, ['views','netFollowers','interactions','accountsReached'], 4)
         && integer(d.views) && signed(d.netFollowers) && integer(d.interactions) && integer(d.accountsReached);
     }
+    function nullableInteger(v) { return v == null || integer(v); }
+    function nullableSigned(v) { return v == null || signed(v); }
+    function score100(v) { return v is int && v >= 0 && v <= 100; }
+    // Scoring v2: five values. Before a correction any value may be missing (legacy documents);
+    // after it only accountsReached may be null (optional, never replaced by views).
+    function previousValues(p) {
+      return exact(p, ['followers','views','netFollowers','interactions','accountsReached'], 5)
+        && nullableInteger(p.followers) && nullableInteger(p.views) && nullableSigned(p.netFollowers)
+        && nullableInteger(p.interactions) && nullableInteger(p.accountsReached);
+    }
+    function newValues(n) {
+      return exact(n, ['followers','views','netFollowers','interactions','accountsReached'], 5)
+        && integer(n.followers) && integer(n.views) && signed(n.netFollowers)
+        && integer(n.interactions) && nullableInteger(n.accountsReached);
+    }
+    // Four-value corrections from the previous panel stay valid during the rollout.
     function correction(c, d) {
       return exact(c, ['correctedAt','correctedBy','previousValues','newValues','note'], 5)
-        && iso(c.correctedAt) && c.correctedBy == 'staff'
-        && metrics(c.previousValues) && metrics(c.newValues) && str(c.note,2000)
-        && c.newValues.views == d.views && c.newValues.netFollowers == d.netFollowers
-        && c.newValues.interactions == d.interactions && c.newValues.accountsReached == d.accountsReached;
+        && iso(c.correctedAt) && c.correctedBy == 'staff' && str(c.note,2000)
+        && ((metrics(c.previousValues) && metrics(c.newValues)
+            && c.newValues.views == d.views && c.newValues.netFollowers == d.netFollowers
+            && c.newValues.interactions == d.interactions && c.newValues.accountsReached == d.accountsReached)
+          || (previousValues(c.previousValues) && newValues(c.newValues)
+            && c.newValues.followers == d.followers && c.newValues.views == d.views
+            && c.newValues.netFollowers == d.netFollowers && c.newValues.interactions == d.interactions
+            && c.newValues.accountsReached == d.get('accountsReached', null)));
+    }
+    // Append-only history: earlier entries unchanged, new last entry equal to the new correction.
+    // A legacy single correction may be carried over as the first entry.
+    function history(h, d) {
+      let old = resource.data.get('insightsHistory', null);
+      let previous = resource.data.get('insightsCorrection', null);
+      return h is list && h.size() >= 1 && h.size() <= 50 && h[h.size()-1] == d.insightsCorrection
+        && ((old == null && h.size() == 1 && previous == null)
+          || (old == null && h.size() == 2 && previous != null && h[0] == previous)
+          || (old != null && old is list && h.size() == old.size() + 1 && h[0:old.size()] == old));
     }
     function staffUpdate(d) {
       let c = d.diff(resource.data).affectedKeys();
-      return c.hasOnly(['status','notes','creatorCode','evaluation','views','netFollowers','interactions','accountsReached','insightsCorrection','socialScore','perfLevel','erRate','reachRate','growthRate','updatedAt'])
-        && iso(d.updatedAt)
-        && (!c.hasAny(['status']) || status(d.status))
+      return c.hasOnly(['status','notes','creatorCode','evaluation','followers','views','netFollowers','interactions','accountsReached','insightsCorrection','insightsHistory',
+          'socialScore','perfLevel','erRate','reachRate','growthRate',
+          'scoringVersion','engagementRate','engagementScore','visibilityScore','reachEngagementRate','lowBase','updatedAt'])
+        && iso(d.updatedAt) && changedFields(c, d);
+    }
+    // Checks grouped by field family; a group is evaluated only when one of its fields changed,
+    // keeping every request (denials included) within the expression budget.
+    function changedFields(c, d) {
+      return (c.hasAny(['status','notes','creatorCode','evaluation']) ? management(c, d) : true)
+        && (c.hasAny(['followers','views','netFollowers','interactions','accountsReached']) ? counts(c, d) : true)
+        && (c.hasAny(['socialScore','perfLevel','erRate','reachRate','growthRate']) ? previousScore(c, d) : true)
+        && (c.hasAny(['scoringVersion','engagementRate','engagementScore','visibilityScore','reachEngagementRate','lowBase']) ? currentScore(c, d) : true)
+        && (c.hasAny(['insightsCorrection','insightsHistory']) ? corrections(c, d) : true);
+    }
+    function management(c, d) {
+      return (!c.hasAny(['status']) || status(d.status))
         && (!c.hasAny(['notes']) || str(d.notes,10000))
         && (!c.hasAny(['creatorCode']) || str(d.creatorCode,120))
-        && (!c.hasAny(['evaluation']) || evaluation(d.evaluation))
+        && (!c.hasAny(['evaluation']) || evaluation(d.evaluation));
+    }
+    function counts(c, d) {
+      return (!c.hasAny(['followers']) || integer(d.followers))
         && (!c.hasAny(['views']) || integer(d.views))
         && (!c.hasAny(['netFollowers']) || signed(d.netFollowers))
         && (!c.hasAny(['interactions']) || integer(d.interactions))
-        && (!c.hasAny(['accountsReached']) || integer(d.accountsReached))
-        && (!c.hasAny(['socialScore']) || (d.socialScore is int && d.socialScore >= 0 && d.socialScore <= 100))
+        && (!c.hasAny(['accountsReached']) || nullableInteger(d.accountsReached));
+    }
+    // Fields of the previous model, still written by the previous panel during the rollout.
+    function previousScore(c, d) {
+      // null: punteggio v2 non disponibile (zero visualizzazioni).
+      return (!c.hasAny(['socialScore']) || d.socialScore == null || score100(d.socialScore))
         && (!c.hasAny(['perfLevel']) || performance(d.perfLevel))
         && (!c.hasAny(['erRate']) || metric(d.erRate))
         && (!c.hasAny(['reachRate']) || metric(d.reachRate))
-        && (!c.hasAny(['growthRate']) || signedMetric(d.growthRate))
-        && (!c.hasAny(['insightsCorrection']) || correction(d.insightsCorrection,d));
+        && (!c.hasAny(['growthRate']) || signedMetric(d.growthRate));
+    }
+    function currentScore(c, d) {
+      return (!c.hasAny(['scoringVersion']) || d.scoringVersion == 3)
+        && (!c.hasAny(['engagementRate']) || d.engagementRate == null || metric(d.engagementRate))
+        && (!c.hasAny(['engagementScore']) || d.engagementScore == null || score100(d.engagementScore))
+        && (!c.hasAny(['visibilityScore']) || d.visibilityScore == null || score100(d.visibilityScore))
+        && (!c.hasAny(['reachEngagementRate']) || d.reachEngagementRate == null || metric(d.reachEngagementRate))
+        && (!c.hasAny(['lowBase']) || d.lowBase is bool);
+    }
+    function corrections(c, d) {
+      return (!c.hasAny(['insightsCorrection']) || correction(d.insightsCorrection,d))
+        && (!c.hasAny(['insightsHistory']) || (c.hasAny(['insightsCorrection']) && history(d.insightsHistory,d)));
     }
     match /candidature/{id} {
       // Server REST writes authenticated with IAM bypass these client rules.
