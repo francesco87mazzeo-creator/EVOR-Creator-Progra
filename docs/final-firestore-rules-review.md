@@ -120,6 +120,11 @@ vincoli o accettare errori di budget come dinieghi di autorizzazione riusciti.
 
 ## Procedura Windows per completare l'esecuzione
 
+> **Aggiornamento 28 ottobre 2026:** procedura storica. Il branch indicato sotto contiene
+> ancora il file legacy `html ` e su Windows non completa il checkout. Per la verifica
+> attuale seguire `security/firestore/WINDOWS.md` (opzione A, clone di un commit
+> successivo alla rimozione del file).
+
 Usare la versione aggiornata del branch `development/collective-applications-frontend`,
 non il vecchio branch A1. Conservare anche `test/frontend/legacy-submit-reference.mjs`
 nella struttura relativa: è importato dalle fixture. La pubblicazione del branch
