@@ -101,7 +101,7 @@ Finché la protezione non è attiva, i test non impediscono un merge.
 
    Lo strumento scrive:
    - `index.html`: pagina unica con gli stessi script (versioni e `integrity`), stili e moduli in un solo script Babel. Il pubblico è su `/`, l'area staff su `/#admin`.
-   - `admin/index.html`: reindirizzamento a `../#admin`, così gli accessi diretti e i segnalibri di `/admin/` portano all'area staff della pagina unica;
+   - `admin/index.html`: la stessa pagina unica, con percorsi relativi alla cartella e `noindex`. Aperta da `/admin/`, mostra direttamente l'area staff. **Non reindirizza**: con un reindirizzamento verso `/#admin`, una pagina pubblica separata ancora in cache (che manda `/#admin` ad `admin/`) creerebbe un ciclo infinito;
    - `frontend-mode.json`: `{"mode": "single-page"}`.
 
    `app/` **non va toccata**: le pagine separate ancora in cache la richiedono.
@@ -115,16 +115,41 @@ Finché la protezione non è attiva, i test non impediscono un merge.
 
    **Come si comportano i test nella pagina unica:**
    - i test che riguardano solo la separazione risultano **saltati con il motivo** (`frontend-mode.json = single-page`);
-   - al loro posto valgono quelli della pagina unica: pagine identiche a quelle generate, `admin/` che rimanda a `/#admin`, `app/` ancora presente;
+   - al loro posto valgono quelli della pagina unica: pagine identiche a quelle generate, nessun reindirizzamento, `app/` ancora presente;
    - tutti gli altri restano invariati.
 4. **Commit, push e PR verso `main`:** i controlli `unit`, `browser`, `firestore-rules` e `hygiene` devono essere verdi. Poi merge.
 5. **Verifiche dopo il merge:**
    - la build di Pages è completata (`gh api repos/<owner>/<repo>/pages/builds/latest`);
    - dopo almeno 10 minuti, in una finestra privata e da telefono: `/` mostra il modulo, `/#admin` e `/admin/` l'area staff.
 
-**Durante il ripristino:**
-- **Modifiche ai moduli `app/`:** dopo ogni modifica si riesegue `node tools/frontend-mode.mjs single-page` per rigenerare la pagina; un test lo impone.
-- **Ritorno alla separazione:** si fa il `git revert` del commit di ripristino (una PR normale), che riporta pagine e `frontend-mode.json` alla separazione.
+**Modifiche ai moduli `app/` durante il ripristino:** dopo ogni modifica si riesegue `node tools/frontend-mode.mjs single-page` per rigenerare entrambe le pagine; un test lo impone.
+
+### Ritorno alla separazione
+
+Anche questo è una PR normale, che vale anche se durante il ripristino i moduli `app/` sono cambiati.
+
+1. Si riprendono le due pagine separate e `frontend-mode.json` dall'ultimo commit precedente al ripristino.
+2. Si aggiornano le versioni dei moduli.
+
+```sh
+git switch -c rollback/return origin/main
+git checkout <ultimo commit prima del ripristino> -- index.html admin/index.html frontend-mode.json
+node tools/asset-versions.mjs --write
+node tools/frontend-mode.mjs
+```
+
+L'ultimo comando deve rispondere «Modalità: separated». Poi commit, PR e controlli verdi.
+
+**Perché non un semplice `git revert`:** funziona solo se nel frattempo le pagine non sono state rigenerate. Dopo una modifica dei moduli va in conflitto, oppure lascia versioni `?v=` non aggiornate; il test delle versioni le rileva comunque.
+
+### Pagine in cache durante le transizioni
+
+Per circa 10 minuti un browser può combinare pagine di versioni diverse: separata S e ripristino R, per `index.html` e per `admin/index.html`. Nessuna combinazione rimbalza:
+- l'unico reindirizzamento è quello della pagina pubblica separata, da `/#admin` ad `admin/`;
+- tutte le versioni di `admin/` mostrano l'area staff senza reindirizzare;
+- la pagina unica gestisce `/#admin` al proprio interno.
+
+Il test browser «Mixed cached pages» prova le 8 combinazioni (`index` S/R × `admin` S/R × ingresso `/#admin` o `/admin/`) e conta le navigazioni. Con il vecchio reindirizzamento di `admin/` verso `/#admin`, le combinazioni con pagina pubblica separata non terminano mai il caricamento.
 
 **Il ripristino non è atomico:** per circa 10 minuti alcuni browser useranno ancora le pagine separate in cache. Restano funzionanti perché `app/` non viene rimossa.
 
