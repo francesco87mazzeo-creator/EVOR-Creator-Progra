@@ -45,6 +45,12 @@ test('The legacy prototype with a trailing-space name is not tracked', () => {
   assert.ok(!files.includes('html '));
 });
 
+test('Checked-out text files keep LF line endings, including on Windows', () => {
+  assert.match(readFileSync(join(root, '.gitattributes'), 'utf8'), /^\* text=auto eol=lf$/m);
+  const crlf = files.filter(p => /\.(html|js|mjs|json|rules|md|yml)$/.test(p) && readFileSync(join(root, p), 'utf8').includes('\r\n'));
+  assert.deepEqual(crlf, []);
+});
+
 test('No hardcoded admin password or staff code in application code', () => {
   const findings = [];
   for (const p of files.filter(scannedForPasswords)) {
