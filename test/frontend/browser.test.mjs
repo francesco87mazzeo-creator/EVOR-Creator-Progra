@@ -301,7 +301,7 @@ test('Single-page rollback (generated from the current modules): candidature, st
  await page.getByRole('button',{name:'Form di prova',exact:true}).waitFor();
 });
 
-test('Staff page opens from admin/ and from the historical /#admin address',separatedOnly,async t=>{
+test('Staff page opens from admin/ and from the historical /#admin address',{skip:SINGLE_PAGE&&'frontend-mode.json = single-page: admin/ rimanda a /#admin, verificato dal test «Single-page rollback»'},async t=>{
  const {page,served}=await pageFor(t,{admin:true});
  assert.equal(page.url(),`${mockOrigin}/admin/`);
  await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
