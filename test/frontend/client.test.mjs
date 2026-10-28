@@ -110,6 +110,49 @@ for(const [label,second] of [
  await c.send(fixture);
  assert.equal(calls.length,3);assert.equal(calls[2].headers['Idempotency-Key'],calls[0].headers['Idempotency-Key']);assert.equal(calls[2].body,calls[0].body);
 });
+// Sequenze riprodotte dalla seconda revisione: un esito incerto resta tale per tutta la candidatura pendente.
+// Ogni passo è un invio IDENTICO; alla fine il candidato modifica un campo.
+const outcome={
+ 429:async()=>response(429,{error:{code:'RATE_LIMITED'}}),422:async()=>response(422,{error:{code:'RANGE',path:'$.age'}}),
+ 400:async()=>response(400,{error:'INVALID_REQUEST'}),503:async()=>response(503,{error:{code:'SERVICE_UNAVAILABLE'}}),
+ 409:async()=>response(409,{}),network:async()=>{throw Error('offline');},
+ timeout:(url,options)=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true})),
+};
+function sequence(steps){
+ const calls=[];
+ const c=createSubmissionClient({endpoint:'https://worker.invalid/applications',newKey:key,timeoutMs:5,fetchImpl:async(url,options)=>{
+  calls.push(options);const step=steps[calls.length-1];
+  return step?outcome[step](url,options):response(200,{ok:true,id:'synthetic-id',duplicate:true});
+ }});
+ return {c,calls};
+}
+for(const steps of [
+ ['429','network','429'],
+ ['429','timeout','429'],
+ ['network','429'],
+ ['timeout','429','429'],
+ ['503','422'],
+ ['timeout','400'],
+ ['409','429'],
+ ['network','422','429'],
+])test(`Uncertain outcome is sticky: ${steps.join(' → ')} → change is refused, no new request or key`,async()=>{
+ const {c,calls}=sequence(steps);
+ for(const _ of steps)await assert.rejects(c.send(fixture));
+ assert.equal(calls.length,steps.length);
+ assert.ok(calls.every(o=>o.headers['Idempotency-Key']===calls[0].headers['Idempotency-Key']),'every identical retry keeps the key');
+ await assert.rejects(c.send({...fixture,extra:'changed after an uncertain outcome'}),e=>e.code==='UNCONFIRMED_CHANGE');
+ assert.equal(calls.length,steps.length,'the change never leaves the browser');
+ // Resta possibile solo l'invio identico, con la stessa chiave: il Worker lo conferma come duplicato.
+ const replay=await c.send(fixture);assert.equal(replay.duplicate,true);
+ assert.equal(calls.at(-1).headers['Idempotency-Key'],calls[0].headers['Idempotency-Key']);assert.equal(calls.at(-1).body,calls[0].body);
+});
+for(const steps of [['429'],['429','429'],['429','429','429'],['422','429']])
+ test(`Only definitive rejections (${steps.join(' → ')}): correcting the data is allowed with a fresh key`,async()=>{
+  const {c,calls}=sequence(steps);
+  for(const _ of steps)await assert.rejects(c.send(fixture),e=>!e.ambiguous);
+  await c.send({...fixture,extra:'corrected'});
+  assert.equal(calls.length,steps.length+1);assert.notEqual(calls.at(-1).headers['Idempotency-Key'],calls[0].headers['Idempotency-Key']);
+ });
 test('429 → identical retry → 429 again: correction allowed, because the last attempt was rejected',async()=>{
  const calls=[];const c=client(async(...args)=>{calls.push(args);return calls.length<=2?response(429,{}):response();});
  await assert.rejects(c.send(fixture));await assert.rejects(c.send(fixture));

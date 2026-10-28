@@ -89,6 +89,8 @@
       const attempt=pending;
       // Each attempt starts locked: a correction is allowed only if THIS attempt is definitively rejected.
       // A previous rejection (e.g. 429) never survives a later identical retry whose outcome is uncertain.
+      // attempt.uncertain is sticky for the whole pending application: once any attempt may have been
+      // stored, no later rejection (429 included) can unlock a new key; only the identical resend remains.
       attempt.editable=false;
       inFlight=(async()=>{
         const controller=new AbortController();
@@ -108,7 +110,7 @@
             // Only definitive validation/access rejections permit a corrected new payload/key.
             // 429 too: the Worker rate limiter answers before reading the body, so nothing was stored.
             // An unchanged resend keeps the same key; no automatic retry is scheduled.
-            if ([400,401,403,405,413,415,422,429].includes(response.status)) attempt.editable=true;
+            if ([400,401,403,405,413,415,422,429].includes(response.status) && !attempt.uncertain) attempt.editable=true;
             throw error;
           }
           // Confirm the supplied /applications contract, including replay semantics.
@@ -118,9 +120,10 @@
           pending=null;
           return {simulated:false,id:data.id,duplicate:response.status===200};
         } catch(error) {
-          if (error instanceof SubmissionError) throw error;
-          throw new SubmissionError(controller.signal.aborted?'TIMEOUT':'NETWORK',
+          const failure=error instanceof SubmissionError?error:new SubmissionError(controller.signal.aborted?'TIMEOUT':'NETWORK',
             'Il salvataggio non è confermato. Controlla la connessione e riprova senza modificare i dati.',{ambiguous:true});
+          if (failure.ambiguous) {attempt.uncertain=true;attempt.editable=false;}
+          throw failure;
         } finally {clearTimeout(timer);inFlight=null;}
       })();
       return inFlight;

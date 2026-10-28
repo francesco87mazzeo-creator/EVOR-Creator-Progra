@@ -490,8 +490,20 @@ test('Screenshots: each within 700,000 characters and the sum fitted to 900,000 
  for(const k of ['screenshotData','screenshotData2','profileScreenshotData'])assert.ok(sent.body[k].length>=50000,`${k} still a usable image`);
 });
 
+/**
+ * Attende che Babel abbia eseguito per intero i moduli richiesti (registrati nell'ultima riga di ciascun modulo)
+ * e che i nomi usati dal test siano definiti. page.goto termina al "load", prima della compilazione di Babel.
+ */
+async function appReady(page,names,modules=['app/shared.jsx','app/public-form.jsx']){
+ await page.waitForFunction(({names,modules})=>{
+  try{ if(!modules.every(m=>CollectiveModules.has(m)))return false; }catch{ return false; }
+  return names.every(n=>{try{return typeof (0,eval)(n)!=='undefined';}catch{return false;}});
+ },{names,modules});
+}
+
 test('Screenshot fitting recompresses only when needed and reports when the sum cannot fit',{timeout:60000},async t=>{
  const {page}=await pageFor(t);
+ await appReady(page,['compressImage','readFileAsDataURL','fitScreenshotsToLimit']);
  const result=await page.evaluate(async()=>{
   const c=document.createElement('canvas');c.width=900;c.height=900;const g=c.getContext('2d');
   for(let i=0;i<900*900/40;i++){g.fillStyle=`rgb(${Math.random()*255|0},${Math.random()*255|0},${Math.random()*255|0})`;g.fillRect(Math.random()*900,Math.random()*900,3,3);}
@@ -651,6 +663,7 @@ for(const status of [400,403,413])test(`OCR HTTP ${status} is not a temporary fa
 
 test('Compression keeps the real readability floors and refuses budgets it cannot reach',{timeout:60000},async t=>{
  const {page}=await pageFor(t);
+ await appReady(page,['compressImageDetailed','MAX_STORED_BYTES','IMG_MIN_WIDTH','IMG_MIN_QUALITY']);
  const r=await page.evaluate(async()=>{
   const noisy=(w,h,cell)=>{const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
    for(let y=0;y<h;y+=cell)for(let x=0;x<w;x+=cell){g.fillStyle=`rgb(${Math.random()*255|0},${Math.random()*255|0},${Math.random()*255|0})`;g.fillRect(x,y,cell,cell);}return c.toDataURL('image/png');};
