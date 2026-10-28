@@ -47,7 +47,7 @@ const firebaseStub=`(function(){
 let browser;
 before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--host-resolver-rules=MAP * ~NOTFOUND']});});
 after(async()=>browser?.close());
-async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,entry=null}={}) {
+async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
  const calls=[],errors=[],blocked=[],served=[];
@@ -89,13 +89,11 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
   return route.abort('blockedbyclient');
  });
  // L'area staff si apre dall'indirizzo storico /#admin: reindirizza ad admin/, oppure resta sulla pagina unica nel ripristino.
- // entry: percorso di ingresso con caricamento completo (per esempio '/admin/'); navigations conta i caricamenti del documento.
- const navigations={count:0};page.on('framenavigated',f=>{if(f===page.mainFrame())navigations.count++;});
- await page.goto(`${mockOrigin}${entry??(admin?'/#admin':'/')}`);
+ await page.goto(`${mockOrigin}/${admin?'#admin':''}`);
  if(admin&&!SINGLE_PAGE)await page.waitForURL(`${mockOrigin}/admin/`);
  if(!expectBlocked)t.after(()=>assert.deepEqual(blocked,[],'No request may leave the test harness'));
  if(!expectErrors)t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid production configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
- return{page,calls,blocked,served,errors,navigations};
+ return{page,calls,blocked,served,errors};
 }
 /** Pagina pubblica: nessun SDK Firebase caricato, quindi nessuna lettura o scrittura possibile.
  * Nella pagina unica (ripristino) Firebase si carica come prima della separazione: nessuna lettura o scrittura. */
@@ -313,8 +311,10 @@ for(const [entry,expected] of [['/#admin',{S:'/admin/',R:'/#admin'}],['/admin/',
  for(const idx of ['S','R'])for(const adm of ['S','R'])
   test(`Mixed cached pages: index ${idx} + admin ${adm}, entry ${entry} reaches the staff area without redirect loops`,{timeout:60000,skip:SINGLE_PAGE&&'frontend-mode.json = single-page: le pagine separate S non sono sul disco; matrice verificata in modalità separata'},async t=>{
    const overrides={...(idx==='R'?{'index.html':buildSinglePage()}:{}),...(adm==='R'?{'admin/index.html':buildAdminPage()}:{})};
-   // Ingresso con caricamento completo, come da segnalibro o barra degli indirizzi (non un cambio di sola #).
-   const {page,navigations:navs}=await pageFor(t,{moduleOverrides:overrides,entry});
+   const {page}=await pageFor(t,{moduleOverrides:overrides});
+   // Ingresso con caricamento completo, come da segnalibro (la query evita un cambio di sola # sulla pagina già aperta).
+   const navs={count:0};page.on('framenavigated',f=>{if(f===page.mainFrame())navs.count++;});
+   await page.goto(`${mockOrigin}${entry==='/#admin'?'/?ingresso#admin':'/admin/'}`);
    await page.getByRole('button',{name:'Scoring',exact:true}).waitFor({timeout:20000});
    await page.waitForTimeout(1500);
    assert.ok(navs.count<=2,`${navs.count} navigazioni: possibile reindirizzamento circolare`);
