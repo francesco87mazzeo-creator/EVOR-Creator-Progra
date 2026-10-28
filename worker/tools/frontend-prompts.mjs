@@ -1,12 +1,10 @@
-// Legge da fixtures/index.html i testi esatti dei prompt OCR del frontend.
+// Legge dal frontend (pagine e moduli app/) i testi esatti dei prompt OCR.
 // Usato solo dai test e per rigenerare gli hash ammessi nel Worker: il Worker non legge questo file.
-import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
+import { frontendSource as html } from '../../test/frontend/app-source.mjs';
 
 export const FIELD_LABELS = ['Visualizzazioni', 'Follower netti', 'Interazioni', 'Account raggiunti'];
-
-const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
 
 function literalAt(quote) {
   let k = quote + 1;

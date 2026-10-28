@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {DEFAULT_SCORING} from '../../server/collective/scoring.mjs';
 const source=await readFile(new URL('../../public/admin-scoring-client.js',import.meta.url),'utf8');
-const html=await readFile(new URL('../../index.html',import.meta.url),'utf8');
+import {frontendSource as html} from './app-source.mjs';   // pagine e moduli app/ dopo la separazione
 const sandbox={AbortController,setTimeout,clearTimeout};vm.createContext(sandbox);vm.runInContext(source,sandbox);
 const {saveScoring}=sandbox.CollectiveAdminScoring;
 const config=structuredClone(DEFAULT_SCORING),endpoint='https://worker.invalid/admin/scoring';

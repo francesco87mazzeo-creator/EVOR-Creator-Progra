@@ -1,19 +1,19 @@
 // The 71-field persisted-document oracle is historical; current HTTP payloads are tested in test/frontend.
 import {legacySubmit} from '../../../test/frontend/legacy-submit-reference.mjs';
 // Evaluate only the pure form/scoring/submit fragments, never Firebase config or JSX.
-import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-const html = await readFile(new URL('../../../index.html', import.meta.url), 'utf8');
-function fragment(start, end) {
-  const a = html.indexOf(start), b = html.indexOf(end, a);
+import { frontendSource as html, admin, publicForm } from '../../../test/frontend/app-source.mjs';
+function fragment(start, end, from = html) {
+  const a = from.indexOf(start), b = from.indexOf(end, a);
   if (a < 0 || b < 0) throw new Error(`Frontend contract changed: ${start}`);
-  return html.slice(a,b);
+  return from.slice(a,b);
 }
 const empty = fragment('const EMPTY_FORM =', 'const YESNO =');
-const scoring = fragment('const SCORING_VERSION =', '/* ============================================================================\n   6. UTILITY');
+// Scoring: area staff (app/admin.jsx). Esempio di prova: modulo pubblico (app/public-form.jsx).
+const scoring = fragment('const SCORING_VERSION =', '/* ============================================================================\n   10. EXPORT CSV', admin);
 const social = fragment('const parseSocial =', '/** Sfugge');
 const submit = legacySubmit;
-const example = fragment('const TEST_FORM =', '/* ============================================================================\n   10. EXPORT CSV');
+const example = fragment('const TEST_FORM =', '/* ---------- fine di app/public-form.jsx', publicForm);
 export const stamp = '2026-01-01T12:00:00.000Z';
 export const jpeg = 'data:image/jpeg;base64,/9j/2Q==';
 export async function submission(overrides = {}) {

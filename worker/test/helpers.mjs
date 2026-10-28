@@ -1,5 +1,4 @@
 // Strumenti comuni ai test: Worker isolato per test, fetch simulato, frammenti reali del frontend.
-import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { legacyNotifyTelegram } from './legacy-notify-reference.mjs';
 
@@ -57,7 +56,7 @@ export const telegramOk = () => () =>
   new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
 
 /* ---------- Frammenti reali del frontend ---------- */
-const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
+import { frontendSource as html } from '../../test/frontend/app-source.mjs'; // pagine e moduli app/
 export const frontendSource = html;
 
 function fragment(start, end) {

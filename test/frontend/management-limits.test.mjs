@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {computeSocial,DEFAULT_SCORING} from '../../server/collective/scoring.mjs';
-const html=await readFile(new URL('../../index.html',import.meta.url),'utf8');
+import {frontendSource as html} from './app-source.mjs';   // pagine e moduli app/ dopo la separazione
 const limits=html.match(/const MANAGEMENT_LIMITS = Object\.freeze\(\{[^\n]+\}\);/)[0];
 function section(start,end){const a=html.indexOf(start),b=html.indexOf(end,a);assert.ok(a>=0&&b>a);return html.slice(a,b);}
 const detail=section('function CandidateDetail(','const BENCH_LEVELS');

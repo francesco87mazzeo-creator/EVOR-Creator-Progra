@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {submission,defaultScoring,completeOcr} from './frontend-fixture.mjs';
 const rules=await readFile(new URL('../firestore.rules',import.meta.url),'utf8');
-const frontend=await readFile(new URL('../../../index.html',import.meta.url),'utf8');
+import {frontendSource as frontend} from '../../../test/frontend/app-source.mjs';   // pagine e moduli app/
 // Contract checks do not replace emulator compilation or authorization tests.
 test('Original Rules key set matches historical persisted document (71 fields)',async()=>{
  const match=rules.match(/function applicationKeys\(d\) \{ return exact\(d, (\[[^\n]+\])/);
