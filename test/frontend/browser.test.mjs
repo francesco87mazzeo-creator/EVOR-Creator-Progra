@@ -8,7 +8,8 @@ import {publicFixture,NOW} from '../../server/collective/test/frontend-reference
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
-const assetRequire=createRequire(`${assets}/package.json`);
+// Babel può stare in una cartella a parte (EVORA_BABEL_ASSETS): deve essere la versione fissata nelle pagine.
+const babelRequire=createRequire(`${process.env.EVORA_BABEL_ASSETS||assets}/package.json`);
 const html=await readFile(new URL('../../index.html',import.meta.url),'utf8');
 const workerConfig=await readFile(new URL('../../public/worker-config.js',import.meta.url),'utf8');
 const mockWorker='https://throbbing-feather-957f.francesco87-mazzeo.workers.dev';
@@ -16,9 +17,9 @@ const mockOrigin='https://synthetic.collective.test';
 const client=await readFile(new URL('../../public/applications-client.js',import.meta.url),'utf8');
 const adminScoringClient=await readFile(new URL('../../public/admin-scoring-client.js',import.meta.url),'utf8');
 const js={
- 'https://unpkg.com/react@18/umd/react.production.min.js':await readFile(`${assets}/node_modules/react/umd/react.production.min.js`,'utf8'),
- 'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js':await readFile(`${assets}/node_modules/react-dom/umd/react-dom.production.min.js`,'utf8'),
- 'https://unpkg.com/@babel/standalone/babel.min.js':await readFile(assetRequire.resolve('@babel/standalone'),'utf8')
+ 'https://unpkg.com/react@18.3.1/umd/react.production.min.js':await readFile(`${assets}/node_modules/react/umd/react.production.min.js`),
+ 'https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js':await readFile(`${assets}/node_modules/react-dom/umd/react-dom.production.min.js`),
+ 'https://unpkg.com/@babel/standalone@8.0.9/babel.min.js':await readFile(babelRequire.resolve('@babel/standalone/babel.min.js'))
 };
 const firebaseStub=`(function(){
  const counters=window.testCounters=window.testCounters||{reads:0,writes:0};
@@ -53,7 +54,8 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
   if(url===mockOrigin+'/public/applications-client.js')return route.fulfill({contentType:'text/javascript',body:client});
   if(url===mockOrigin+'/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
   if(url.startsWith(mockOrigin+'/'))return route.fulfill({contentType:'text/html',body:html});
-  if(js[url])return route.fulfill({contentType:'text/javascript',body:js[url]});
+  // Come unpkg (CORS *): con crossorigin il browser verifica davvero gli hash integrity delle pagine.
+  if(js[url])return route.fulfill({contentType:'text/javascript',headers:{'Access-Control-Allow-Origin':'*'},body:js[url]});
   if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites)).replace('__SIGNED_IN__',JSON.stringify(signedIn))});
   if(url.startsWith('https://fonts.'))return route.fulfill({contentType:'text/css',body:''});
   if(req.method()==='POST') {

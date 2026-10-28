@@ -1,0 +1,13 @@
+# EVORΛ COLLECTIVE: Worker di PRODUZIONE (throbbing-feather-957f). Sorgenti in worker/src, convalida in server/collective.
+# Versione attiva al 2026-10-28: 381ad99c-3756-4335-9391-84cd2ad5eb4c (rilascio 2026-10-27, PR #1).
+# Ripristino della versione precedente: wrangler rollback d85ca1b6-db77-4e76-a4f2-8f21af87ac72 --name throbbing-feather-957f
+# Nessun secret in questo file: ADMIN_CODE, MANAGER_CODE, FIREBASE_SERVICE_ACCOUNT, TG_TOKEN, TG_CHAT, ANTHROPIC_KEY restano su Cloudflare.
+# Pubblicare solo con autorizzazione esplicita; verifica senza pubblicare: wrangler deploy --dry-run --outdir <cartella esterna>
+name = "throbbing-feather-957f"
+main = "worker/src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGIN = "https://collective.evorafitness.it"
+FIRESTORE_PROJECT_ID = "evora-athletes"
