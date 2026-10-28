@@ -68,9 +68,10 @@ test('The public page loads no Firebase SDK and never initializes it',{skip:SING
  assert.doesNotMatch(publicPage,/gstatic\.com\/firebasejs|firebase\.|initializeApp/);
  assert.match(adminPage,/gstatic\.com\/firebasejs\/10\.12\.0\/firebase-app-compat\.js/);
 });
-test('During the rollback /admin/ only redirects to /#admin and initializes nothing',{skip:!SINGLE_PAGE&&'solo durante il ripristino'},()=>{
- assert.match(adminPage,/location\.replace\("\.\.\/#admin"\)/);
- assert.doesNotMatch(adminPage,/gstatic\.com|initializeApp|worker-config/);
+test('During the rollback /admin/ is a working staff page: same configuration, no redirect',{skip:!SINGLE_PAGE&&'solo durante il ripristino'},()=>{
+ assert.doesNotMatch(adminPage,/location\.replace\(/);
+ assert.ok(adminPage.indexOf('../public/worker-config.js')<adminPage.indexOf('firebase.initializeApp('));
+ assert.match(adminPage,/const firebaseConfig = environment.firebase;\s*firebase.initializeApp\(firebaseConfig\);/);
 });
 test('Public Firebase configuration preserves the six original values',()=>{
  const actual=load('collective.evorafitness.it',{protocol:'https:'}).CollectiveEnvironment.current.firebase;

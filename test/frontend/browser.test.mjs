@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {validatePublicApplication,prepareApplication} from '../../server/collective/application.mjs';
 import {publicFixture,NOW} from '../../server/collective/test/frontend-reference.mjs';
 import {SINGLE_PAGE} from './app-source.mjs';
-import {buildSinglePage,buildAdminRedirect} from '../../tools/frontend-mode.mjs';
+import {buildSinglePage,buildAdminPage} from '../../tools/frontend-mode.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
@@ -301,8 +301,8 @@ test('A broken staff module cannot break the public form, and the staff page rep
  assert.ok(staff.served.includes('app/admin.jsx'));
 });
 
-test('Single-page rollback (generated from the current modules): candidature, staff area on /#admin, admin/ redirect',{timeout:60000},async t=>{
- const rollback={'index.html':buildSinglePage(),'admin/index.html':buildAdminRedirect()};
+test('Single-page rollback (generated from the current modules): candidature, staff area on /#admin and on /admin/',{timeout:60000},async t=>{
+ const rollback={'index.html':buildSinglePage(),'admin/index.html':buildAdminPage()};
  const {page,calls,served}=await pageFor(t,{moduleOverrides:rollback});
  await fillPublic(page,{age:'27'});
  await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
@@ -310,13 +310,35 @@ test('Single-page rollback (generated from the current modules): candidature, st
  const sent=calls.filter(c=>c.url.endsWith('/applications'));assert.equal(sent.length,1);validatePublicApplication(sent[0].body);
  assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
  assert.ok(!served.some(f=>f.startsWith('app/')),'la pagina unica non dipende dai file app/');
- // Accesso diretto a admin/ durante il ripristino: rimanda a /#admin della pagina unica.
- await page.goto(`${mockOrigin}/admin/`);await page.waitForURL(`${mockOrigin}/#admin`);
+ // Accesso diretto a admin/ durante il ripristino: la pagina unica di admin/ apre l'area staff, senza reindirizzare.
+ await page.goto(`${mockOrigin}/admin/`);
  await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
  await page.getByRole('button',{name:'Form di prova',exact:true}).waitFor();
+ assert.equal(page.url(),`${mockOrigin}/admin/`);
+ await page.goto(`${mockOrigin}/#admin`);
+ await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+ assert.equal(page.url(),`${mockOrigin}/#admin`);
 });
 
-test('Staff page opens from admin/ and from the historical /#admin address',{skip:SINGLE_PAGE&&'frontend-mode.json = single-page: admin/ rimanda a /#admin, verificato dal test «Single-page rollback»'},async t=>{
+// Pagine in cache durante le transizioni: ogni combinazione di index.html e admin/index.html di versioni diverse
+// (separata S, ripristino R), con ingresso da /#admin o da /admin/, deve arrivare all'area staff senza rimbalzi.
+for(const [entry,expected] of [['/#admin',{S:'/admin/',R:'/#admin'}],['/admin/',{S:'/admin/',R:'/admin/'}]])
+ for(const idx of ['S','R'])for(const adm of ['S','R'])
+  test(`Mixed cached pages: index ${idx} + admin ${adm}, entry ${entry} reaches the staff area without redirect loops`,{timeout:60000,skip:SINGLE_PAGE&&'frontend-mode.json = single-page: le pagine separate S non sono sul disco; matrice verificata in modalità separata'},async t=>{
+   const overrides={...(idx==='R'?{'index.html':buildSinglePage()}:{}),...(adm==='R'?{'admin/index.html':buildAdminPage()}:{})};
+   const {page}=await pageFor(t,{moduleOverrides:overrides});
+   // Ingresso con caricamento completo, come da segnalibro (la query evita un cambio di sola # sulla pagina già aperta).
+   const navs={count:0};page.on('framenavigated',f=>{if(f===page.mainFrame())navs.count++;});
+   await page.goto(`${mockOrigin}${entry==='/#admin'?'/?ingresso#admin':'/admin/'}`);
+   await page.getByRole('button',{name:'Scoring',exact:true}).waitFor({timeout:20000});
+   await page.waitForTimeout(1500);
+   assert.ok(navs.count<=2,`${navs.count} navigazioni: possibile reindirizzamento circolare`);
+   const url=new URL(page.url());const landed=entry==='/#admin'?expected[idx]:expected[adm];
+   assert.equal(url.pathname+url.hash,landed==='/#admin'?'/#admin':'/admin/');
+   await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+  });
+
+test('Staff page opens from admin/ and from the historical /#admin address',{skip:SINGLE_PAGE&&'frontend-mode.json = single-page: /#admin e /admin/ sono verificati dal test «Single-page rollback»'},async t=>{
  const {page,served}=await pageFor(t,{admin:true});
  assert.equal(page.url(),`${mockOrigin}/admin/`);
  await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();

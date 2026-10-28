@@ -2,10 +2,11 @@
 // Il ripristino ricostruisce la pagina unica di prima con il codice ATTUALE dei moduli app/: torna indietro solo il modo
 // di caricamento delle pagine, non il codice, quindi gli stessi test continuano a valere.
 // Uso dalla radice:  node tools/frontend-mode.mjs            mostra la modalità e verifica le pagine
-//                    node tools/frontend-mode.mjs single-page  scrive index.html (pagina unica), admin/index.html
-//                                                             (reindirizzamento a /#admin) e frontend-mode.json;
+//                    node tools/frontend-mode.mjs single-page  scrive index.html e admin/index.html (pagina unica,
+//                                                             che in admin/ apre l'area staff) e frontend-mode.json;
 //                                                             da rieseguire dopo ogni modifica di app/ durante il ripristino
-// Il ritorno alla separazione è il revert del commit di ripristino (vedi docs/separazione-pubblico-admin.md).
+// Nessuna pagina del ripristino reindirizza: /#admin e /admin/ aprono entrambe l'area staff, con pagine vecchie o nuove.
+// Ritorno alla separazione: vedi docs/separazione-pubblico-admin.md (pagine separate ripristinate e versioni aggiornate).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -50,12 +51,15 @@ const auth = firebase.auth();
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 </script>`;
 
-// Router della pagina unica: quello di index.html prima della separazione (main @ eec5d29), invariato.
+// Router della pagina unica: quello di index.html prima della separazione (main @ eec5d29). Unica aggiunta:
+// la stessa pagina servita da admin/ apre direttamente l'area staff, senza reindirizzamenti. Così nessuna
+// combinazione di pagine vecchie e nuove in cache può rimbalzare tra /#admin e /admin/.
 export const SINGLE_PAGE_ROUTER = `/* ============================================================================
-   16. APP — pagina unica (ripristino): pubblico e area staff, che si apre con /#admin
+   16. APP — pagina unica (ripristino): pubblico e area staff, che si apre con /#admin oppure da /admin/
    ========================================================================== */
 function App(){
-  const routeFromHash = () => (window.location.hash||"").toLowerCase()==="#admin" ? "admin" : "landing";
+  const onAdminPath = /\\/admin\\/(index\\.html)?$/.test(window.location.pathname);
+  const routeFromHash = () => (onAdminPath || (window.location.hash||"").toLowerCase()==="#admin") ? "admin" : "landing";
   const [view,setView] = useState(routeFromHash);
   // Dati raccolti nello step di verifica screenshot, passati al form vero e proprio.
   const [precheckData,setPrecheckData] = useState(null);
@@ -73,6 +77,8 @@ function App(){
   useEffect(()=>{ window.scrollTo(0,0); },[view]);
 
   const goHome = () => {
+    // Da admin/ si torna alla pagina pubblica, come nella modalità separata.
+    if(onAdminPath){ window.location.href = "../"; return; }
     if(window.location.hash) history.replaceState(null,"",window.location.pathname+window.location.search);
     setView("landing");
     setPrecheckData(null);
@@ -92,19 +98,23 @@ function App(){
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);`;
 
-/** Pagina unica: stessi script, stili e moduli di oggi, in un solo documento come prima della separazione. */
-export function buildSinglePage() {
+/**
+ * Pagina unica: stessi script, stili e moduli di oggi, in un solo documento come prima della separazione.
+ * admin: la stessa pagina per admin/index.html (percorsi "../", noindex), che apre l'area staff senza reindirizzare.
+ */
+export function buildSinglePage({ admin = false } = {}) {
   const modules = SINGLE_PAGE_MODULES.map(m => read(m).trimEnd()).join('\n\n');
+  const base = admin ? '../' : '';
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
 ${HEAD_META}
-<title>EVORΛ COLLECTIVE — Partner Program</title>
+${admin ? '<meta name="robots" content="noindex, nofollow">\n<title>EVORΛ COLLECTIVE — Area riservata</title>' : '<title>EVORΛ COLLECTIVE — Partner Program</title>'}
 
 <!-- Pagina unica (ripristino, frontend-mode.json = "single-page"): generata da tools/frontend-mode.mjs. Non modificare a mano. -->
-<script src="public/worker-config.js"></script>
-<script src="public/applications-client.js"></script>
-<script src="public/admin-scoring-client.js"></script>
+<script src="${base}public/worker-config.js"></script>
+<script src="${base}public/applications-client.js"></script>
+<script src="${base}public/admin-scoring-client.js"></script>
 ${CDN_SCRIPTS}
 ${FIREBASE_SCRIPTS}
 <style>
@@ -128,36 +138,20 @@ ${SINGLE_PAGE_ROUTER}
 `;
 }
 
-/** admin/ durante il ripristino: rimanda all'area staff della pagina unica (/#admin). */
-export function buildAdminRedirect() {
-  return `<!DOCTYPE html>
-<html lang="it">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="robots" content="noindex, nofollow">
-<title>EVORΛ COLLECTIVE — Area riservata</title>
-<!-- Ripristino della pagina unica: l'area staff è su /#admin. Generata da tools/frontend-mode.mjs. -->
-<script>location.replace("../#admin");</script>
-</head>
-<body>
-<p><a href="../#admin">Area riservata</a></p>
-</body>
-</html>
-`;
-}
+/** admin/ durante il ripristino: la pagina unica stessa, che apre l'area staff (nessun reindirizzamento). */
+export const buildAdminPage = () => buildSinglePage({ admin: true });
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const target = process.argv[2];
   if (target === 'single-page') {
     // Idempotente: durante il ripristino rigenera le pagine dopo una modifica dei moduli app/.
     writeFileSync(new URL('index.html', root), buildSinglePage());
-    writeFileSync(new URL('admin/index.html', root), buildAdminRedirect());
+    writeFileSync(new URL('admin/index.html', root), buildAdminPage());
     writeFileSync(new URL('frontend-mode.json', root), JSON.stringify({ mode: 'single-page' }, null, 2) + '\n');
-    console.log('Pagina unica scritta: index.html, admin/index.html (reindirizzamento), frontend-mode.json. app/ resta invariata.');
+    console.log('Pagina unica scritta: index.html, admin/index.html (area staff), frontend-mode.json. app/ resta invariata.');
   } else if (target === undefined) {
     const current = mode();
-    const ok = current === 'separated' || (read('index.html') === buildSinglePage() && read('admin/index.html') === buildAdminRedirect());
+    const ok = current === 'separated' || (read('index.html') === buildSinglePage() && read('admin/index.html') === buildAdminPage());
     console.log(`Modalità: ${current}${current === 'single-page' ? (ok ? ' (pagine allineate ai moduli app/)' : ' (PAGINE NON ALLINEATE: rieseguire il ripristino)') : ''}`);
     process.exitCode = ok ? 0 : 1;
   } else { console.error('Uso: node tools/frontend-mode.mjs [single-page]'); process.exit(2); }

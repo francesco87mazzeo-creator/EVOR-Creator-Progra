@@ -17,8 +17,9 @@ export const APP_MODULES=['app/shared.jsx','app/public-form.jsx','app/admin.jsx'
 export const modules=Object.fromEntries(await Promise.all(APP_MODULES.map(async m=>[m,await read(m)])));
 export const shared=modules['app/shared.jsx'],publicForm=modules['app/public-form.jsx'],admin=modules['app/admin.jsx'];
 /** Codice effettivamente pubblicato, una sola volta, per i controlli che valgono per tutto il frontend.
- * Nella pagina unica i moduli sono già dentro index.html (identici ai file app/: lo verifica separation.test.mjs). */
-export const frontendSource=SINGLE_PAGE?[publicPage,adminPage].join('\n'):[publicPage,adminPage,...APP_MODULES.map(m=>modules[m])].join('\n');
+ * Nella pagina unica i moduli sono già dentro index.html, e admin/index.html è la stessa pagina con altri percorsi
+ * (entrambe identiche a quelle generate dai file app/: lo verifica separation.test.mjs), quindi si legge solo index.html. */
+export const frontendSource=SINGLE_PAGE?publicPage:[publicPage,adminPage,...APP_MODULES.map(m=>modules[m])].join('\n');
 
 /** Testo da `start` (incluso) a `end` (escluso); `end` null indica la fine del sorgente. */
 export function between(source,start,end){

@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {existsSync} from 'node:fs';
 import {publicPage,adminPage,modules,shared,publicForm,pageModules,APP_MODULES,SINGLE_PAGE} from './app-source.mjs';
 import {PAGES,references,assetVersion} from '../../tools/asset-versions.mjs';
-import {buildSinglePage,buildAdminRedirect,SINGLE_PAGE_MODULES,HEAD_META,CDN_SCRIPTS,FIREBASE_SCRIPTS,FIREBASE_BOOTSTRAP,REGISTRY_SCRIPT,SINGLE_PAGE_ROUTER} from '../../tools/frontend-mode.mjs';
+import {buildSinglePage,buildAdminPage,SINGLE_PAGE_MODULES,HEAD_META,CDN_SCRIPTS,FIREBASE_SCRIPTS,FIREBASE_BOOTSTRAP,REGISTRY_SCRIPT,SINGLE_PAGE_ROUTER} from '../../tools/frontend-mode.mjs';
 
 const separatedOnly={skip:SINGLE_PAGE&&'frontend-mode.json = single-page: regola della separazione non applicabile durante il ripristino'};
 const singlePageOnly={skip:!SINGLE_PAGE&&'frontend-mode.json = separated: regola del solo ripristino'};
@@ -75,8 +75,20 @@ test('The single-page rollback can always be generated from the current modules'
  assert.ok(page.indexOf('firebase.initializeApp(firebaseConfig)')<page.indexOf('<script type="text/babel">'));
  assert.doesNotMatch(page,/(?:src|href)="(?:\.\.\/)?app\//,'nessuna dipendenza dai file app/');
  assert.ok(page.includes(CDN_SCRIPTS)&&page.includes(FIREBASE_SCRIPTS));
- const redirect=buildAdminRedirect();
- assert.match(redirect,/location\.replace\("\.\.\/#admin"\)/);assert.match(redirect,/<meta name="robots" content="noindex, nofollow">/);
+ // admin/: la stessa pagina unica con percorsi relativi alla cartella, noindex e area staff aperta dal percorso.
+ const staff=buildAdminPage();
+ assert.match(staff,/<meta name="robots" content="noindex, nofollow">/);
+ for(const s of ['worker-config','applications-client','admin-scoring-client'])assert.ok(staff.includes(`<script src="../public/${s}.js"></script>`));
+ for(const m of SINGLE_PAGE_MODULES)assert.ok(staff.includes(modules[m].trimEnd()));
+ assert.ok(staff.includes(SINGLE_PAGE_ROUTER));assert.match(SINGLE_PAGE_ROUTER,/const onAdminPath = /);
+});
+
+test('No page of the rollback redirects: /#admin and /admin/ cannot bounce between versions',()=>{
+ for(const page of [buildSinglePage(),buildAdminPage()]){
+  assert.doesNotMatch(page,/location\.(?:replace|assign)\(|location\.href\s*=\s*["']\.\.?\/?#admin|http-equiv="refresh"/i);
+ }
+ // L'unico reindirizzamento resta quello della pagina pubblica separata (/#admin → admin/), verso una pagina che non reindirizza.
+ assert.doesNotMatch(SINGLE_PAGE_ROUTER,/location\.replace|#admin"\s*;?\s*\}/);
 });
 
 test('Rollback template matches the separated pages it replaces',separatedOnly,()=>{
@@ -87,7 +99,7 @@ test('Rollback template matches the separated pages it replaces',separatedOnly,(
 
 test('During the rollback the pages are exactly the generated ones and app/ stays published',singlePageOnly,()=>{
  assert.equal(publicPage,buildSinglePage(),'index.html non allineata ai moduli app/: rieseguire node tools/frontend-mode.mjs single-page');
- assert.equal(adminPage,buildAdminRedirect());
+ assert.equal(adminPage,buildAdminPage(),'admin/index.html non allineata: rieseguire node tools/frontend-mode.mjs single-page');
  assert.deepEqual(PAGES.flatMap(references),[],'nessun riferimento app/ nelle pagine del ripristino');
  // Le pagine separate ancora in cache (circa 10 minuti) richiedono questi file.
  for(const file of [...APP_MODULES,'app/styles.css'])assert.ok(existsSync(new URL(`../../${file}`,import.meta.url)),`${file} deve restare pubblicato`);
