@@ -82,6 +82,49 @@ test('HTTP 429 permits correcting the data and retrying with a fresh key, withou
  assert.notEqual(calls[0][1].headers['Idempotency-Key'],calls[1][1].headers['Idempotency-Key']);
  assert.equal(JSON.parse(calls[1][1].body).extra,'Corrected after 429');
 });
+// Sequenza riprodotta dalla revisione: 429 → nuovo invio identico (stessa chiave) dall'esito incerto → modifica.
+// Il secondo invio può essere stato salvato: la modifica non deve mai partire con una chiave nuova.
+for(const [label,second] of [
+ ['timeout',null],
+ ['network failure',async()=>{throw Error('offline');}],
+ ['HTTP 503',async()=>response(503,{error:{code:'SERVICE_UNAVAILABLE'}})],
+ ['HTTP 500',async()=>response(500,{})],
+ ['unconfirmed 200',async()=>response(200,{ok:true,id:'x'})],
+])test(`429 → identical retry → ${label} → changed data are refused, no new request`,async()=>{
+ const calls=[];
+ const c=createSubmissionClient({endpoint:'https://worker.invalid/applications',newKey:key,timeoutMs:5,fetchImpl:async(url,options)=>{
+  calls.push(options);
+  if(calls.length===1)return response(429,{error:{code:'RATE_LIMITED'}});
+  if(calls.length===2){
+   if(second)return second();
+   return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}));
+  }
+  return response();
+ }});
+ await assert.rejects(c.send(fixture),e=>e.status===429);
+ await assert.rejects(c.send(fixture),e=>e.ambiguous);
+ assert.equal(calls[0].headers['Idempotency-Key'],calls[1].headers['Idempotency-Key'],'the identical retry keeps the key');
+ await assert.rejects(c.send({...fixture,extra:'changed after uncertain retry'}),e=>e.code==='UNCONFIRMED_CHANGE');
+ assert.equal(calls.length,2,'the changed payload never leaves the browser');
+ // L'unico invio ancora possibile è quello identico, con la stessa chiave: il Worker lo riconosce come duplicato.
+ await c.send(fixture);
+ assert.equal(calls.length,3);assert.equal(calls[2].headers['Idempotency-Key'],calls[0].headers['Idempotency-Key']);assert.equal(calls[2].body,calls[0].body);
+});
+test('429 → identical retry → 429 again: correction allowed, because the last attempt was rejected',async()=>{
+ const calls=[];const c=client(async(...args)=>{calls.push(args);return calls.length<=2?response(429,{}):response();});
+ await assert.rejects(c.send(fixture));await assert.rejects(c.send(fixture));
+ await c.send({...fixture,extra:'changed'});
+ assert.equal(calls.length,3);assert.notEqual(calls[2][1].headers['Idempotency-Key'],calls[0][1].headers['Idempotency-Key']);
+});
+test('422 → identical retry → timeout → changed data are refused as well',async()=>{
+ const calls=[];
+ const c=createSubmissionClient({endpoint:'https://worker.invalid/applications',newKey:key,timeoutMs:5,fetchImpl:async(url,options)=>{
+  calls.push(options);if(calls.length===1)return response(422,{error:{code:'RANGE',path:'$.age'}});
+  return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}));
+ }});
+ await assert.rejects(c.send(fixture));await assert.rejects(c.send(fixture),e=>e.code==='TIMEOUT');
+ await assert.rejects(c.send({...fixture,age:30}),e=>e.code==='UNCONFIRMED_CHANGE');assert.equal(calls.length,2);
+});
 test('Double click after HTTP 429 still sends a single request',async()=>{
  let finish;const calls=[];const c=client((...args)=>{calls.push(args);return calls.length===1?Promise.resolve(response(429,{})):new Promise(resolve=>{finish=resolve;});});
  await assert.rejects(c.send(fixture));

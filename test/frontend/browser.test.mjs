@@ -522,3 +522,134 @@ test('Timeout with an uncertain outcome: changed data are refused, the identical
  const sent=sentApplication(calls);assert.equal(sent.length,2);
  assert.equal(sent[0].headers['idempotency-key'],sent[1].headers['idempotency-key']);
 });
+
+/* ---------- Revisione Codex della PR #5: precheck, compressione, classificazione OCR ---------- */
+// Trattiene le letture locali dei file (FileReader) finché il test non le rilascia: simula un telefono lento.
+async function holdLocalReads(page){
+ await page.evaluate(()=>{
+  const original=FileReader.prototype.readAsDataURL;window.__heldReads=[];window.__holdReads=true;
+  FileReader.prototype.readAsDataURL=function(file){if(!window.__holdReads)return original.call(this,file);window.__heldReads.push(()=>original.call(this,file));};
+  window.__releaseReads=()=>{window.__holdReads=false;window.__heldReads.splice(0).forEach(run=>run());};
+ });
+}
+async function syntheticImage(page,name){
+ return {name,mimeType:'image/jpeg',buffer:Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,40,40);return c.toDataURL('image/jpeg').split(',')[1];}),'base64')};
+}
+async function denseScreenshot(page,seed){
+ return {name:`dense-${seed}.png`,mimeType:'image/png',buffer:Buffer.from(await page.evaluate(seed=>{
+  let x=seed*7919;const rnd=()=>((x=(x*1103515245+12345)%2147483648)/2147483648);
+  const c=document.createElement('canvas');c.width=1170;c.height=2532;const g=c.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+  for(let i=0;i<5000;i++){g.fillStyle=`hsl(${rnd()*360},70%,${20+rnd()*60}%)`;g.font=`${10+rnd()*24}px sans-serif`;g.fillText(Math.floor(rnd()*1e9).toString(36),rnd()*c.width,rnd()*c.height);}
+  for(let i=0;i<400;i++){g.fillStyle=`hsla(${rnd()*360},60%,50%,.5)`;g.fillRect(rnd()*c.width,rnd()*c.height,rnd()*120,rnd()*60);}
+  return c.toDataURL('image/png').split(',')[1];
+ },seed),'base64')};
+}
+const partialInsights=({kind,synthetic})=>kind==='insights'?synthetic({screen_type:'insights_ok',views:{value:24800,visibility:'partial'},netFollowers:{value:260,visibility:'complete'},interactions:{value:1120,visibility:'complete'},accountsReached:{value:18400,visibility:'complete'}}):undefined;
+const idle=page=>page.waitForFunction(()=>![...document.querySelectorAll('.u-sub')].some(e=>/in corso/.test(e.textContent)));
+// Tre screenshot densi (somma oltre il limite): Continua avvia la ricompressione, che rileggerà i file originali.
+async function startHeavyContinue(page){
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(await denseScreenshot(page,1));
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(await denseScreenshot(page,2));
+ await page.getByText('✓ Dati letti · da ricontrollare',{exact:true}).waitFor();
+ await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(await denseScreenshot(page,3));
+ await page.waitForFunction(()=>document.querySelectorAll('.u-thumb img').length===3);await idle(page);
+ await holdLocalReads(page);
+ await page.getByRole('button',{name:'Continua con la candidatura'}).click();
+ await page.waitForFunction(()=>window.__heldReads.length>=1);
+}
+
+test('Replacing a screenshot invalidates its reading at once and blocks Continue while the new one is prepared',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t);
+ await fillPublic(page,{beforeContinue:async()=>{
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+  const cont=page.getByRole('button',{name:'Continua con la candidatura'});
+  assert.equal(await cont.isDisabled(),false);
+  await holdLocalReads(page);
+  await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(await syntheticImage(page,'replacement.jpg'));
+  await page.waitForFunction(()=>window.__heldReads.length===1);
+  // Lettura locale ancora in corso: nessun risultato precedente, nessuna continuazione possibile.
+  assert.equal(await cont.isDisabled(),true);
+  assert.equal(await page.getByText('✓ Insight verificati',{exact:true}).count(),0);
+  await page.getByText('Preparazione in corso…').waitFor();
+  await page.evaluate(()=>window.__releaseReads());
+  await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
+ }});
+ await submitAndConfirm(page);
+ assert.equal(sentApplication(calls)[0].body.screenshotName,'replacement.jpg');
+});
+
+for(const action of ['remove','replace'])test(`A screenshot ${action}d during the final compression never opens the form with the previous data`,{timeout:180000},async t=>{
+ const {page}=await pageFor(t,{ocr:partialInsights});
+ await startHeavyContinue(page);
+ if(action==='remove')await page.getByRole('button',{name:'Rimuovi',exact:true}).nth(2).click();
+ else await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(await syntheticImage(page,'late-replacement.jpg'));
+ await page.evaluate(()=>window.__releaseReads());
+ await idle(page);await page.waitForTimeout(1500);
+ assert.equal(await page.locator('#f-age').count(),0,'the superseded continuation must not open the form');
+ await page.getByRole('heading',{name:'Prepara i tuoi dati Instagram'}).waitFor();
+ // Nuovo tentativo con gli screenshot attuali: il modulo si apre e contiene solo quelli.
+ await page.getByRole('button',{name:'Continua con la candidatura'}).click();
+ await page.locator('#f-age').fill('27',{timeout:120000});
+ await page.locator('#f-email').fill('synthetic@example.test');await page.locator('#f-city').fill('Synthetic City');
+ if(!await page.locator('#f-name').inputValue())await page.locator('#f-name').fill('Synthetic Candidate');
+ await page.getByLabel('Coach / Personal trainer',{exact:true}).check();await page.locator('label.check input').check();
+ await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ const thumbs=await page.evaluate(()=>[...document.querySelectorAll('.thumb-btn img')].map(i=>i.alt));
+ assert.equal(thumbs.includes('Screenshot Insight 2'),action==='replace');
+ if(action==='replace')assert.ok((await page.locator('img[alt="Screenshot Insight 2"]').getAttribute('src')).length<20000,'the late replacement, not the dense original');
+});
+
+test('Leaving the pre-check during the final compression never opens the form afterwards',{timeout:180000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:partialInsights});
+ await startHeavyContinue(page);
+ await page.getByRole('button',{name:'Esci',exact:true}).click();
+ await page.evaluate(()=>window.__releaseReads?.());
+ // La ricompressione dei file densi prosegue anche dopo l'uscita: il modulo non deve comparire nemmeno quando termina.
+ const opened=await page.locator('#f-age').waitFor({timeout:20000}).then(()=>true,()=>false);
+ assert.equal(opened,false,'the form opened after leaving the pre-check');
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().waitFor();
+ assert.equal(sentApplication(calls).length,0);
+});
+
+for(const status of [400,403,413])test(`OCR HTTP ${status} is not a temporary failure: no manual entry, clear guidance to replace the screenshot`,{timeout:60000},async t=>{
+ const {page}=await pageFor(t,{ocr:({kind,route,cors})=>kind==='insights'?route.fulfill({status,headers:cors,contentType:'application/json',body:'{"error":{"message":"Richiesta non consentita"}}'}):undefined});
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ const file={name:'synthetic.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)};
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(file);
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(file);
+ const expected=status===413?/troppo pesante per la lettura automatica/:status===403?/non è autorizzata da questa pagina/:/non accetta questa immagine/;
+ await page.getByRole('alert').getByText(expected).waitFor();
+ await page.getByText('✓ Screenshot verificato',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Riprova la lettura'}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+});
+
+test('Compression keeps the real readability floors and refuses budgets it cannot reach',{timeout:60000},async t=>{
+ const {page}=await pageFor(t);
+ const r=await page.evaluate(async()=>{
+  const noisy=(w,h,cell)=>{const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
+   for(let y=0;y<h;y+=cell)for(let x=0;x<w;x+=cell){g.fillStyle=`rgb(${Math.random()*255|0},${Math.random()*255|0},${Math.random()*255|0})`;g.fillRect(x,y,cell,cell);}return c.toDataURL('image/png');};
+  const at=async(d,max)=>{try{const o=await compressImageDetailed(d,max);return {width:o.width,height:o.height,quality:o.quality,length:o.dataUrl.length,max};}catch(e){return {error:e.message,max};}};
+  const big=noisy(1400,2400,4),small=noisy(300,500,4);
+  const free=await at(big,MAX_STORED_BYTES*10);
+  // Budget via via più stretti: la larghezza non scende mai sotto 640 px né la qualità sotto 0,32; altrimenti rifiuto.
+  const ladder=[];for(const f of [1,2,3,4,6,10])ladder.push(await at(big,Math.round(free.length/f)));
+  return {minWidth:IMG_MIN_WIDTH,minQuality:IMG_MIN_QUALITY,free,ladder,impossible:await at(big,5000),
+   smallTight:await at(small,2000),smallFree:await at(small,MAX_STORED_BYTES)};
+ });
+ assert.equal(r.minWidth,640);assert.equal(r.minQuality,0.32);
+ assert.equal(r.free.width,1400);assert.equal(r.free.quality,0.82);
+ for(const s of r.ladder){
+  if(s.error){assert.match(s.error,/troppo grande/);continue;}
+  assert.ok(s.width>=640,`width ${s.width}`);assert.ok(s.quality>=0.32,`quality ${s.quality}`);assert.ok(s.length<=s.max);
+  if(s.width<1400)assert.equal(s.quality,0.32,'width shrinks only after the quality steps are exhausted');
+ }
+ assert.ok(r.ladder.some(s=>!s.error&&s.width<1400),'at least one budget required a narrower image');
+ assert.ok(r.ladder.some(s=>!s.error&&s.width===640)||r.ladder.some(s=>s.error),'the floor is reached or the budget refused');
+ assert.match(r.impossible.error,/troppo grande/,'an impossible budget is refused instead of going below the floors');
+ assert.match(r.smallTight.error,/troppo grande/,'a narrow image is never shrunk below its own width');
+ assert.equal(r.smallFree.width,300);assert.equal(r.smallFree.height,500);
+});

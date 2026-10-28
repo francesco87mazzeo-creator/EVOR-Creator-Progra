@@ -87,6 +87,9 @@
         pending={body,key};
       }
       const attempt=pending;
+      // Each attempt starts locked: a correction is allowed only if THIS attempt is definitively rejected.
+      // A previous rejection (e.g. 429) never survives a later identical retry whose outcome is uncertain.
+      attempt.editable=false;
       inFlight=(async()=>{
         const controller=new AbortController();
         const timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -105,7 +108,7 @@
             // Only definitive validation/access rejections permit a corrected new payload/key.
             // 429 too: the Worker rate limiter answers before reading the body, so nothing was stored.
             // An unchanged resend keeps the same key; no automatic retry is scheduled.
-            if ([400,401,403,405,413,415,422,429].includes(response.status)) pending.editable=true;
+            if ([400,401,403,405,413,415,422,429].includes(response.status)) attempt.editable=true;
             throw error;
           }
           // Confirm the supplied /applications contract, including replay semantics.

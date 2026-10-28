@@ -16,8 +16,10 @@ const OCR_TIMEOUT_MS = 30000;
  * non leggibili) non sono tecnici e continuano a richiedere uno screenshot corretto.
  */
 class OcrError extends Error {
-  constructor(message, { technical = false, status = null } = {}) {
-    super(message); this.name = "OcrError"; this.technical = technical; this.status = status;
+  // kind: "technical" (rete, timeout, 429, 5xx, risposta del servizio non valida: consente l'inserimento manuale)
+  //       "request" (richiesta rifiutata come non valida, non autorizzata o troppo grande: non lo consente)
+  constructor(message, { kind = "technical", status = null } = {}) {
+    super(message); this.name = "OcrError"; this.kind = kind; this.technical = kind === "technical"; this.status = status;
   }
 }
 const ocrTechnicalMessage = status =>
@@ -25,12 +27,18 @@ const ocrTechnicalMessage = status =>
   : status === 429 ? "Troppe richieste di lettura in questo momento."
   : status === "network" ? "Connessione assente o instabile."
   : "Il servizio di lettura automatica non è disponibile in questo momento.";
+const ocrRequestMessage = status =>
+  status === 413 ? "Lo screenshot è troppo pesante per la lettura automatica: caricane uno ritagliato o più leggero."
+  : status === 401 || status === 403 ? "La lettura automatica non è autorizzata da questa pagina. Ricarica la pagina; se il problema continua, contatta il team."
+  : "La lettura automatica non accetta questa immagine: carica di nuovo lo screenshot.";
+// Solo rete, timeout, 429 e 5xx sono problemi temporanei del servizio; gli altri 4xx dipendono dalla richiesta.
+const ocrTemporaryStatus = status => status === 429 || status >= 500;
 
 /** Invia al Worker il corpo OCR già pronto (invariato) e restituisce il testo della risposta. */
 const ocrRequest = async (body) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
-  const technical = status => new OcrError(ocrTechnicalMessage(status), { technical: true, status });
+  const technical = status => new OcrError(ocrTechnicalMessage(status), { kind: "technical", status });
   try{
     let res;
     try{
@@ -41,7 +49,10 @@ const ocrRequest = async (body) => {
         body, signal: controller.signal
       });
     }catch(e){ throw technical(controller.signal.aborted ? "timeout" : "network"); }
-    if(!res.ok) throw technical(res.status);
+    if(!res.ok){
+      if(ocrTemporaryStatus(res.status)) throw technical(res.status);
+      throw new OcrError(ocrRequestMessage(res.status), { kind: "request", status: res.status });
+    }
     let data;
     try{ data = await res.json(); }
     catch(e){ throw technical(controller.signal.aborted ? "timeout" : "invalid"); }
@@ -530,17 +541,22 @@ const fieldIsComplete = f => !!(f && f.value !== null && f.value !== undefined &
 // technical/errorMsg: lettura non riuscita per un errore tecnico (vedi OcrError).
 const EMPTY_SLOT = Object.freeze({ data:null, name:"", file:null, state:"idle", result:null, technical:false, errorMsg:"" });
 
-/** Avviso per uno screenshot caricato ma non letto per un errore tecnico, con nuovo tentativo sulla stessa immagine. */
+/**
+ * Avviso per uno screenshot caricato ma non letto. Errore tecnico: nuovo tentativo sulla stessa immagine
+ * (e, nel precheck, inserimento manuale). Richiesta rifiutata: va caricato un altro screenshot.
+ */
 function OcrUnavailable({ slot, onRetry }){
-  if(!(slot.data && slot.state==="failed" && slot.technical)) return null;
+  if(!(slot.data && slot.state==="failed" && slot.errorMsg)) return null;
   return (
-    <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
+    <div className="status-box" role={slot.technical ? "status" : "alert"} style={{borderColor:"rgba(230,126,34,.45)",marginTop:10}}>
       <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
       <div className="body-sm">
-        {slot.errorMsg} Lo screenshot è caricato: non serve sceglierlo di nuovo.
-        <div style={{marginTop:8}}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onRetry}>Riprova la lettura</button>
-        </div>
+        {slot.technical ? <>{slot.errorMsg} Lo screenshot è caricato: non serve sceglierlo di nuovo.</> : slot.errorMsg}
+        {slot.technical && (
+          <div style={{marginTop:8}}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onRetry}>Riprova la lettura</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -554,6 +570,14 @@ function InstagramPreCheck({ onComplete, onBack }){
   // Ogni caricamento riceve un numero: la risposta di una lettura avviata prima di una sostituzione
   // o rimozione dell'immagine appartiene a una richiesta superata e viene ignorata.
   const seq = useRef({ profile:0, ins1:0, ins2:0 });
+  // Tentativo di continuazione in corso: qualsiasi modifica degli screenshot, nuova lettura o uscita dal
+  // precheck lo rende superato, e il modulo non si apre con dati non più validi.
+  const continueSeq = useRef(0);
+  const continuing = useRef(null);
+  const invalidateContinue = () => { continueSeq.current++; continuing.current = null; };
+  useEffect(() => () => invalidateContinue(), []);
+  // Stato dell'ultimo render, letto dal gestore del pulsante (mai valori catturati in un render precedente).
+  const latest = useRef(null);
   const setters = { profile:setProfile, ins1:setIns1, ins2:setIns2 };
   const [wrongScreen,setWrongScreen] = useState(null); // "profile" | "ins1" | "ins2" | null
   const [showInfoModal,setShowInfoModal] = useState(false);
@@ -587,8 +611,11 @@ function InstagramPreCheck({ onComplete, onBack }){
     }catch(err){
       if(!current()) return;
       console.warn("Lettura automatica non riuscita:", err);
-      const technical = !!(err && err.technical);
-      setSlot(s=>({...s,state:"failed",result:null,technical,errorMsg:technical ? err.message : ""}));
+      // Tecnico: si può riprovare o proseguire a mano. Richiesta rifiutata (400/401/403/413…): messaggio
+      // e nuovo screenshot, senza inserimento manuale. Altri errori (immagine non leggibile): come prima.
+      const technical = !!(err && err.kind === "technical");
+      const request = !!(err && err.kind === "request");
+      setSlot(s=>({...s,state:"failed",result:null,technical,errorMsg:(technical || request) ? err.message : ""}));
     }
   };
 
@@ -596,11 +623,13 @@ function InstagramPreCheck({ onComplete, onBack }){
     if(!file) return;
     const setSlot = setters[key];
     const ticket = ++seq.current[key];
+    invalidateContinue();
     setContinueState({ busy:false, error:"" });
     if(!ALLOWED_IMAGE.includes(file.type) || file.size > MAX_UPLOAD_BYTES){
       setSlot(s=>({...s,state:"failed",result:null,technical:false,errorMsg:""})); return;
     }
-    setSlot(s=>({...s,state:"reading",technical:false,errorMsg:""}));
+    // La lettura precedente non vale più appena si sceglie un'altra immagine, anche durante la preparazione.
+    setSlot(s=>({...s,state:"reading",result:null,technical:false,errorMsg:""}));
     let img;
     try{
       img = await compressImage(await readFileAsDataURL(file));
@@ -617,9 +646,11 @@ function InstagramPreCheck({ onComplete, onBack }){
   const retrySlot = (key) => {
     const slot = ({ profile, ins1, ins2 })[key];
     if(!slot.data || slot.state==="reading" || slot.state==="analyzing") return;
+    invalidateContinue();
+    setContinueState({ busy:false, error:"" });
     analyze(key, slot.data, ++seq.current[key]);
   };
-  const clearSlot = (key) => { seq.current[key]++; setters[key](EMPTY_SLOT); setContinueState({ busy:false, error:"" }); };
+  const clearSlot = (key) => { seq.current[key]++; invalidateContinue(); setters[key](EMPTY_SLOT); setContinueState({ busy:false, error:"" }); };
 
   const processProfile = (file) => processSlot("profile", file);
   const removeProfile = () => clearSlot("profile");
@@ -667,12 +698,13 @@ function InstagramPreCheck({ onComplete, onBack }){
   const profileDataIncomplete = !!(profile.result && profile.result.screenType === "profile_ok" && !profileComplete);
   const profileUncertain = !!(profile.result && profile.result.screenType === "uncertain");
 
-  const canContinue = profileComplete && insightsReadable;
+  // Nessuna continuazione mentre un'immagine viene letta, compressa o analizzata.
+  const busy = [profile, ins1, ins2].some(s => s.state==="reading" || s.state==="analyzing");
+  const canContinue = !busy && profileComplete && insightsReadable;
 
   // Lettura non disponibile per un errore tecnico (non per la schermata): con gli screenshot comunque
   // caricati il candidato può proseguire inserendo a mano i soli dati non letti. Schermate sbagliate o
   // dati non leggibili continuano invece a richiedere uno screenshot corretto.
-  const busy = [profile, ins1, ins2].some(s => s.state==="reading" || s.state==="analyzing");
   const technicalFailure = s => !!(s.data && s.state==="failed" && s.technical);
   const profileTechnical = technicalFailure(profile);
   const insightsTechnical = technicalFailure(ins1) || (insightsNeedSecond && technicalFailure(ins2));
@@ -681,15 +713,8 @@ function InstagramPreCheck({ onComplete, onBack }){
     && (profileComplete || profileTechnical) && (insightsReadable || insightsTechnical)
     && (manualParts.profile || manualParts.insights);
 
-  const handleContinue = async (manual = false) => {
-    if((manual ? !canContinueManual : !canContinue) || continueState.busy) return;
-    setContinueState({ busy:true, error:"" });
-    // Somma degli screenshot entro il limite del Worker, prima di compilare il resto della candidatura.
-    const fit = await fitScreenshotsToLimit([{ key:"profile", ...profile }, { key:"ins1", ...ins1 }, { key:"ins2", ...ins2 }]);
-    if(!fit.ok){
-      setContinueState({ busy:false, error:"Gli screenshot insieme sono troppo pesanti anche dopo la compressione. Ritaglia gli screenshot sulla parte con i dati richiesti e caricali di nuovo." });
-      return;
-    }
+  // Dati per il modulo, costruiti con lo stato di QUESTO render (gli screenshot eventualmente ricompressi in fit).
+  const buildCompletion = (fit, manual) => {
     const image = key => fit.data[key] || ({ profile, ins1, ins2 })[key].data;
     // In modalità manuale si usano solo le letture riuscite; il resto lo inserisce il candidato.
     const profileRead = !(manual && manualParts.profile);
@@ -704,7 +729,7 @@ function InstagramPreCheck({ onComplete, onBack }){
     const fullNameGuess = name.value ? name.value : "";
     const fullNameNeedsCompletion = !!(name.truncated && name.value);
     const metric = key => insightsRead ? String(insightsMerged[key].value) : "";
-    onComplete({
+    return {
       instagram: ig.handle ? "@"+ig.handle : "",
       instagramHandle: ig.handle,
       instagramUrl: ig.url,
@@ -733,7 +758,33 @@ function InstagramPreCheck({ onComplete, onBack }){
       ocrProfile: profileRead ? { result: profile.result, readAt: new Date().toISOString() } : null,
       // Solo per l'interfaccia, non inviato al Worker: quali dati vanno inseriti a mano nel modulo.
       manualEntry: { profile: !profileRead, insights: !insightsRead }
-    });
+    };
+  };
+  latest.current = { canContinue, canContinueManual, slots:{ profile, ins1, ins2 }, buildCompletion };
+
+  const handleContinue = async (manual = false) => {
+    // Prerequisiti ricontrollati sullo stato più recente, non su quello del render in cui è nato il gestore.
+    const start = latest.current;
+    if((manual ? !start.canContinueManual : !start.canContinue) || continuing.current !== null) return;
+    const ticket = ++continueSeq.current;
+    continuing.current = ticket;
+    const stillValid = () => continueSeq.current === ticket && Object.keys(start.slots).every(k => latest.current.slots[k] === start.slots[k]);
+    setContinueState({ busy:true, error:"" });
+    try{
+      // Somma degli screenshot entro il limite del Worker, prima di compilare il resto della candidatura.
+      const { profile:p, ins1:a, ins2:b } = start.slots;
+      const fit = await fitScreenshotsToLimit([{ key:"profile", ...p }, { key:"ins1", ...a }, { key:"ins2", ...b }]);
+      if(!stillValid()) return;   // screenshot sostituito o rimosso, nuova lettura o uscita durante la compressione
+      if(!fit.ok){
+        setContinueState({ busy:false, error:"Gli screenshot insieme sono troppo pesanti anche dopo la compressione. Ritaglia gli screenshot sulla parte con i dati richiesti e caricali di nuovo." });
+        return;
+      }
+      const data = start.buildCompletion(fit, manual);
+      if(!stillValid()) return;
+      onComplete(data);
+    }finally{
+      if(continuing.current === ticket){ continuing.current = null; }
+    }
   };
 
   const wrongExampleSrc = wrongScreen === "profile" ? BRAND.profileExampleSrc : BRAND.insightsExampleSrc;
