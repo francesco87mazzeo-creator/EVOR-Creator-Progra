@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {publicFixture} from '../../server/collective/test/frontend-reference.mjs';
-const html=await readFile(new URL('../../index.html',import.meta.url),'utf8');
+import {frontendSource as html} from './app-source.mjs';   // pagine e moduli app/ dopo la separazione
 const client=await readFile(new URL('../../public/applications-client.js',import.meta.url),'utf8');
 function fragment(a,b){const start=html.indexOf(a),end=html.indexOf(b,start);assert.ok(start>=0&&end>start);return html.slice(start,end);}
 const validators=fragment('  const validate = (s) => {','  const next = () =>');

@@ -2,18 +2,18 @@
 import {legacySubmit} from '../../../test/frontend/legacy-submit-reference.mjs';
 // Evaluate only pure fragments from the checked-out frontend; no Firebase config,
 // no JSX, no Worker calls and no production credentials are evaluated.
-import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {PUBLIC_FIELDS} from '../application.mjs';
-const source=await readFile(new URL('../../../index.html',import.meta.url),'utf8');
-function extract(start,end) {
- const a=source.indexOf(start),b=source.indexOf(end,a);
+import {frontendSource as source,admin,publicForm} from '../../../test/frontend/app-source.mjs';
+function extract(start,end,from=source) {
+ const a=from.indexOf(start),b=from.indexOf(end,a);
  if(a<0||b<0)throw new Error(`Frontend contract changed: ${start}`);
- return source.slice(a,b);
+ return from.slice(a,b);
 }
-const scoring=extract('const SCORING_VERSION =','/* ============================================================================\n   6. UTILITY');
+// Scoring: area staff (app/admin.jsx). Esempio di prova: modulo pubblico (app/public-form.jsx).
+const scoring=extract('const SCORING_VERSION =','/* ============================================================================\n   10. EXPORT CSV',admin);
 const form=extract('const EMPTY_FORM =','const YESNO =');
-const example=extract('const TEST_FORM =','/* ============================================================================\n   10. EXPORT CSV');
+const example=extract('const TEST_FORM =','/* ---------- fine di app/public-form.jsx',publicForm);
 const social=extract('const parseSocial =','/** Sfugge');
 const submit=legacySubmit;
 export const NOW='2026-01-01T12:00:00.000Z';

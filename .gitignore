@@ -1,0 +1,3 @@
+# Cache e dipendenze locali (Wrangler, npm): mai nel repository né sul sito.
+.wrangler/
+node_modules/

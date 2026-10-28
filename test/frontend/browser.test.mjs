@@ -5,20 +5,28 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {validatePublicApplication,prepareApplication} from '../../server/collective/application.mjs';
 import {publicFixture,NOW} from '../../server/collective/test/frontend-reference.mjs';
+import {SINGLE_PAGE} from './app-source.mjs';
+import {buildSinglePage,buildAdminPage} from '../../tools/frontend-mode.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
-const assetRequire=createRequire(`${assets}/package.json`);
-const html=await readFile(new URL('../../index.html',import.meta.url),'utf8');
+// Babel può stare in una cartella a parte (EVORA_BABEL_ASSETS): deve essere la versione fissata nelle pagine.
+const babelRequire=createRequire(`${process.env.EVORA_BABEL_ASSETS||assets}/package.json`);
+// Sito servito dall'origine sintetica: le due pagine e i moduli app/ (la query ?v= viene ignorata).
+const site={};
+for(const file of ['index.html','admin/index.html','app/styles.css','app/shared.jsx','app/public-form.jsx','app/admin.jsx','app/public-main.jsx','app/admin-main.jsx'])
+ site[file]=await readFile(new URL(`../../${file}`,import.meta.url),'utf8');
+const sitePath={'/':'index.html','/index.html':'index.html','/admin/':'admin/index.html','/admin/index.html':'admin/index.html'};
+const contentType=file=>file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/plain';
 const workerConfig=await readFile(new URL('../../public/worker-config.js',import.meta.url),'utf8');
 const mockWorker='https://throbbing-feather-957f.francesco87-mazzeo.workers.dev';
 const mockOrigin='https://synthetic.collective.test';
 const client=await readFile(new URL('../../public/applications-client.js',import.meta.url),'utf8');
 const adminScoringClient=await readFile(new URL('../../public/admin-scoring-client.js',import.meta.url),'utf8');
 const js={
- 'https://unpkg.com/react@18/umd/react.production.min.js':await readFile(`${assets}/node_modules/react/umd/react.production.min.js`,'utf8'),
- 'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js':await readFile(`${assets}/node_modules/react-dom/umd/react-dom.production.min.js`,'utf8'),
- 'https://unpkg.com/@babel/standalone/babel.min.js':await readFile(assetRequire.resolve('@babel/standalone'),'utf8')
+ 'https://unpkg.com/react@18.3.1/umd/react.production.min.js':await readFile(`${assets}/node_modules/react/umd/react.production.min.js`),
+ 'https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js':await readFile(`${assets}/node_modules/react-dom/umd/react-dom.production.min.js`),
+ 'https://unpkg.com/@babel/standalone@8.0.9/babel.min.js':await readFile(babelRequire.resolve('@babel/standalone/babel.min.js'))
 };
 const firebaseStub=`(function(){
  const counters=window.testCounters=window.testCounters||{reads:0,writes:0};
@@ -39,10 +47,10 @@ const firebaseStub=`(function(){
 let browser;
 before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA_CHROMIUM||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--host-resolver-rules=MAP * ~NOTFOUND']});});
 after(async()=>browser?.close());
-async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false}={}) {
+async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
- const calls=[],errors=[],blocked=[];
+ const calls=[],errors=[],blocked=[],served=[];
  page.on('pageerror',e=>errors.push(e.message));
  if(signedIn)await page.addInitScript(()=>localStorage.setItem('evora_login_at',String(Date.now())));
  await context.route('**/*',async route=>{
@@ -52,8 +60,12 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
   if(url===mockOrigin+'/public/worker-config.js')return route.fulfill({contentType:'text/javascript',body:configuration});
   if(url===mockOrigin+'/public/applications-client.js')return route.fulfill({contentType:'text/javascript',body:client});
   if(url===mockOrigin+'/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
-  if(url.startsWith(mockOrigin+'/'))return route.fulfill({contentType:'text/html',body:html});
-  if(js[url])return route.fulfill({contentType:'text/javascript',body:js[url]});
+  if(url.startsWith(mockOrigin+'/')){
+   const path=new URL(url).pathname,file=sitePath[path]||(path.startsWith('/app/')&&site[path.slice(1)]!==undefined?path.slice(1):null);
+   if(file){served.push(file);return route.fulfill({contentType:contentType(file),body:moduleOverrides[file]??site[file]});}
+  }
+  // Come unpkg (CORS *): con crossorigin il browser verifica davvero gli hash integrity delle pagine.
+  if(js[url])return route.fulfill({contentType:'text/javascript',headers:{'Access-Control-Allow-Origin':'*'},body:js[url]});
   if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites)).replace('__SIGNED_IN__',JSON.stringify(signedIn))});
   if(url.startsWith('https://fonts.'))return route.fulfill({contentType:'text/css',body:''});
   if(req.method()==='POST') {
@@ -76,10 +88,18 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
   blocked.push(req.method()+' '+url);
   return route.abort('blockedbyclient');
  });
+ // L'area staff si apre dall'indirizzo storico /#admin: reindirizza ad admin/, oppure resta sulla pagina unica nel ripristino.
  await page.goto(`${mockOrigin}/${admin?'#admin':''}`);
+ if(admin&&!SINGLE_PAGE)await page.waitForURL(`${mockOrigin}/admin/`);
  if(!expectBlocked)t.after(()=>assert.deepEqual(blocked,[],'No request may leave the test harness'));
- t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid production configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
- return{page,calls,blocked};
+ if(!expectErrors)t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid production configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
+ return{page,calls,blocked,served,errors};
+}
+/** Pagina pubblica: nessun SDK Firebase caricato, quindi nessuna lettura o scrittura possibile.
+ * Nella pagina unica (ripristino) Firebase si carica come prima della separazione: nessuna lettura o scrittura. */
+async function assertNoFirebase(page){
+ if(SINGLE_PAGE)return assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
+ assert.deepEqual(await page.evaluate(()=>({firebase:typeof window.firebase,counters:typeof window.testCounters})),{firebase:'undefined',counters:'undefined'});
 }
 async function jpeg(page){return Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=30;c.height=30;c.getContext('2d').fillRect(0,0,30,30);return c.toDataURL('image/jpeg').split(',')[1];}),'base64');}
 async function fillPublic(page,{age='27',profileOnly=false}={}) {
@@ -109,7 +129,7 @@ test('Public journey submits 54 fields to the Worker, never Firestore or Telegra
  const sent=calls.filter(c=>c.url.endsWith('/applications'));assert.equal(sent.length,1);
  assert.equal(sent[0].body.age,18);assert.equal(Object.keys(sent[0].body).length,54);validatePublicApplication(sent[0].body);
  assert.ok(sent[0].headers['idempotency-key']);assert.ok(!calls.some(c=>c.url.endsWith('/notify')));
- assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
+ await assertNoFirebase(page);
 });
 test('Admin test form simulates submit and disables upload OCR without any writes',{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{admin:true});
@@ -146,7 +166,7 @@ test('Browser age checks reject minors and invalid ages without an applications 
  }
  await page.locator('#f-age').fill('18');await page.getByRole('button',{name:'Avanti',exact:true}).click();
  await page.locator('#f-ig').waitFor();
- assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
+ await assertNoFirebase(page);
 });
 
 test('Admin scoring uses authenticated Worker save; read and reset remain unchanged',{timeout:60000},async t=>{
@@ -218,7 +238,7 @@ test('Legacy overlong notes/code show clear errors and never trigger writes',{ti
 });
 
 test('Mocked Worker URL is used for auth and notification error responses',async t=>{
- const {page,calls}=await pageFor(t);
+ const {page,calls}=await pageFor(t,{admin:true});
  const result=await page.evaluate(async()=>{
   let error;try{await AUTH.login('synthetic-invalid');}catch(e){error=e.message;}
   return {error,notification:await sendTelegram('Synthetic test only')};
@@ -229,15 +249,87 @@ test('Mocked Worker URL is used for auth and notification error responses',async
 
 test('Synthetic browser origin selects production-shaped configuration with all network intercepted',async t=>{
  const {page}=await pageFor(t);
- assert.equal(await page.evaluate(()=>window.testFirebaseConfig.projectId),'evora-athletes');
  assert.equal(await page.evaluate(()=>CollectiveEnvironment.current.workerBase),mockWorker);
+ await assertNoFirebase(page);
+ const staff=await pageFor(t,{admin:true});
+ assert.equal(await staff.page.evaluate(()=>window.testFirebaseConfig.projectId),'evora-athletes');
+ assert.equal(await staff.page.evaluate(()=>CollectiveEnvironment.current.workerBase),mockWorker);
 });
 
-test('Invalid configuration blocks SDK initialization and every POST',async t=>{
- const {page,calls}=await pageFor(t,{bootFailure:true,configuration:workerConfig.replace('projectId: "evora-athletes"','projectId: "invalid-project"')});
+for(const admin of [false,true])test(`Invalid configuration blocks SDK initialization and every POST (${admin?'staff':'public'} page)`,async t=>{
+ const {page,calls}=await pageFor(t,{admin,bootFailure:true,configuration:workerConfig.replace('projectId: "evora-athletes"','projectId: "invalid-project"')});
  assert.equal(await page.evaluate(()=>window.testFirebaseConfig),undefined);
  assert.equal(calls.length,0);
- assert.equal(await page.getByRole('button',{name:/Candidati|candidatura/i}).count(),0);
+ assert.equal(await page.getByRole('button',{name:admin?/Accedi/:/Candidati|candidatura/i}).count(),0);
+});
+
+const separatedOnly={skip:SINGLE_PAGE&&'frontend-mode.json = single-page: nessun isolamento dei moduli durante il ripristino'};
+test('Public page loads only public modules: no Firebase, no staff code, no admin client',separatedOnly,async t=>{
+ const {page,served}=await pageFor(t);
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().waitFor();
+ assert.deepEqual(served,['index.html','app/styles.css','app/shared.jsx','app/public-form.jsx','app/public-main.jsx']);
+ assert.deepEqual(await page.evaluate(()=>['AdminPanel','FB','AUTH','sendTelegram','CollectiveAdminScoring'].filter(n=>{try{return typeof eval(n)!=='undefined';}catch{return false;}})),[]);
+ await assertNoFirebase(page);
+});
+
+test('A broken staff module cannot break the public form, and the staff page reports it',{timeout:60000,...separatedOnly},async t=>{
+ const broken={'app/admin.jsx':'function AdminPanel({ onBack }) { return (<div>; // errore di sintassi intenzionale\n'};
+ const {page,calls,served}=await pageFor(t,{moduleOverrides:broken});
+ await fillPublic(page,{age:'27'});
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByRole('heading',{name:'Candidatura ricevuta',exact:true}).waitFor();
+ assert.equal(calls.filter(c=>c.url.endsWith('/applications')).length,1);
+ assert.ok(!served.includes('app/admin.jsx'));
+ const staff=await pageFor(t,{admin:true,moduleOverrides:broken,expectErrors:true});
+ await staff.page.waitForFunction(()=>document.readyState==='complete');
+ assert.equal(await staff.page.getByRole('heading',{name:'Accesso riservato',exact:true}).count(),0);
+ assert.ok(staff.served.includes('app/admin.jsx'));
+});
+
+test('Single-page rollback (generated from the current modules): candidature, staff area on /#admin and on /admin/',{timeout:60000},async t=>{
+ const rollback={'index.html':buildSinglePage(),'admin/index.html':buildAdminPage()};
+ const {page,calls,served}=await pageFor(t,{moduleOverrides:rollback});
+ await fillPublic(page,{age:'27'});
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByRole('heading',{name:'Candidatura ricevuta',exact:true}).waitFor();
+ const sent=calls.filter(c=>c.url.endsWith('/applications'));assert.equal(sent.length,1);validatePublicApplication(sent[0].body);
+ assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
+ assert.ok(!served.some(f=>f.startsWith('app/')),'la pagina unica non dipende dai file app/');
+ // Accesso diretto a admin/ durante il ripristino: la pagina unica di admin/ apre l'area staff, senza reindirizzare.
+ await page.goto(`${mockOrigin}/admin/`);
+ await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Form di prova',exact:true}).waitFor();
+ assert.equal(page.url(),`${mockOrigin}/admin/`);
+ await page.goto(`${mockOrigin}/#admin`);
+ await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+ assert.equal(page.url(),`${mockOrigin}/#admin`);
+});
+
+// Pagine in cache durante le transizioni: ogni combinazione di index.html e admin/index.html di versioni diverse
+// (separata S, ripristino R), con ingresso da /#admin o da /admin/, deve arrivare all'area staff senza rimbalzi.
+for(const [entry,expected] of [['/#admin',{S:'/admin/',R:'/#admin'}],['/admin/',{S:'/admin/',R:'/admin/'}]])
+ for(const idx of ['S','R'])for(const adm of ['S','R'])
+  test(`Mixed cached pages: index ${idx} + admin ${adm}, entry ${entry} reaches the staff area without redirect loops`,{timeout:60000,skip:SINGLE_PAGE&&'frontend-mode.json = single-page: le pagine separate S non sono sul disco; matrice verificata in modalità separata'},async t=>{
+   const overrides={...(idx==='R'?{'index.html':buildSinglePage()}:{}),...(adm==='R'?{'admin/index.html':buildAdminPage()}:{})};
+   const {page}=await pageFor(t,{moduleOverrides:overrides});
+   // Ingresso con caricamento completo, come da segnalibro (la query evita un cambio di sola # sulla pagina già aperta).
+   const navs={count:0};page.on('framenavigated',f=>{if(f===page.mainFrame())navs.count++;});
+   await page.goto(`${mockOrigin}${entry==='/#admin'?'/?ingresso#admin':'/admin/'}`);
+   await page.getByRole('button',{name:'Scoring',exact:true}).waitFor({timeout:20000});
+   await page.waitForTimeout(1500);
+   assert.ok(navs.count<=2,`${navs.count} navigazioni: possibile reindirizzamento circolare`);
+   const url=new URL(page.url());const landed=entry==='/#admin'?expected[idx]:expected[adm];
+   assert.equal(url.pathname+url.hash,landed==='/#admin'?'/#admin':'/admin/');
+   await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+  });
+
+test('Staff page opens from admin/ and from the historical /#admin address',{skip:SINGLE_PAGE&&'frontend-mode.json = single-page: /#admin e /admin/ sono verificati dal test «Single-page rollback»'},async t=>{
+ const {page,served}=await pageFor(t,{admin:true});
+ assert.equal(page.url(),`${mockOrigin}/admin/`);
+ await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+ // Prima del reindirizzamento il browser può già aver richiesto lo stile della pagina pubblica.
+ assert.deepEqual(served.slice(served.indexOf('admin/index.html')),['admin/index.html','app/styles.css','app/shared.jsx','app/public-form.jsx','app/admin.jsx','app/admin-main.jsx']);
+ assert.ok(!served.slice(0,served.indexOf('admin/index.html')).some(f=>f.endsWith('.jsx')));
 });
 
 test('Admin login keeps the Firebase session and loads candidates (login race regression)',{timeout:60000},async t=>{

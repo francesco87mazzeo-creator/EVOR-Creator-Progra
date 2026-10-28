@@ -1,0 +1,9 @@
+{
+  "name": "evora-collective-worker-security",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.mjs\"",
+    "hashes": "node -e \"import('./tools/frontend-prompts.mjs').then(m=>console.log(JSON.stringify(m.allowedPromptHashes(),null,2)))\""
+  }
+}
