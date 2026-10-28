@@ -103,7 +103,9 @@
           if (!response.ok) {
             const error=responseError(response.status,data);
             // Only definitive validation/access rejections permit a corrected new payload/key.
-            if ([400,401,403,405,413,415,422].includes(response.status)) pending.editable=true;
+            // 429 too: the Worker rate limiter answers before reading the body, so nothing was stored.
+            // An unchanged resend keeps the same key; no automatic retry is scheduled.
+            if ([400,401,403,405,413,415,422,429].includes(response.status)) pending.editable=true;
             throw error;
           }
           // Confirm the supplied /applications contract, including replay semantics.

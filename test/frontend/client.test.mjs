@@ -73,6 +73,48 @@ for(const status of [409,429,500,503])test(`HTTP ${status} keeps the same key on
  await assert.rejects(c.send(fixture),e=>e.status===status&&e.retryAfter===null);
  await c.send(fixture);assert.equal(calls[0][1].headers['Idempotency-Key'],calls[1][1].headers['Idempotency-Key']);
 });
+test('HTTP 429 permits correcting the data and retrying with a fresh key, without automatic retries',async()=>{
+ const calls=[];const c=client(async(...args)=>{calls.push(args);return calls.length===1?response(429,{error:{code:'RATE_LIMITED'}}):response();});
+ await assert.rejects(c.send(fixture),e=>e.status===429&&!e.ambiguous);
+ assert.equal(calls.length,1,'no automatic retry after 429');
+ const result=await c.send({...fixture,extra:'Corrected after 429'});
+ assert.equal(result.simulated,false);assert.equal(calls.length,2);
+ assert.notEqual(calls[0][1].headers['Idempotency-Key'],calls[1][1].headers['Idempotency-Key']);
+ assert.equal(JSON.parse(calls[1][1].body).extra,'Corrected after 429');
+});
+test('Double click after HTTP 429 still sends a single request',async()=>{
+ let finish;const calls=[];const c=client((...args)=>{calls.push(args);return calls.length===1?Promise.resolve(response(429,{})):new Promise(resolve=>{finish=resolve;});});
+ await assert.rejects(c.send(fixture));
+ const a=c.send({...fixture,extra:'x'}),b=c.send({...fixture,extra:'x'});assert.equal(a,b);assert.equal(calls.length,2);finish(response());await a;
+});
+for(const [label,fetchImpl] of [
+ ['HTTP 503',async()=>response(503,{error:{code:'SERVICE_UNAVAILABLE'}})],
+ ['HTTP 409',async()=>response(409,{})],
+ ['network failure',async()=>{throw Error('offline');}],
+ ['unconfirmed 200',async()=>response(200,{ok:true,id:'x'})],
+])test(`After an uncertain outcome (${label}) a changed payload is still refused`,async()=>{
+ let calls=0;const c=client(async(...args)=>{calls++;return fetchImpl(...args);});
+ await assert.rejects(c.send(fixture),e=>e.ambiguous);
+ await assert.rejects(c.send({...fixture,extra:'changed'}),e=>e.code==='UNCONFIRMED_CHANGE');assert.equal(calls,1);
+});
+test('After a timeout a changed payload is still refused; the unchanged retry reuses the key',async()=>{
+ const calls=[];
+ const c=createSubmissionClient({endpoint:'https://worker.invalid/applications',newKey:key,timeoutMs:5,fetchImpl:async(url,options)=>{
+  calls.push(options);if(calls.length>1)return response(200,{ok:true,id:'synthetic-id',duplicate:true});
+  return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}));
+ }});
+ await assert.rejects(c.send(fixture),e=>e.code==='TIMEOUT'&&e.ambiguous);
+ await assert.rejects(c.send({...fixture,extra:'changed'}),e=>e.code==='UNCONFIRMED_CHANGE');
+ const replay=await c.send(fixture);assert.equal(replay.duplicate,true);
+ assert.equal(calls.length,2);assert.equal(calls[0].headers['Idempotency-Key'],calls[1].headers['Idempotency-Key']);
+});
+test('Worker contract: /applications answers 429 before reading or storing anything',async()=>{
+ const worker=await readFile(new URL('../../worker/src/worker.js',import.meta.url),'utf8');
+ const handler=worker.slice(worker.indexOf('async function handleApplication('),worker.indexOf('/* ---------- Scoring amministrativo'));
+ const guard=handler.indexOf('await guard(env, request'),read=handler.indexOf('readLimitedText(request'),write=handler.indexOf('createDocument(');
+ assert.ok(guard>0&&guard<read&&read<write,'il limitatore precede lettura del corpo e scrittura');
+ assert.match(worker,/if \(await rateLimited\([^)]*\)\) \{\s*return \{ response: json\(\{ ok: false, error: "Troppe richieste, riprova più tardi" \}, 429/);
+});
 test('Unconfirmed success, invalid JSON and arbitrary server text never produce confirmation',async()=>{
  for(const r of [response(200,{ok:false}),response(200,{unexpected:'text'}),{...response(),json:async()=>{throw Error('bad JSON');}}]) {
   const c=client(async()=>r);await assert.rejects(c.send(fixture),e=>e.code==='UNCONFIRMED_RESPONSE');
