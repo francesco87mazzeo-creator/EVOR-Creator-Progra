@@ -26,6 +26,8 @@ test('unpkg scripts carry SRI integrity and anonymous CORS',async()=>{
 });
 
 test('All pages use the same pinned library versions',async()=>{
- const sets=await Promise.all(pages.map(async p=>(await scripts(p)).filter(s=>s.src.startsWith('https://unpkg.com/')).map(s=>s.tag).join('\n')));
+ // Una pagina senza librerie (il reindirizzamento di admin/ durante il ripristino) non entra nel confronto.
+ const sets=(await Promise.all(pages.map(async p=>(await scripts(p)).filter(s=>s.src.startsWith('https://unpkg.com/')).map(s=>s.tag).join('\n')))).filter(Boolean);
+ assert.ok(sets.length>=1);
  for(const s of sets)assert.equal(s,sets[0]);
 });

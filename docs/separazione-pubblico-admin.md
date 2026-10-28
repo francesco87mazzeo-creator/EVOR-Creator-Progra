@@ -77,20 +77,57 @@ Finché la protezione non è attiva, i test non impediscono un merge.
 
 ## Ripristino
 
-**Non usare un `git revert` completo come primo passo.** Eliminerebbe `app/` e `admin/`: per circa 10 minuti i browser che hanno in cache la nuova `index.html` continuerebbero a richiedere quei file e riceverebbero una pagina vuota.
+**Cosa si ripristina:** la pagina unica di prima della separazione, ricostruita con il codice **attuale** dei moduli `app/`. Torna indietro solo il modo in cui le pagine vengono caricate, non il codice. Per questo:
+- i test continuano a valere e i controlli obbligatori di GitHub passano;
+- un problema in una funzione si corregge con una PR normale, non con questo ripristino.
 
-1. **Ripristinare solo la pagina unica:** con una PR, riportare `index.html` alla versione del commit `2150f63`, cioè la fase 0: pagina unica con librerie a versione fissata e SRI.
+**Non riportare `index.html` a un commit precedente** (per esempio `2150f63`) e **non fare un `git revert` completo**:
+- il primo lascerebbe moduli `app/` e test di versioni diverse dalla pagina, e i controlli fallirebbero;
+- il secondo eliminerebbe `app/` e `admin/`, ancora richiesti per circa 10 minuti dalle pagine in cache.
+
+### Procedura (PR normale, compatibile con i controlli obbligatori)
+
+1. **Branch dal `main` aggiornato:**
 
    ```sh
-   git checkout 2150f63 -- index.html
+   git switch -c rollback/single-page origin/main
    ```
 
-   Si lasciano **invariati** `app/` e `admin/`: `admin/` resta raggiungibile e funzionante, e `/#admin` torna a essere gestito dalla pagina unica.
-2. **Verificare:**
-   - la build di Pages è completata (`gh api repos/<owner>/<repo>/pages/builds/latest`);
-   - dopo almeno 10 minuti, il modulo pubblico funziona in una finestra privata e da telefono.
-3. **Pulizia, dopo almeno un giorno:** rimuovere `app/` e `admin/` con una PR separata, quando nessuna pagina in cache può più richiederli.
+2. **Ripristino:**
 
-Anche il ripristino non è atomico: nella stessa finestra di circa 10 minuti alcuni browser vedranno ancora la versione separata, che resta funzionante perché i suoi file non sono stati rimossi.
+   ```sh
+   node tools/frontend-mode.mjs single-page
+   ```
+
+   Lo strumento scrive:
+   - `index.html`: pagina unica con gli stessi script (versioni e `integrity`), stili e moduli in un solo script Babel. Il pubblico è su `/`, l'area staff su `/#admin`.
+   - `admin/index.html`: reindirizzamento a `../#admin`, così gli accessi diretti e i segnalibri di `/admin/` portano all'area staff della pagina unica;
+   - `frontend-mode.json`: `{"mode": "single-page"}`.
+
+   `app/` **non va toccata**: le pagine separate ancora in cache la richiedono.
+3. **Controlli in locale (facoltativi, gli stessi della CI):**
+
+   ```sh
+   node tools/frontend-mode.mjs
+   ```
+
+   Deve rispondere «pagine allineate ai moduli app/». Poi le suite elencate in `docs/frontend-staging-tests.md`.
+
+   **Come si comportano i test nella pagina unica:**
+   - i test che riguardano solo la separazione risultano **saltati con il motivo** (`frontend-mode.json = single-page`);
+   - al loro posto valgono quelli della pagina unica: pagine identiche a quelle generate, `admin/` che rimanda a `/#admin`, `app/` ancora presente;
+   - tutti gli altri restano invariati.
+4. **Commit, push e PR verso `main`:** i controlli `unit`, `browser`, `firestore-rules` e `hygiene` devono essere verdi. Poi merge.
+5. **Verifiche dopo il merge:**
+   - la build di Pages è completata (`gh api repos/<owner>/<repo>/pages/builds/latest`);
+   - dopo almeno 10 minuti, in una finestra privata e da telefono: `/` mostra il modulo, `/#admin` e `/admin/` l'area staff.
+
+**Durante il ripristino:**
+- **Modifiche ai moduli `app/`:** dopo ogni modifica si riesegue `node tools/frontend-mode.mjs single-page` per rigenerare la pagina; un test lo impone.
+- **Ritorno alla separazione:** si fa il `git revert` del commit di ripristino (una PR normale), che riporta pagine e `frontend-mode.json` alla separazione.
+
+**Il ripristino non è atomico:** per circa 10 minuti alcuni browser useranno ancora le pagine separate in cache. Restano funzionanti perché `app/` non viene rimossa.
+
+**Verifica continua:** il test browser «Single-page rollback» genera e prova la pagina unica, con candidatura, `/#admin` e `/admin/`, su ogni pull request anche in modalità separata. Così il ripristino resta eseguibile prima ancora di servire.
 
 **Worker e Rules:** non sono cambiati in queste fasi e non vanno ripristinati.

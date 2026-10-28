@@ -5,6 +5,8 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {validatePublicApplication,prepareApplication} from '../../server/collective/application.mjs';
 import {publicFixture,NOW} from '../../server/collective/test/frontend-reference.mjs';
+import {SINGLE_PAGE} from './app-source.mjs';
+import {buildSinglePage,buildAdminRedirect} from '../../tools/frontend-mode.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
@@ -86,15 +88,17 @@ async function pageFor(t,{admin=false,applicationResponse,scoringResponse,candid
   blocked.push(req.method()+' '+url);
   return route.abort('blockedbyclient');
  });
- // L'area staff si apre dall'indirizzo storico /#admin, che reindirizza ad admin/.
+ // L'area staff si apre dall'indirizzo storico /#admin: reindirizza ad admin/, oppure resta sulla pagina unica nel ripristino.
  await page.goto(`${mockOrigin}/${admin?'#admin':''}`);
- if(admin)await page.waitForURL(`${mockOrigin}/admin/`);
+ if(admin&&!SINGLE_PAGE)await page.waitForURL(`${mockOrigin}/admin/`);
  if(!expectBlocked)t.after(()=>assert.deepEqual(blocked,[],'No request may leave the test harness'));
  if(!expectErrors)t.after(()=>bootFailure?assert.ok(errors.some(e=>e.includes('Invalid production configuration'))):assert.deepEqual(errors,[],'No uncaught browser errors'));
  return{page,calls,blocked,served,errors};
 }
-/** Pagina pubblica: nessun SDK Firebase caricato, quindi nessuna lettura o scrittura possibile. */
+/** Pagina pubblica: nessun SDK Firebase caricato, quindi nessuna lettura o scrittura possibile.
+ * Nella pagina unica (ripristino) Firebase si carica come prima della separazione: nessuna lettura o scrittura. */
 async function assertNoFirebase(page){
+ if(SINGLE_PAGE)return assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
  assert.deepEqual(await page.evaluate(()=>({firebase:typeof window.firebase,counters:typeof window.testCounters})),{firebase:'undefined',counters:'undefined'});
 }
 async function jpeg(page){return Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=30;c.height=30;c.getContext('2d').fillRect(0,0,30,30);return c.toDataURL('image/jpeg').split(',')[1];}),'base64');}
@@ -259,7 +263,8 @@ for(const admin of [false,true])test(`Invalid configuration blocks SDK initializ
  assert.equal(await page.getByRole('button',{name:admin?/Accedi/:/Candidati|candidatura/i}).count(),0);
 });
 
-test('Public page loads only public modules: no Firebase, no staff code, no admin client',async t=>{
+const separatedOnly={skip:SINGLE_PAGE&&'frontend-mode.json = single-page: nessun isolamento dei moduli durante il ripristino'};
+test('Public page loads only public modules: no Firebase, no staff code, no admin client',separatedOnly,async t=>{
  const {page,served}=await pageFor(t);
  await page.getByRole('button',{name:/Candidati|candidatura/i}).first().waitFor();
  assert.deepEqual(served,['index.html','app/styles.css','app/shared.jsx','app/public-form.jsx','app/public-main.jsx']);
@@ -267,7 +272,7 @@ test('Public page loads only public modules: no Firebase, no staff code, no admi
  await assertNoFirebase(page);
 });
 
-test('A broken staff module cannot break the public form, and the staff page reports it',{timeout:60000},async t=>{
+test('A broken staff module cannot break the public form, and the staff page reports it',{timeout:60000,...separatedOnly},async t=>{
  const broken={'app/admin.jsx':'function AdminPanel({ onBack }) { return (<div>; // errore di sintassi intenzionale\n'};
  const {page,calls,served}=await pageFor(t,{moduleOverrides:broken});
  await fillPublic(page,{age:'27'});
@@ -281,7 +286,22 @@ test('A broken staff module cannot break the public form, and the staff page rep
  assert.ok(staff.served.includes('app/admin.jsx'));
 });
 
-test('Staff page opens from admin/ and from the historical /#admin address',async t=>{
+test('Single-page rollback (generated from the current modules): candidature, staff area on /#admin, admin/ redirect',{timeout:60000},async t=>{
+ const rollback={'index.html':buildSinglePage(),'admin/index.html':buildAdminRedirect()};
+ const {page,calls,served}=await pageFor(t,{moduleOverrides:rollback});
+ await fillPublic(page,{age:'27'});
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByRole('heading',{name:'Candidatura ricevuta',exact:true}).waitFor();
+ const sent=calls.filter(c=>c.url.endsWith('/applications'));assert.equal(sent.length,1);validatePublicApplication(sent[0].body);
+ assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads:0,writes:0});
+ assert.ok(!served.some(f=>f.startsWith('app/')),'la pagina unica non dipende dai file app/');
+ // Accesso diretto a admin/ durante il ripristino: rimanda a /#admin della pagina unica.
+ await page.goto(`${mockOrigin}/admin/`);await page.waitForURL(`${mockOrigin}/#admin`);
+ await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Form di prova',exact:true}).waitFor();
+});
+
+test('Staff page opens from admin/ and from the historical /#admin address',separatedOnly,async t=>{
  const {page,served}=await pageFor(t,{admin:true});
  assert.equal(page.url(),`${mockOrigin}/admin/`);
  await page.getByRole('button',{name:'Scoring',exact:true}).waitFor();

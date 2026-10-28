@@ -9,14 +9,16 @@ import { fileURLToPath } from 'node:url';
 export const PAGES = ['index.html', 'admin/index.html'];
 const root = new URL('../', import.meta.url);
 const read = path => readFileSync(new URL(path, root));
-// Riferimenti a app/: <script type="text/babel" src="…"> e <link rel="stylesheet" href="…">, con o senza "../".
-const REFERENCE = /(?<attr>src|href)="(?<prefix>(?:\.\.\/)?)(?<file>app\/[a-z0-9-]+\.(?:jsx|css))\?v=(?<version>[^"]*)"/g;
+// Riferimenti a app/ (<script src="…">, <link href="…">), con o senza "../", con o senza ?v= o altra query:
+// un riferimento senza versione o con una query diversa da ?v=<hash> risulta da correggere.
+const REFERENCE = /(?<attr>src|href)="(?<prefix>(?:\.\.\/)?)(?<file>app\/[a-z0-9-]+\.(?:jsx|css))(?<query>\?[^"]*)?"/g;
+const versionOf = query => (/^\?v=([^&]*)$/.exec(query || '') || [])[1] ?? null;
 
 export const assetVersion = file => createHash('sha256').update(read(file)).digest('hex').slice(0, 16);
 
-/** Riferimenti app/ di una pagina con versione attuale e attesa. */
+/** Riferimenti app/ di una pagina con versione attuale (null se assente) e attesa. */
 export function references(page) {
-  return [...read(page).toString('utf8').matchAll(REFERENCE)].map(m => ({ page, file: m.groups.file, version: m.groups.version, expected: assetVersion(m.groups.file) }));
+  return [...read(page).toString('utf8').matchAll(REFERENCE)].map(m => ({ page, file: m.groups.file, version: versionOf(m.groups.query), expected: assetVersion(m.groups.file) }));
 }
 
 export function updatePages() {
@@ -30,7 +32,7 @@ export function updatePages() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (process.argv.includes('--write')) updatePages();
   const wrong = PAGES.flatMap(references).filter(r => r.version !== r.expected);
-  for (const r of wrong) console.error(`${r.page}: ${r.file}?v=${r.version} → atteso ?v=${r.expected}`);
+  for (const r of wrong) console.error(`${r.page}: ${r.file}${r.version === null ? ' senza versione' : `?v=${r.version}`} → atteso ?v=${r.expected}`);
   console.log(wrong.length ? 'Versioni da aggiornare: node tools/asset-versions.mjs --write' : 'Versioni degli asset app/ allineate al contenuto.');
   process.exitCode = wrong.length ? 1 : 0;
 }
