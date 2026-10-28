@@ -86,13 +86,10 @@ C:\evora-firestore-test\
 
 Il branch da leggere su GitHub è `development/collective-applications-frontend`.
 La condivisione non modifica main o il sito pubblicato. Prima di aggiornare una
-copia Windows preserva eventuali modifiche locali; non fare commit involontari
-per eliminare il file legacy con spazio finale. È possibile copiare i percorsi
+copia Windows preserva eventuali modifiche locali. È possibile copiare i percorsi
 necessari in una cartella di prova separata, senza checkout completo del repository.
 
-**Non copiare** `.git`, il file legacy `html ` (ha uno spazio finale),
-`node_modules`, `.emulator-cache`, log, credenziali o dati di produzione.
-La copia separata evita il problema del nome con spazio finale su Windows.
+**Non copiare** `.git`, `node_modules`, `.emulator-cache`, log, credenziali o dati di produzione.
 Non spostare i test fuori dalla struttura: le fixture leggono `index.html` tramite
 un percorso relativo. Usare il sorgente del commit base
 `479213ab45cdee057f7c2d8c8e733eb64cc3c8b7`.

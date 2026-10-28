@@ -7,8 +7,7 @@ soltanto locali, senza commit o push: [dettagli A1](A1.md).
 Branch: `security/firestore-rules-emulator`, base `479213ab45cdee057f7c2d8c8e733eb64cc3c8b7`.
 Nessuna modifica a `index.html`, al file legacy `html `, a Firebase o Cloudflare.
 
-Per Windows: [guida PowerShell passo per passo](WINDOWS.md), con verifica Node.js/Java
-e copia separata che esclude il file legacy con spazio finale.
+Per Windows: [guida PowerShell passo per passo](WINDOWS.md), con verifica Node.js/Java.
 
 ## Esecuzione riproducibile
 
@@ -60,8 +59,8 @@ Per eseguire su una macchina locale con rete consentita:
    sorgente del commit base indicato in testa. Il branch e i file non sono stati
    pubblicati: un semplice clone da GitHub non include queste aggiunte locali.
    Non trasferire `node_modules`, cache, log, credenziali o dati di produzione.
-3. Preferire Linux, macOS o WSL su filesystem Linux, vista la presenza nel
-   repository del file legacy con spazio finale `html `.
+3. Windows, Linux, macOS o WSL: il file legacy con spazio finale è stato rimosso e
+   `test/repository/hygiene.test.mjs` impedisce percorsi incompatibili con Windows.
 4. Lasciare libera la porta locale 8089. Consentire i download ufficiali da
    `registry.npmjs.org` e `storage.googleapis.com`, mantenendo TLS verificato.
 5. Dalla radice della copia locale eseguire:
