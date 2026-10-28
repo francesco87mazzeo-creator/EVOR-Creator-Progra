@@ -1,0 +1,3 @@
+# Fine riga LF anche nei checkout Windows (core.autocrlf=true di Git for Windows):
+# i test estraggono funzioni da index.html e dai client confrontando il testo esatto.
+* text=auto eol=lf

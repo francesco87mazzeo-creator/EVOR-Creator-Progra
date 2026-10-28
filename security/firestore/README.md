@@ -1,16 +1,48 @@
 # COLLECTIVE — preparazione sicurezza Firestore
 
-Stato: **correzione A1 candidata; non validata nell'Emulator**.
+## Stato attuale e istruzioni correnti (28 ottobre 2026)
+
+- **Rules in produzione:** `migration/firestore.rules` (profilo **migration**), pubblicate
+  il 27 ottobre 2026 come ruleset `7e21404d` (sha256 `f0151978…`, identico a questo file).
+- **Verifica:** suite Emulator del profilo migration 40/40 su Windows (Node 24, Java 21),
+  28 ottobre 2026. Contratto frontend: 8 test.
+- **Profilo originale** (`firestore.rules`, correzione A1): storico, non passa e non va
+  usato per certificare le Rules.
+- **Checkout su Windows:** funziona solo dai commit che includono la rimozione del file
+  legacy con spazio finale `html ` (branch `security/remove-legacy-html` e `main` dopo
+  il suo merge). Tutti i commit precedenti, compresi `479213a`, `main` fino a `2031a4e`
+  e i branch `development/*`, `security/firestore-rules-emulator` e
+  `maintenance/remove-retired-staging`, contengono ancora quel file: su Windows il
+  checkout non si completa. Per quelle versioni serve la copia separata descritta in
+  [WINDOWS.md](WINDOWS.md).
+
+Dalla radice di un clone compatibile:
+
+```sh
+cd security/firestore
+npm ci --ignore-scripts
+npm run test:contract
+EVORA_RULES_PROFILE=migration npm test
+```
+
+In PowerShell: `$env:EVORA_RULES_PROFILE = 'migration'; npm.cmd test` (vedi [WINDOWS.md](WINDOWS.md)).
+
+## Note storiche (26 ottobre 2026)
+
+Le sezioni seguenti documentano la preparazione e sono conservate per tracciabilità:
+i principi restano validi, ma commit, branch, conteggi ed esiti **non descrivono lo
+stato attuale** (vedi sopra).
+
+Stato all'epoca: **correzione A1 candidata; non validata nell'Emulator**.
 La versione base delle regole è pubblicata nel commit
 `fc7690ce1d5adee3c1d77566f111dfbef26ec21a`. Le modifiche A1 sono
 soltanto locali, senza commit o push: [dettagli A1](A1.md).
 Branch: `security/firestore-rules-emulator`, base `479213ab45cdee057f7c2d8c8e733eb64cc3c8b7`.
 Nessuna modifica a `index.html`, al file legacy `html `, a Firebase o Cloudflare.
 
-Per Windows: [guida PowerShell passo per passo](WINDOWS.md), con verifica Node.js/Java
-e copia separata che esclude il file legacy con spazio finale.
+Per Windows: [guida PowerShell passo per passo](WINDOWS.md), con verifica Node.js/Java.
 
-## Esecuzione riproducibile
+### Esecuzione riproducibile (profilo originale A1, storico)
 
 Prerequisiti: Node.js 24 (usato 24.19.0), Java 21, npm. Dalla root del repository:
 
@@ -42,7 +74,7 @@ runner imposta il guard diagnostico obbligatorio. In questo ambiente non tentare
 nuovi download: `EVORA_EMULATOR_OFFLINE=1 npm test` verifica solo la disponibilità
 della cache e termina con codice 2 se manca il binario.
 
-## Ultimo tentativo e istruzioni per esecuzione locale
+### Tentativo del 26 ottobre 2026 e istruzioni dell'epoca (storico)
 
 Verifica del 26 ottobre 2026, ore 20:45 (Europe/Rome):
 
@@ -60,8 +92,9 @@ Per eseguire su una macchina locale con rete consentita:
    sorgente del commit base indicato in testa. Il branch e i file non sono stati
    pubblicati: un semplice clone da GitHub non include queste aggiunte locali.
    Non trasferire `node_modules`, cache, log, credenziali o dati di produzione.
-3. Preferire Linux, macOS o WSL su filesystem Linux, vista la presenza nel
-   repository del file legacy con spazio finale `html `.
+3. Preferire Linux, macOS o WSL su filesystem Linux: il commit base conteneva il file
+   legacy con spazio finale `html `, che impedisce il checkout su Windows. Il file è stato
+   rimosso in seguito: per i commit compatibili vedi lo stato attuale in testa.
 4. Lasciare libera la porta locale 8089. Consentire i download ufficiali da
    `registry.npmjs.org` e `storage.googleapis.com`, mantenendo TLS verificato.
 5. Dalla radice della copia locale eseguire:
@@ -84,7 +117,7 @@ Se fallisce il download o la compilazione, non registrare i test di autorizzazio
 come passati o saltati. Inviare per revisione il primo errore con il riepilogo finale,
 senza includere credenziali. Non eseguire alcun comando `deploy`.
 
-## Esiti attuali
+### Esiti al 26 ottobre 2026 (storico)
 
 - **20 test locali passati**: 7 contratto/schema e 13 diagnostica, nessun fallimento.
 - **Versione base eseguita da Claude Code su Windows, secondo il rapporto ricevuto:**
