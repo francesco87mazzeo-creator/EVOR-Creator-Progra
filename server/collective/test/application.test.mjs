@@ -81,7 +81,7 @@ test('Zero counts and negative net followers are allowed',()=>{
  const d=validatePublicApplication({...fixture,followers:0,views:0,interactions:0,accountsReached:0,netFollowers:-1e12});
  assert.equal(d.netFollowers,-1e12);
  const z=prepareApplication({...fixture,views:0,interactions:0,netFollowers:0,accountsReached:0},{now:NOW});
- assert.equal(z.socialScore,0);assert.equal(z.engagementRate,null);assert.equal(z.reachEngagementRate,null);assert.equal(z.lowBase,true);assert.equal(z.netFollowers,0);
+ assert.equal(z.socialScore,null,'zero views: score not available, not zero');assert.equal(z.views,0);assert.equal(z.engagementRate,null);assert.equal(z.reachEngagementRate,null);assert.equal(z.lowBase,true);assert.equal(z.netFollowers,0);
  const n=prepareApplication({...fixture,netFollowers:-250},{now:NOW});
  assert.equal(n.netFollowers,-250);assert.equal(n.socialScore,prepareApplication(fixture,{now:NOW}).socialScore);
 });

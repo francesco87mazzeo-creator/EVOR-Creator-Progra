@@ -447,7 +447,9 @@ function applicationMessage(doc, s) {
     "💬 Interazioni: " + fmtInt(doc.interactions),
     "📈 Follower netti: " + (doc.netFollowers > 0 ? "+" : "") + fmtInt(doc.netFollowers),
     "🎯 Account raggiunti: " + (doc.accountsReached === null ? "non indicati" : fmtInt(doc.accountsReached)), "",
-    "📊 Punteggio quantitativo: <b>" + s.socialScore + "/100</b> (scoring v2)",
+    s.available
+      ? "📊 Punteggio quantitativo: <b>" + s.socialScore + "/100</b> (scoring v2)"
+      : "📊 Punteggio quantitativo: non disponibile (zero visualizzazioni)",
     "Coinvolgimento " + fmtPct(s.engagementRate) + " · Indicatore B " + fmtPct(s.reachEngagementRate) + " (non incide)"
   );
   if (s.lowBase) lines.push("⚠️ Base di osservazione molto ridotta");

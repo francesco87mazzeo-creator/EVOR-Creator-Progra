@@ -339,3 +339,17 @@ test('Etichette delle categorie del Worker uguali a CATEGORIES del frontend', as
   const fromWorker = Object.fromEntries([...block.matchAll(/([a-z_]+): "([^"]+)"/g)].map(m => [m[1], m[2]]));
   assert.deepEqual(fromWorker, fromFrontend);
 });
+
+test('Zero visualizzazioni: 201, zero salvato come dato, punteggio non disponibile (null) anche nella notifica', async () => {
+  const { res, calls } = await submit(await publicFixture({ views: 0, interactions: 0 }));
+  assert.equal(res.status, 201);
+  const saved = decodeDoc(writes(calls)[0].body);
+  assert.equal(saved.views, 0);
+  assert.equal(saved.socialScore, null);
+  assert.equal(saved.engagementRate, null);
+  assert.equal(saved.visibilityScore, 0);
+  assert.deepEqual(writes(calls)[0].body.fields.socialScore, { nullValue: null });
+  const text = tgCalls(calls)[0].body.text;
+  assert.match(text, /📊 Punteggio quantitativo: non disponibile \(zero visualizzazioni\)/);
+  assert.match(text, /👁 Visualizzazioni: 0/);
+});

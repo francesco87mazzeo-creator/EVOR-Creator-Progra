@@ -95,7 +95,8 @@ service cloud.firestore {
     }
     // Fields of the previous model, still written by the previous panel during the rollout.
     function previousScore(c, d) {
-      return (!c.hasAny(['socialScore']) || score100(d.socialScore))
+      // null: punteggio v2 non disponibile (zero visualizzazioni).
+      return (!c.hasAny(['socialScore']) || d.socialScore == null || score100(d.socialScore))
         && (!c.hasAny(['perfLevel']) || performance(d.perfLevel))
         && (!c.hasAny(['erRate']) || metric(d.erRate))
         && (!c.hasAny(['reachRate']) || metric(d.reachRate))

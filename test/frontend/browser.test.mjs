@@ -723,7 +723,7 @@ test('Unreadable OCR values are never zero: a missing value asks for a second sc
   await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).first().waitFor();
   assert.equal(await page.locator('.status-box strong',{hasText:'Visualizzazioni'}).count()>0,true);
   assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true,'no invented value lets the candidate through');
-  assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'not a technical failure');
+  assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),1,'manual completion is offered, a second screenshot remains possible');
   await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles({name:'second.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)});
   await page.getByText('✓ Insight verificati',{exact:true}).waitFor();
  },step1:async()=>{
@@ -805,4 +805,90 @@ test('Historical application: v2 score shown, the previous stored score is label
  await page.getByText(`Punteggio registrato all'invio con il modello precedente: ${candidate.socialScore}/100.`,{exact:false}).waitFor();
  await page.getByText('Interazioni / account raggiunti · non incide sul punteggio',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+/* ---------- Completamento manuale dopo letture OCR incomplete (audit PR #6) ---------- */
+const notVisible={value:null,visibility:'not_visible'};
+test('Two incomplete Insight readings of a valid screen: the candidate completes only the missing values by hand',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({views:notVisible,interactions:{value:'—',visibility:'complete'}})):undefined});
+ await fillPublic(page,{manual:true,beforeContinue:async()=>{
+  await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).first().waitFor();
+  await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles({name:'second.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)});
+  await page.getByText('La schermata è corretta, ma non siamo riusciti a leggere tutti i dati richiesti',{exact:false}).first().waitFor();
+  assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+ },step1:async()=>{
+  await page.getByText('Completa i dati Insight',{exact:true}).waitFor();
+  assert.equal(await page.locator('#f-views').inputValue(),'');assert.equal(await page.locator('#f-interactions').inputValue(),'');
+  assert.equal(await page.locator('#f-netFollowers').inputValue(),'260','values that were read are kept');
+  // Senza i dati obbligatori non si prosegue.
+  await page.getByRole('button',{name:'Avanti',exact:true}).click();
+  await page.getByText('Dato mancante',{exact:true}).first().waitFor();
+  await page.locator('#f-views').fill('23000');await page.locator('#f-interactions').fill('900');
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.deepEqual([sent.body.views,sent.body.interactions,sent.body.netFollowers,sent.body.accountsReached],[23000,900,260,18400]);
+ assert.equal(sent.body.ocrInsights.merged.views,null,'the OCR evidence shows the value was not read');
+ assert.ok(sent.body.ocrInsights.screenshot2,'both readings are kept');
+});
+
+test('Profile screen read without the follower count: followers entered by hand, username kept',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='profile'?synthetic({screen_type:'profile_ok',displayName:{value:'Synthetic Candidate',visibility:'complete',truncated:false},username:{value:'synthetic',visibility:'complete',truncated:false},followers:{value:'—',visibility:'partial'}}):undefined});
+ await fillPublic(page,{manual:true,beforeContinue:async()=>{
+  await page.getByText('La schermata è corretta, ma non siamo riusciti a leggere tutti i dati richiesti',{exact:false}).first().waitFor();
+  assert.equal(await page.locator('.status-box strong',{hasText:'Follower'}).count()>0,true);
+ },step1:async()=>{
+  await page.getByText('Non siamo riusciti a leggere tutti i dati del profilo: completa username e follower come appaiono nello screenshot.',{exact:true}).waitFor();
+  assert.equal(await page.locator('#f-ig').inputValue(),'@synthetic');assert.equal(await page.locator('#f-fol').inputValue(),'');
+  await page.getByRole('button',{name:'Avanti',exact:true}).click();
+  await page.getByText('Inserisci il numero di follower',{exact:true}).waitFor();
+  await page.locator('#f-fol').fill('7300');
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ assert.equal(sent.body.followers,7300);assert.equal(sent.body.ocrProfile.result.followers.value,null);
+ assert.ok(sent.body.ocrInsights,'the complete Insight reading is kept');
+});
+
+test('Manual completion is never offered for wrong or uncertain screens',{timeout:60000},async t=>{
+ const {page}=await pageFor(t,{ocr:({kind,index,synthetic})=>kind!=='insights'?undefined
+  :index===0?synthetic(insightsRead({screen_type:'uncertain',views:notVisible})):synthetic({...insightsRead({views:notVisible}),screen_type:'dashboard_wrong'})});
+ await page.getByRole('button',{name:/Candidati|candidatura/i}).first().click();
+ const file={name:'synthetic.jpg',mimeType:'image/jpeg',buffer:await jpeg(page)};
+ await page.getByLabel('Carica screenshot profilo',{exact:true}).setInputFiles(file);
+ await page.getByLabel('Carica primo screenshot Insight',{exact:true}).setInputFiles(file);
+ await page.getByText('alcuni dati non sono completamente visibili',{exact:false}).first().waitFor();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'uncertain screen');
+ await page.getByLabel('Carica secondo screenshot Insight',{exact:true}).setInputFiles(file);
+ await page.getByRole('dialog').getByText('Schermata non corretta',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Ho capito',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Prosegui inserendo i dati a mano'}).count(),0,'wrong screen');
+ assert.equal(await page.getByRole('button',{name:'Continua con la candidatura'}).isDisabled(),true);
+});
+
+/* ---------- Ripristino: pagina nuova aperta con un Worker precedente ---------- */
+test('Rollback safety: an older Worker refusing empty accounts reached keeps the application, the candidate adds it and resends',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{applicationResponses:[{status:400,body:{ok:false,error:{code:'TYPE',path:'$.accountsReached'}}},{status:201}],
+  ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:notVisible})):undefined});
+ await fillPublic(page);
+ await page.getByRole('button',{name:'Invia la candidatura',exact:true}).click();
+ await page.getByText('In questo momento serve anche questo dato: inseriscilo come appare nello screenshot e invia di nuovo.',{exact:true}).waitFor();
+ assert.equal(await page.locator('#f-accountsReached').getAttribute('aria-invalid'),'true');
+ await page.locator('#f-accountsReached').fill('15000');
+ for(let i=0;i<5;i++)await page.getByRole('button',{name:'Avanti',exact:true}).click();
+ await page.locator('label.check input').check();
+ await submitAndConfirm(page);
+ const sent=sentApplication(calls);
+ assert.equal(sent.length,2);assert.equal(sent[0].body.accountsReached,null);assert.equal(sent[1].body.accountsReached,15000);
+ assert.notEqual(sent[0].headers['idempotency-key'],sent[1].headers['idempotency-key'],'a definitive 400 allows the corrected payload');
+});
+
+test('Admin: zero views show the overall score as not available, the zero stays visible as data',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Zero',views:0,interactions:0},{now:NOW});
+ assert.equal(candidate.socialScore,null);assert.equal(candidate.views,0);
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic Zero'}).click();
+ await page.getByText('Punteggio non disponibile: con zero visualizzazioni il coinvolgimento non è calcolabile. Lo zero resta salvato come dato osservato.',{exact:true}).waitFor();
+ assert.equal(await page.getByText('Punteggio non calcolabile',{exact:false}).count(),0,'not reported as missing data');
+ assert.equal(await page.locator('div.kv').filter({hasText:'Visualizzazioni'}).first().locator('.kv-v').innerText().then(v=>v.split('\n')[0]),'0');
 });

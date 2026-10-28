@@ -142,8 +142,13 @@ const normalizeScoring = (cfg) => {
 };
 
 /* scoring-core:start — testo identico in app/admin.jsx (verificato dai test) */
-// Normalizzazione continua e crescente, senza soglie né fasce: 0 → 0, riferimento → 50, verso 100 senza raggiungerlo.
-const saturate = (value, reference) => value > 0 ? 100 * value / (value + reference) : 0;
+// Normalizzazione logaritmica approvata: H(x;s) = 100 · ln(1+x/s) / [ln(1+x/s) + ln 2].
+// Continua e crescente, senza soglie né fasce: 0 → 0, riferimento s → 50, verso 100 senza raggiungerlo.
+const saturate = (value, reference) => {
+  if (!(value > 0)) return 0;
+  const l = Math.log1p(value / reference);
+  return 100 * l / (l + Math.LN2);
+};
 
 // Valori osservati: interi non negativi (numero o stringa di sole cifre nelle candidature storiche).
 // Un valore mancante o non valido resta null: non diventa mai zero.
@@ -176,22 +181,29 @@ const computeWithConfig = (data, cfg) => {
   if (interactions !== null && interactions < cfg.lowBase.interactions) lowBaseReasons.push("interactions");
 
   const observed = { followers, views, interactions, netFollowers:net, accountsReached:reached };
+  // unavailableReason: "missing" (dato mancante o non valido) oppure "noViews" (zero visualizzazioni osservate).
   if (missing.length) return {
-    scoringVersion:SCORING_VERSION, available:false, missing, socialScore:null,
+    scoringVersion:SCORING_VERSION, available:false, unavailableReason:"missing", missing, socialScore:null,
     engagementRate:null, engagementScore:null, visibilityScore:null, reachEngagementRate,
     lowBase:lowBaseReasons.length > 0, lowBaseReasons, ...observed
   };
+  // Zero visualizzazioni è un dato reale, distinto da un dato mancante: il coinvolgimento non è calcolabile
+  // e il punteggio complessivo non è disponibile (mai mostrato come zero).
+  if (views === 0) return {
+    scoringVersion:SCORING_VERSION, available:false, unavailableReason:"noViews", missing, socialScore:null,
+    engagementRate:null, engagementScore:null, visibilityScore:saturate(0, cfg.references.views), reachEngagementRate,
+    lowBase:lowBaseReasons.length > 0, lowBaseReasons, ...observed
+  };
 
-  // Senza visualizzazioni il coinvolgimento non è definito: componente 0 e base segnalata come ridotta.
-  const engagementRate  = views > 0 ? interactions / views * 100 : null;
-  const engagementScore = engagementRate === null ? 0 : saturate(engagementRate, cfg.references.engagementRate);
+  const engagementRate  = interactions / views * 100;
+  const engagementScore = saturate(engagementRate, cfg.references.engagementRate);
   const visibilityScore = saturate(views, cfg.references.views);
   const w  = cfg.weights;
   const tw = w.engagement + w.visibility;
   const socialScore = Math.round((engagementScore * w.engagement + visibilityScore * w.visibility) / tw);
 
   return {
-    scoringVersion:SCORING_VERSION, available:true, missing, socialScore,
+    scoringVersion:SCORING_VERSION, available:true, unavailableReason:null, missing, socialScore,
     engagementRate, engagementScore, visibilityScore, reachEngagementRate,
     lowBase:lowBaseReasons.length > 0, lowBaseReasons, ...observed
   };
@@ -887,7 +899,9 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:10}}>
               <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
               <div className="body-sm" style={{fontSize:12}}>
-                Punteggio non calcolabile: mancano valori validi per {s.missing.map(k=>INSIGHT_LABELS[k]).join(" e ")}. Correggi i dati Insights.
+                {s.unavailableReason==="noViews"
+                  ? "Punteggio non disponibile: con zero visualizzazioni il coinvolgimento non è calcolabile. Lo zero resta salvato come dato osservato."
+                  : <>Punteggio non calcolabile: mancano valori validi per {s.missing.map(k=>INSIGHT_LABELS[k]).join(" e ")}. Correggi i dati Insights.</>}
               </div>
             </div>
           )}
@@ -1228,7 +1242,7 @@ function ScoringPanel({scoring, onSaved, onAuthRequired}){
 
         <div className="panel" style={{padding:18,marginBottom:14}}>
           <div className="h-sm" style={{marginBottom:4}}>Riferimenti</div>
-          <div className="body-sm" style={{marginBottom:16}}>Punteggio di ciascuna componente = 100 × valore / (valore + riferimento).</div>
+          <div className="body-sm" style={{marginBottom:16}}>Punteggio di ciascuna componente = 100 × ln(1 + valore/riferimento) / [ln(1 + valore/riferimento) + ln 2].</div>
           <div className="g2-gap">{fields("references")}</div>
         </div>
 

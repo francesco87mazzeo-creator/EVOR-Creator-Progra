@@ -45,8 +45,20 @@ test('Reference values score 50, zero scores 0, weights 65/35',()=>{
  const onlyViews=computeScore({...base,interactions:0});
  assert.equal(onlyViews.engagementRate,0);assert.equal(onlyViews.engagementScore,0);
  assert.equal(onlyViews.socialScore,Math.round(50*35/100));
- const e=computeScore({...base,interactions:6000,views:30000});   // 20% → 100·20/22
- assert.ok(Math.abs(e.engagementScore-100*20/22)<1e-9);
+ const e=computeScore({...base,interactions:6000,views:30000});   // 20% = 10 × riferimento
+ assert.ok(Math.abs(e.engagementScore-100*Math.log(11)/(Math.log(11)+Math.LN2))<1e-9);
+});
+test('Approved logarithmic normalization H(x;s) = 100·ln(1+x/s)/[ln(1+x/s)+ln 2] on both components',()=>{
+ const H=(x,s)=>100*Math.log(1+x/s)/(Math.log(1+x/s)+Math.log(2));
+ for(const [views,interactions] of [[1,0],[300,1],[30000,600],[30000,6000],[90000,1800],[1e6,5e4],[1e9,1e6]]) {
+  const r=computeScore({...base,views,interactions});
+  assert.ok(Math.abs(r.visibilityScore-H(views,30000))<1e-9,`views=${views}`);
+  if(interactions>0) assert.ok(Math.abs(r.engagementScore-H(interactions/views*100,2))<1e-9,`engagement ${views}/${interactions}`);
+  assert.equal(r.socialScore,Math.round((r.engagementScore*65+r.visibilityScore*35)/100));
+ }
+ assert.equal(computeScore({...base,views:60000,interactions:1200}).visibilityScore,100*Math.log(3)/(Math.log(3)+Math.LN2));
+ // Reference → 50; double and triple the reference: 61.3 and 66.7, smoother than the rational curve.
+ assert.ok(Math.abs(computeScore({...base,views:90000,interactions:1800}).visibilityScore-200/3)<1e-9);
 });
 test('Normalization is continuous and increasing, never reaching 100',()=>{
  let previous=-1;
@@ -101,10 +113,23 @@ test('Missing or invalid views/interactions make the score unavailable instead o
   assert.equal(s.engagementRate,null,name);assert.equal(s.engagementScore,null,name);assert.equal(s.visibilityScore,null,name);
  }
 });
-test('Zero views is a real observation: engagement undefined, score 0, flagged as low base',()=>{
- const s=computeScore({...base,views:0,interactions:0});
- assert.equal(s.available,true);assert.equal(s.engagementRate,null);assert.equal(s.socialScore,0);
- assert.equal(s.lowBase,true);assert.deepEqual(s.lowBaseReasons,['views','interactions']);
+test('Zero views is a real observation: engagement not computable and overall score not available (never zero)',()=>{
+ for(const interactions of [0,5]) {
+  const s=computeScore({...base,views:0,interactions});
+  assert.equal(s.available,false);assert.equal(s.unavailableReason,'noViews');assert.deepEqual(s.missing,[]);
+  assert.equal(s.socialScore,null);assert.equal(s.engagementRate,null);assert.equal(s.engagementScore,null);
+  assert.equal(s.views,0,'zero is kept as observed data');assert.equal(s.visibilityScore,0);
+  assert.equal(s.lowBase,true);
+ }
+ const f=scoreDocumentFields(computeScore({...base,views:0,interactions:0}));
+ assert.deepEqual([f.socialScore,f.engagementRate,f.engagementScore,f.visibilityScore],[null,null,null,0]);
+});
+test('Zero views is distinct from missing views',()=>{
+ const zero=computeScore({...base,views:0}),missing=computeScore({...base,views:null});
+ assert.equal(zero.unavailableReason,'noViews');assert.equal(zero.views,0);
+ assert.equal(missing.unavailableReason,'missing');assert.equal(missing.views,null);assert.deepEqual(missing.missing,['views']);
+ assert.equal(computeScore(base).unavailableReason,null);
+ assert.equal(computeScore({...base,views:1,interactions:0}).available,true,'one view is computable');
 });
 test('Historical documents with numeric strings are read; other legacy fields are not substituted',()=>{
  const s=computeScore({followers:'8500',views:'24800',interactions:'1120',newFollowers:'260'});

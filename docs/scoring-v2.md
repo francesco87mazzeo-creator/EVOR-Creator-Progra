@@ -9,8 +9,8 @@ Stato: **implementato su branch, non pubblicato.** Nessun merge, deploy di Worke
 | Coinvolgimento | interazioni ÷ visualizzazioni × 100 | 65% | 2% |
 | Visibilità | visualizzazioni (30 giorni) | 35% | 30.000 |
 
-- **Normalizzazione continua:** per ogni componente `100 × valore / (valore + riferimento)`.
-  - È crescente e continua: 0 vale 0, il riferimento vale 50, e tende a 100 senza raggiungerlo.
+- **Normalizzazione logaritmica approvata:** per ogni componente `H(x;s) = 100 × ln(1 + x/s) / [ln(1 + x/s) + ln 2]`, dove `s` è il riferimento.
+  - È crescente e continua: 0 vale 0, il riferimento vale 50, il doppio circa 61, il triplo circa 67; tende a 100 senza raggiungerlo.
   - Non ci sono fasce follower né soglie, quindi non ci sono salti.
 - **Punteggio quantitativo:** `round((coinvolgimento × peso + visibilità × peso) / somma dei pesi)`, da 0 a 100.
 - **Indicatore B:** interazioni ÷ account raggiunti × 100.
@@ -26,9 +26,10 @@ Stato: **implementato su branch, non pubblicato.** Nessun merge, deploy di Worke
   - si raccolgono e si mostrano, ma non entrano nel punteggio;
   - i follower netti possono essere negativi o zero.
 - **Valori mancanti:** se visualizzazioni o interazioni mancano o non sono valide, il punteggio è *non calcolabile*. Non diventa mai zero.
-- **Zero visualizzazioni:** è un dato osservato. Il coinvolgimento non è definito, la sua componente vale 0 e la base è segnalata come ridotta.
-
-**Da confermare:** la formula di normalizzazione (`valore/(valore+riferimento)`) è una scelta di questa implementazione. L'analisi di Codex citata nella richiesta non era disponibile nel repository. Se prevede una curva diversa, basta cambiare la funzione `saturate` e i test che la descrivono.
+- **Zero visualizzazioni:** è un dato reale, distinto da un dato mancante.
+  - Lo zero resta salvato (`views: 0`); il coinvolgimento non è calcolabile.
+  - Il punteggio complessivo è **non disponibile** (`socialScore: null`), mai mostrato come zero; la base è segnalata come ridotta.
+  - Admin e notifica Telegram lo indicano esplicitamente («zero visualizzazioni»), con un messaggio diverso da quello dei dati mancanti.
 
 La stessa funzione è in `server/collective/scoring.mjs` e in `app/admin.jsx`, tra i marcatori `scoring-core`. Un test verifica che il testo sia identico e altri test confrontano i risultati.
 
@@ -63,7 +64,12 @@ La stessa funzione è in `server/collective/scoring.mjs` e in `app/admin.jsx`, t
 - **Lettura OCR:**
   - un testo che non è un numero («—», «non visibile») resta un dato mancante;
   - un valore senza stato di visibilità esplicito va ricontrollato e non risulta verificato.
-- **Inserimento manuale:** dopo un errore tecnico della lettura si inseriscono i valori a mano; nel modulo tutti i valori restano correggibili.
+- **Inserimento o completamento manuale** (pulsante «Prosegui inserendo i dati a mano»):
+  - dopo un errore tecnico della lettura (rete, tempo scaduto, 429, 5xx), con lo screenshot caricato;
+  - quando la schermata è riconosciuta come corretta (`profile_ok`, `insights_ok`) ma uno o più valori obbligatori non sono stati letti, anche dopo due letture incomplete e anche se manca il numero di follower nel profilo;
+  - i valori letti restano precompilati e la lettura automatica resta allegata: i valori mancanti risultano «Inserito dal candidato» nell'Admin;
+  - **non** è offerto per schermate sbagliate (`wrong_screen`, `dashboard_wrong`), incerte (`uncertain`) o richieste rifiutate dal servizio di lettura (400, 401, 403, 413…).
+- **Prima dell'invio** devono essere presenti follower totali, visualizzazioni, interazioni e follower netti (anche zero o negativi); nel modulo tutti i valori restano correggibili.
 - **Invio:** è bloccato con dati obbligatori vuoti o non interi.
 - **Testi delle istruzioni OCR:** non sono stati modificati, quindi le impronte nel Worker restano valide.
 
@@ -107,12 +113,39 @@ Ogni passo richiede un'autorizzazione esplicita.
 3. **Frontend** (merge su `main`, GitHub Pages): modulo con account raggiunti facoltativi e Admin con scoring v2.
    - **Mai prima del Worker.** Il Worker attuale rifiuterebbe con 400 le candidature con account raggiunti vuoti (`null`) e le configurazioni salvate dalla nuova Admin.
 
-**Annullamento:**
-- **frontend:** revert del merge;
-- **Worker:** `wrangler rollback` alla versione precedente;
-- **Rules:** ripubblicazione del ruleset precedente.
+## Ripristino senza interrompere le candidature in compilazione
 
-I documenti di schema 5 restano leggibili dalla vecchia Admin, che non trova `perfLevel` e calcola il vecchio punteggio sui dati.
+Una pagina già aperta resta in uso anche dopo un revert: GitHub Pages non la ricarica. Compatibilità verificata dei payload (stesso client e stesso validatore del codice, senza rete):
+
+| Payload | Worker attuale (`main`) | Worker scoring v2 |
+|---|---|---|
+| pagina precedente, account raggiunti indicati | accettato | accettato |
+| pagina nuova, account raggiunti indicati | accettato | accettato |
+| pagina nuova, account raggiunti vuoti | rifiutato (400 `TYPE` `$.accountsReached`) | accettato |
+| pagina nuova, zero visualizzazioni | accettato | accettato |
+
+La pagina precedente non può inviare account raggiunti vuoti: li blocca già nel browser.
+
+**Procedura consigliata**, dal meno al più invasivo:
+
+1. **Problema nel frontend** (modulo o Admin): revert del merge su `main`. **Il Worker v2 resta pubblicato**: accetta sia le pagine nuove ancora aperte sia quelle precedenti, quindi nessuna candidatura in compilazione si interrompe.
+2. **Problema nel Worker:** prima il revert del frontend (punto 1), poi `wrangler rollback` alla versione precedente.
+   - Le pagine nuove ancora aperte continuano a funzionare se gli account raggiunti sono compilati.
+   - Se sono vuoti, il Worker precedente risponde con un errore sul campo: il modulo torna al passo Social, evidenzia il campo con il messaggio «In questo momento serve anche questo dato…» e il candidato lo aggiunge e invia di nuovo. Nessun dato viene salvato con il primo invio, e il secondo usa una nuova chiave di idempotenza (test browser «Rollback safety»).
+   - Le configurazioni salvate dalla nuova Admin verrebbero rifiutate (400): non salvare lo scoring finché il frontend non è tornato indietro.
+3. **Rules:** non vanno ripristinate. Accettano sia le scritture del pannello precedente sia quelle nuove; tornare al ruleset precedente renderebbe solo impossibili le correzioni dalla nuova Admin ancora aperta.
+
+Dopo un ripristino del Worker, i documenti di schema 5 già salvati restano leggibili dalla vecchia Admin, che non trova `perfLevel` e ricalcola il vecchio punteggio sui dati (con gli account raggiunti mancanti torna a usare le visualizzazioni, come faceva prima).
+
+## Storico delle correzioni: limiti
+
+Durante la compatibilità con il vecchio Admin `insightsHistory` **non è ancora un audit trail garantito dal server**:
+
+- **Il pannello precedente** (ancora aperto o in cache) può scrivere `insightsCorrection` senza aggiungere una voce allo storico: le Rules lo consentono per non bloccarlo durante il rilascio. Quella correzione manca dallo storico.
+- **Dati dichiarati dal client:** `correctedAt` è l'orologio del browser e `correctedBy` è sempre `"staff"`; le Rules non registrano chi ha scritto né l'ora del server. Un utente staff con accesso diretto all'SDK può scrivere correzioni con questi valori.
+- **Cosa è garantito oggi:** con la nuova Admin le Rules impediscono di modificare o eliminare le voci già presenti, di aggiungerne più di una per volta, di superare 50 voci e di scrivere una voce diversa dalla correzione salvata insieme.
+
+Per uno storico garantito servirebbe, dopo il ritiro del pannello precedente: Rules che richiedono una voce di storico a ogni correzione, ora del server (`request.time`) e identità dell'autore (`request.auth.uid`), oppure un endpoint del Worker che scriva lo storico. È una modifica di architettura e non è inclusa in questa PR.
 
 ## Rischi
 

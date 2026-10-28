@@ -131,7 +131,7 @@ vengono aggiunti al documento di prima candidatura. Non è una migrazione dati.
 
 Scoring v2 (Modello A), configurazione versione 3: vedi [docs/scoring-v2.md](../../docs/scoring-v2.md).
 
-- **Formula:** 65% coinvolgimento (interazioni/visualizzazioni) e 35% visibilità (visualizzazioni). Ogni componente è normalizzata in modo continuo con `100·x/(x+riferimento)`; riferimenti iniziali 2% e 30.000. Non ci sono fasce follower né livelli.
+- **Formula:** 65% coinvolgimento (interazioni/visualizzazioni) e 35% visibilità (visualizzazioni). Ogni componente è normalizzata con la curva logaritmica `H(x;s) = 100·ln(1+x/s)/[ln(1+x/s)+ln 2]`; riferimenti iniziali 2% e 30.000. Non ci sono fasce follower né livelli. Con zero visualizzazioni il punteggio non è disponibile (`null`), distinto dai dati mancanti.
 - **Indicatore B** (interazioni/account raggiunti): calcolato solo se gli account raggiunti sono indicati e maggiori di zero; non entra nel punteggio.
 - **Valori mancanti:** le visualizzazioni o interazioni mancanti o non valide rendono il punteggio non calcolabile (`null`), mai zero. I fallback storici views→reached e newFollowers→netFollowers non esistono più.
 - **`validateScoringConfig`:** schema esatto della versione 3 (pesi, riferimenti, soglie della base ridotta). È convalida, **non autorizzazione**.

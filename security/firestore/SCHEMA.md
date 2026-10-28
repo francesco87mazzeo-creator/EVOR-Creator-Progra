@@ -7,7 +7,7 @@ Il Worker scrive i nuovi documenti con `schemaVersion: 5`. Rispetto allo schema 
 - **`accountsReached`:** intero 0–10¹² **oppure `null`** se non indicato. Non è mai sostituito con le visualizzazioni.
 - **Campi del punteggio v2:**
   - `scoringVersion` (`3`);
-  - `socialScore` (intero 0–100);
+  - `socialScore` (intero 0–100, oppure `null` con zero visualizzazioni);
   - `engagementRate` (numero o `null`);
   - `engagementScore` e `visibilityScore` (interi 0–100 o `null`);
   - `reachEngagementRate` (numero o `null`);

@@ -706,23 +706,32 @@ function InstagramPreCheck({ onComplete, onBack }){
   const busy = [profile, ins1, ins2].some(s => s.state==="reading" || s.state==="analyzing");
   const canContinue = !busy && profileComplete && insightsReadable;
 
-  // Lettura non disponibile per un errore tecnico (non per la schermata): con gli screenshot comunque
-  // caricati il candidato può proseguire inserendo a mano i soli dati non letti. Schermate sbagliate o
-  // dati non leggibili continuano invece a richiedere uno screenshot corretto.
+  // Inserimento manuale, solo per i dati che mancano:
+  // - errore tecnico della lettura (rete, tempo scaduto, 429, 5xx) con lo screenshot caricato;
+  // - schermata riconosciuta come corretta (profile_ok / insights_ok) ma con valori obbligatori non letti,
+  //   anche dopo un secondo screenshot.
+  // Schermate sbagliate o incerte e richieste rifiutate (400/401/403/413…) richiedono sempre un altro screenshot.
   const technicalFailure = s => !!(s.data && s.state==="failed" && s.technical);
   const profileTechnical = technicalFailure(profile);
   const insightsTechnical = technicalFailure(ins1) || (insightsNeedSecond && technicalFailure(ins2));
-  const manualParts = { profile: !profileComplete && profileTechnical, insights: !insightsReadable && insightsTechnical };
+  const profileIncomplete = profileDataIncomplete;
+  const insightsIncomplete = insightsNeedSecond && [ins1, ins2].some(s => s.result && s.result.screenType === "insights_ok");
+  const manualParts = {
+    profile: !profileComplete && (profileTechnical || profileIncomplete),
+    insights: !insightsReadable && (insightsTechnical || insightsIncomplete)
+  };
   const canContinueManual = !canContinue && !busy
-    && (profileComplete || profileTechnical) && (insightsReadable || insightsTechnical)
+    && (profileComplete || manualParts.profile) && (insightsReadable || manualParts.insights)
     && (manualParts.profile || manualParts.insights);
+  // "technical": nessuna lettura disponibile; "incomplete": lettura valida, alcuni valori da completare.
+  const manualReason = (part, technical) => !manualParts[part] ? false : technical ? "technical" : "incomplete";
 
   // Dati per il modulo, costruiti con lo stato di QUESTO render (gli screenshot eventualmente ricompressi in fit).
   const buildCompletion = (fit, manual) => {
     const image = key => fit.data[key] || ({ profile, ins1, ins2 })[key].data;
-    // In modalità manuale si usano solo le letture riuscite; il resto lo inserisce il candidato.
-    const profileRead = !(manual && manualParts.profile);
-    const insightsRead = !(manual && manualParts.insights);
+    // Si usano tutte le letture valide; i valori non letti restano vuoti e li completa il candidato.
+    const profileRead = !!(profile.result && profile.result.screenType === "profile_ok");
+    const insightsRead = insightsAttempted;
     const ig = profileRead ? parseSocial(usernameField.value, "instagram") : { handle:"", url:"" };
     const name = (profileRead && profile.result.displayName) || { value:null, visibility:"not_visible", truncated:false };
     // Nome completo e leggibile → precompilato normalmente.
@@ -739,7 +748,8 @@ function InstagramPreCheck({ onComplete, onBack }){
       instagramHandle: ig.handle,
       instagramUrl: ig.url,
       usernameNeedsCompletion: profileRead && usernameNeedsCompletion,
-      followers: profileRead ? String(profile.result.followers.value) : "",
+      // Solo un numero di follower letto per intero; altrimenti il campo resta da compilare.
+      followers: profileRead && fieldIsComplete(profile.result.followers) ? String(profile.result.followers.value) : "",
       fullNameGuess,
       fullNameNeedsCompletion,
       views:           metric("views"),
@@ -761,8 +771,10 @@ function InstagramPreCheck({ onComplete, onBack }){
         conflicts: insightsConflicts, readAt: new Date().toISOString()
       } : null,
       ocrProfile: profileRead ? { result: profile.result, readAt: new Date().toISOString() } : null,
-      // Solo per l'interfaccia, non inviato al Worker: quali dati vanno inseriti a mano nel modulo.
-      manualEntry: { profile: !profileRead, insights: !insightsRead }
+      // Solo per l'interfaccia, non inviato al Worker: quali dati vanno inseriti o completati a mano nel modulo.
+      manualEntry: manual
+        ? { profile: manualReason("profile", !profileRead), insights: manualReason("insights", !insightsRead) }
+        : { profile: false, insights: false }
     };
   };
   latest.current = { canContinue, canContinueManual, slots:{ profile, ins1, ins2 }, buildCompletion };
@@ -1006,9 +1018,18 @@ function InstagramPreCheck({ onComplete, onBack }){
           <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:12}}>
             <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
             <div className="body-sm">
-              La lettura automatica non è disponibile, ma gli screenshot sono caricati. Puoi riprovare la lettura
-              oppure proseguire e inserire tu {manualParts.profile && manualParts.insights ? "username, follower e i dati Insight"
-                : manualParts.profile ? "username e follower" : "i dati Insight"}: il team li controllerà sugli screenshot.
+              {(manualParts.profile && profileTechnical) || (manualParts.insights && insightsTechnical) ? <>
+                La lettura automatica non è disponibile, ma gli screenshot sono caricati. Puoi riprovare la lettura
+                oppure proseguire e inserire tu {manualParts.profile && manualParts.insights ? "username, follower e i dati Insight"
+                  : manualParts.profile ? "username e follower" : "i dati Insight"}: il team li controllerà sugli screenshot.
+              </> : <>
+                La schermata è corretta, ma non siamo riusciti a leggere tutti i dati richiesti
+                {" — "}<strong style={{color:"var(--t1)"}}>{[
+                  ...(manualParts.profile ? [!usernameReadable && "Username", !fieldIsComplete(profile.result && profile.result.followers) && "Follower"].filter(Boolean) : []),
+                  ...(manualParts.insights ? missingInsightFields : [])
+                ].join(", ")}</strong>.
+                Puoi caricare un altro screenshot oppure proseguire e completarli tu: il team li controllerà sugli screenshot.
+              </>}
             </div>
           </div>
         )}
@@ -1480,7 +1501,12 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
     }catch(error){
       setSaveErr(error instanceof CollectiveApplications.SubmissionError ? error.message : "Invio non disponibile. Riprova più tardi.");
       if(error.field){
-        setErrors(p=>({...p,[error.field]:"Controlla il valore inserito."}));
+        // Account raggiunti vuoti rifiutati: succede solo con un Worker precedente allo scoring v2 (ad es. durante
+        // un ripristino). Il candidato può aggiungere il dato e inviare di nuovo, senza perdere la candidatura.
+        const reachedRequired = error.field==="accountsReached" && String(form.accountsReached).trim()==="";
+        setErrors(p=>({...p,[error.field]: reachedRequired
+          ? "In questo momento serve anche questo dato: inseriscilo come appare nello screenshot e invia di nuovo."
+          : "Controlla il valore inserito."}));
         const target=FORM_STEP_FIELDS.findIndex(keys=>keys.includes(error.field));
         if(target>=0) setStep(target);
       }
@@ -1699,7 +1725,9 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
             <div className="eyebrow" style={{marginBottom:14}}>Instagram</div>
             {manualEntry.profile && (
               <p className="body-sm" role="status" style={{fontSize:13,color:"var(--t3)",marginBottom:14}}>
-                La lettura automatica del profilo non era disponibile: inserisci username e follower come appaiono nello screenshot.
+                {manualEntry.profile==="incomplete"
+                  ? "Non siamo riusciti a leggere tutti i dati del profilo: completa username e follower come appaiono nello screenshot."
+                  : "La lettura automatica del profilo non era disponibile: inserisci username e follower come appaiono nello screenshot."}
               </p>
             )}
             <div className="g2-gap">
@@ -1738,9 +1766,11 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
                 <div style={{marginTop:8,paddingTop:4}}>
                   {manualEntry.insights ? (
                     <>
-                      <div className="h-sm" style={{marginBottom:4}}>Inserisci i dati Insight</div>
+                      <div className="h-sm" style={{marginBottom:4}}>{manualEntry.insights==="incomplete" ? "Completa i dati Insight" : "Inserisci i dati Insight"}</div>
                       <p className="body-sm" role="status" style={{fontSize:13,marginBottom:14,color:"var(--t3)"}}>
-                        La lettura automatica non era disponibile: inserisci i valori come appaiono negli screenshot (gli account raggiunti sono facoltativi).
+                        {manualEntry.insights==="incomplete"
+                          ? "Abbiamo compilato i valori letti: completa quelli mancanti come appaiono negli screenshot (gli account raggiunti sono facoltativi)."
+                          : "La lettura automatica non era disponibile: inserisci i valori come appaiono negli screenshot (gli account raggiunti sono facoltativi)."}
                         Il team li controllerà sugli screenshot caricati.
                       </p>
                     </>

@@ -104,8 +104,10 @@ for(const role of ['manager','admin']){
   await assertSucceeds(updateDoc(ref(role),{followers:0,updatedAt:stamp}));
   await assertSucceeds(updateDoc(ref(role),{accountsReached:null,updatedAt:stamp}));
   await assertSucceeds(updateDoc(ref(role),{...v2Fields,updatedAt:stamp}));
+  // Zero visualizzazioni: punteggio e coinvolgimento non disponibili, zero salvato come dato.
+  await assertSucceeds(updateDoc(ref(role),{views:0,socialScore:null,engagementRate:null,engagementScore:null,visibilityScore:0,updatedAt:stamp}));
   for(const bad of [{followers:-1},{followers:1.5},{followers:null},{accountsReached:-1},{accountsReached:'10'},{views:null},
-   {scoringVersion:2},{socialScore:101},{socialScore:null},{engagementScore:101},{visibilityScore:-1},{engagementRate:-1},
+   {scoringVersion:2},{socialScore:101},{socialScore:'50'},{engagementScore:101},{visibilityScore:-1},{engagementRate:-1},
    {reachEngagementRate:'x'},{lowBase:'yes'},{decision:'approved'}])
    await denied(updateDoc(ref(role),{...bad,updatedAt:stamp}));
  });

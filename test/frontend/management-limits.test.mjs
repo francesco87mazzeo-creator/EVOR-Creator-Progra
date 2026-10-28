@@ -85,7 +85,7 @@ test('Invalid numbers are rejected; zero and negative net followers are accepted
  }
  const zero=await run('correction',{vals:{...VALS,views:'0',interactions:'0',netFollowers:'0'}});
  assert.equal(zero.writes[0].patch.views,0);assert.equal(zero.writes[0].patch.netFollowers,0);
- assert.equal(zero.writes[0].patch.socialScore,0);assert.equal(zero.writes[0].patch.lowBase,true);
+ assert.equal(zero.writes[0].patch.socialScore,null,'zero views: not available, not zero');assert.equal(zero.writes[0].patch.lowBase,true);
  assert.equal((await run('correction',{vals:{...VALS,netFollowers:'+7'}})).writes[0].patch.netFollowers,7);
 });
 test('Accounts reached may be cleared: stored as null, never replaced by views',async()=>{
