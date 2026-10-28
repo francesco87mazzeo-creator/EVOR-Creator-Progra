@@ -22,5 +22,5 @@ export function between(source,start,end){
 }
 /** Moduli app/ caricati da una pagina, nell'ordine dei tag script. */
 export function pageModules(page){
- return [...page.matchAll(/<script type="text\/babel" src="(?:\.\.\/)?(app\/[a-z-]+\.jsx)\?v=([0-9]+)"><\/script>/g)].map(m=>({module:m[1],version:m[2]}));
+ return [...page.matchAll(/<script type="text\/babel" src="(?:\.\.\/)?(app\/[a-z-]+\.jsx)\?v=([0-9a-f]{16})"><\/script>/g)].map(m=>({module:m[1],version:m[2]}));
 }

@@ -1,9 +1,11 @@
 /**
- * EVORΛ COLLECTIVE — Cloudflare Worker (versione integrata, NON pubblicata)
+ * EVORΛ COLLECTIVE — Cloudflare Worker throbbing-feather-957f
  *
- * Base: Desktop\worker.js (SHA-256 43d89b97…ab84cd), copia in worker.original.js.
- * Integra la convalida server di Codex (server/collective @ 5447b21) con le protezioni OCR/Telegram.
- * /auth è invariato nella logica (fuori perimetro: vedi README).
+ * Sorgente della versione in produzione 381ad99c-3756-4335-9391-84cd2ad5eb4c (pubblicata il 2026-10-27):
+ * provenienza, hash e verifica riproducibile in worker/README.md. Questo commento è l'unica differenza
+ * dal sorgente pubblicato e non compare nel bundle.
+ * Integra la convalida server (server/collective) con le protezioni OCR/Telegram.
+ * /auth mantiene la logica originale dei codici staff (da sostituire con EVORΛ Identity).
  * Più moduli: va pubblicato con wrangler (bundle), non incollato nell'editor della dashboard.
  *
  * Endpoint
