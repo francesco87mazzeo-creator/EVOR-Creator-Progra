@@ -704,6 +704,24 @@ test('Compression keeps the real readability floors and refuses budgets it canno
 const complete=value=>({value,visibility:'complete'});
 const insightsRead=over=>({screen_type:'insights_ok',views:complete(24800),netFollowers:complete(260),interactions:complete(1120),accountsReached:complete(18400),...over});
 
+test('Verified distinct-account layout: OCR response 1206/-1/54/250 reaches the form and submission unchanged',{timeout:60000},async t=>{
+ // The visual model is mocked: this checks data flow, not image recognition accuracy.
+ const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'
+  ?synthetic(insightsRead({views:complete('1,206'),netFollowers:complete('-1'),interactions:complete('54'),accountsReached:complete('250')}))
+  :undefined});
+ await fillPublic(page,{step1:async()=>{
+  for(const [key,value] of Object.entries({views:'1206',netFollowers:'-1',interactions:'54',accountsReached:'250'}))
+   assert.equal(await page.locator('#f-'+key).inputValue(),value);
+ }});
+ await submitAndConfirm(page);
+ const [sent]=sentApplication(calls);validatePublicApplication(sent.body);
+ for(const [key,value] of Object.entries({views:1206,netFollowers:-1,interactions:54,accountsReached:250})){
+  assert.equal(sent.body[key],value);
+  assert.equal(sent.body.ocrInsights.merged[key],value);
+ }
+ assert.equal(sent.body.ocrInsights.conflicts.length,0);
+});
+
 test('Accounts reached not in the screenshot: one screenshot is enough, the field stays empty and is sent as null',{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{ocr:({kind,synthetic})=>kind==='insights'?synthetic(insightsRead({accountsReached:{value:null,visibility:'not_visible'}})):undefined});
  await fillPublic(page,{beforeContinue:async()=>{

@@ -87,9 +87,10 @@ test('/auth invariato: codice valido → custom token Firebase con ruolo; codice
 });
 
 /* ---------- Contratto con il frontend ---------- */
-test('Gli hash dei prompt nel Worker coincidono con i prompt del frontend', () => {
+test('Gli hash correnti nel Worker coincidono con i prompt del frontend (legacy separati)', () => {
   const inWorker = [...workerSource.matchAll(/\["([0-9a-f]{64})", "([^"]+)"\]/g)].map(m => [m[2], m[1]]);
-  assert.deepEqual(Object.fromEntries(inWorker), allowedPromptHashes());
+  assert.deepEqual(Object.fromEntries(inWorker.filter(([name]) => !name.startsWith('legacy-ba04424:'))), allowedPromptHashes());
+  assert.equal(inWorker.filter(([name]) => name.startsWith('legacy-ba04424:')).length, 5);
 });
 
 test('Modello, programma e limiti del Worker sono coerenti con il frontend', () => {
