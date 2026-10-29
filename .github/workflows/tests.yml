@@ -61,7 +61,6 @@ jobs:
     env:
       CI: 'true'
       FIREBASE_CLI_DISABLE_TELEMETRY: '1'
-      FIREBASE_EMULATORS_PATH: ${{ runner.temp }}/evora-firestore-emulators
       GCLOUD_PROJECT: demo-evora-security
       GOOGLE_CLOUD_PROJECT: demo-evora-security
       GOOGLE_APPLICATION_CREDENTIALS: ''
@@ -77,6 +76,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      - name: Cache locale Emulator
+        run: |
+          mkdir -p "$RUNNER_TEMP/evora-firestore-emulators"
+          echo "FIREBASE_EMULATORS_PATH=$RUNNER_TEMP/evora-firestore-emulators" >> "$GITHUB_ENV"
       - name: Emulator ufficiale, Rules candidate (profilo migration)
         working-directory: security/firestore
         env:
