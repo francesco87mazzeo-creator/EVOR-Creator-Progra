@@ -8,6 +8,8 @@ import {publicFixture,frontendDocument,NOW} from '../../server/collective/test/f
 import {SINGLE_PAGE} from './app-source.mjs';
 import {buildSinglePage,buildAdminPage} from '../../tools/frontend-mode.mjs';
 import {rollbackServices} from '../../worker/test/rollback-services.mjs';
+import scoreLevels from '../../public/score-levels.js';
+import {computeScore} from '../../server/collective/scoring.mjs';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const assets=process.env.EVORA_BROWSER_ASSETS;
 assert.ok(assets,'Set EVORA_BROWSER_ASSETS to the directory containing test-only node_modules (@babel/standalone, react@18, react-dom@18).');
@@ -23,6 +25,7 @@ const workerConfig=await readFile(new URL('../../public/worker-config.js',import
 const mockWorker='https://throbbing-feather-957f.francesco87-mazzeo.workers.dev';
 const mockOrigin='https://synthetic.collective.test';
 const client=await readFile(new URL('../../public/applications-client.js',import.meta.url),'utf8');
+const scoreLevelsModule=await readFile(new URL('../../public/score-levels.js',import.meta.url),'utf8');
 const adminScoringClient=await readFile(new URL('../../public/admin-scoring-client.js',import.meta.url),'utf8');
 const js={
  'https://unpkg.com/react@18.3.1/umd/react.production.min.js':await readFile(`${assets}/node_modules/react/umd/react.production.min.js`),
@@ -32,8 +35,9 @@ const js={
 const firebaseStub=`(function(){
  const counters=window.testCounters=window.testCounters||{reads:0,writes:0};
  const candidate=__CANDIDATE__,allowWrites=__ALLOW_WRITES__;
+ const seed=__SCORE_LEVELS__;if(!localStorage.getItem("syntheticLevelsSeeded")){localStorage.setItem("syntheticLevelsSeeded","1");if(seed!==null)localStorage.setItem("syntheticScoreLevels",JSON.stringify(seed));}
  const session=window.testSession={signIns:0,signOuts:0},listeners=[];
- const user={uid:'staff-admin',getIdToken:async()=> 'synthetic-firebase-id-token',getIdTokenResult:async()=>({claims:{role:'admin'}})};
+ const user={uid:'staff-admin',getIdToken:async()=> 'synthetic-firebase-id-token',getIdTokenResult:async()=>({claims:{role:__ROLE__}})};
  const notify=()=>listeners.forEach(cb=>cb(auth.currentUser));
  const auth={currentUser:__SIGNED_IN__?user:null,setPersistence:async()=>{},
  onAuthStateChanged(cb){listeners.push(cb);Promise.resolve().then(()=>cb(auth.currentUser));return()=>{const i=listeners.indexOf(cb);if(i>=0)listeners.splice(i,1);};},
@@ -42,7 +46,7 @@ const firebaseStub=`(function(){
  // Like the production Rules: reads without a signed-in staff user are denied.
  const read=async()=>{if(!auth.currentUser)throw Object.assign(Error('Missing or insufficient permissions.'),{code:'permission-denied'});counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
  const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
- const db={collection(){return{doc(){return{get:read,set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
+ const db={collection(collection){return{doc(id){return{get:async()=>{if(collection==="settings"&&id==="scoreLevels"){await read();if(__LEVELS_READ_ERROR__)throw Error("Synthetic levels read error");const value=localStorage.getItem("syntheticScoreLevels");return{exists:value!==null,data:()=>JSON.parse(value)};}return read();},set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
  window.firebase={initializeApp(config){if(config.projectId!=="evora-athletes")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
 })();`;
 let browser;
@@ -50,7 +54,7 @@ before(async()=>{browser=await chromium.launch({executablePath:process.env.EVORA
 after(async()=>browser?.close());
 // ocr: ({kind,index,route,cors,synthetic}) può rispondere al posto del Worker simulato (errore, ritardo, nessuna risposta);
 // se restituisce undefined vale la risposta sintetica. applicationResponses: risposte in sequenza per /applications.
-async function pageFor(t,{admin=false,applicationResponse,applicationResponses,applicationHandler=null,scoringResponse,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
+async function pageFor(t,{admin=false,applicationResponse,applicationResponses,applicationHandler=null,scoringResponse,levelsResponse,levelsSeed=null,levelsReadError=false,staffRole="admin",legacyStaffAssets=false,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
  const calls=[],errors=[],blocked=[],served=[],ocrIndex={};let applications=0;
@@ -63,14 +67,15 @@ async function pageFor(t,{admin=false,applicationResponse,applicationResponses,a
   if(req.method()==='OPTIONS')return route.fulfill({status:204,headers:cors});
   if(url===mockOrigin+'/public/worker-config.js')return route.fulfill({contentType:'text/javascript',body:configuration});
   if(url===mockOrigin+'/public/applications-client.js')return route.fulfill({contentType:'text/javascript',body:client});
-  if(url===mockOrigin+'/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:adminScoringClient});
+  if(new URL(url).origin===mockOrigin&&new URL(url).pathname==='/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:legacyStaffAssets&&new URL(url).search===''?adminScoringClient.replace('saveScoring,saveScoreLevels,ScoringSaveError','saveScoring,ScoringSaveError'):adminScoringClient});
   if(url.startsWith(mockOrigin+'/')){
    const path=new URL(url).pathname,file=sitePath[path]||(path.startsWith('/app/')&&site[path.slice(1)]!==undefined?path.slice(1):null);
-   if(file){served.push(file);return route.fulfill({contentType:contentType(file),body:moduleOverrides[file]??site[file]});}
+   if(file){served.push(file);return route.fulfill({contentType:contentType(file),body:legacyStaffAssets&&file==='admin/index.html'?(moduleOverrides[file]??site[file]).replace(/<script src="\.\.\/public\/score-levels[^"]*"><\/script>/,'').replace(/public\/admin-scoring-client\.js\?v=[0-9a-f]+/,'public/admin-scoring-client.js'):(moduleOverrides[file]??site[file])});}
   }
   // Come unpkg (CORS *): con crossorigin il browser verifica davvero gli hash integrity delle pagine.
+  if(new URL(url).origin===mockOrigin&&new URL(url).pathname==='/public/score-levels.js')return route.fulfill({contentType:'text/javascript',body:scoreLevelsModule});
   if(js[url])return route.fulfill({contentType:'text/javascript',headers:{'Access-Control-Allow-Origin':'*'},body:js[url]});
-  if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites)).replace('__SIGNED_IN__',JSON.stringify(signedIn))});
+  if(url.startsWith('https://www.gstatic.com/firebasejs/'))return route.fulfill({contentType:'text/javascript',body:firebaseStub.replace('__SCORE_LEVELS__',JSON.stringify(levelsSeed)).replace('__LEVELS_READ_ERROR__',JSON.stringify(levelsReadError)).replace('__ROLE__',JSON.stringify(staffRole)).replace('__CANDIDATE__',JSON.stringify(candidate)).replace('__ALLOW_WRITES__',JSON.stringify(allowWrites)).replace('__SIGNED_IN__',JSON.stringify(signedIn))});
   if(url.startsWith('https://fonts.'))return route.fulfill({contentType:'text/css',body:''});
   if(req.method()==='POST') {
    assert.equal(new URL(url).origin,mockWorker,'Every POST must be intercepted at the mocked Worker origin');
@@ -78,6 +83,11 @@ async function pageFor(t,{admin=false,applicationResponse,applicationResponses,a
    if(url===mockWorker+'/auth'&&req.postDataJSON()?.code==='synthetic-admin-code')return route.fulfill({status:200,headers:cors,contentType:'application/json',body:JSON.stringify({ok:true,role:'admin',token:'synthetic-custom-token'})});
    if(url===mockWorker+'/auth')return route.fulfill({status:401,headers:cors,contentType:'application/json',body:'{}'});
    if(url===mockWorker+'/notify')return route.fulfill({status:403,headers:cors,contentType:'application/json',body:'{"ok":false}'});
+   if(url.endsWith('/admin/score-levels')){
+    const status=levelsResponse?.status||200;
+    if(status===200)await page.evaluate(config=>localStorage.setItem('syntheticScoreLevels',JSON.stringify(config)),req.postDataJSON());
+    return route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify(levelsResponse?.body||{ok:true})});
+   }
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
    if(url.endsWith('/applications')){
     if(applicationHandler){
@@ -206,6 +216,137 @@ test('Admin scoring uses authenticated Worker save; read and reset remain unchan
  await page.getByText('Controlla i valori evidenziati.',{exact:true}).waitFor();
  assert.equal(calls.filter(c=>c.url.endsWith('/admin/scoring')).length,1);
  assert.deepEqual(await page.evaluate(()=>window.testCounters),{reads,writes:0});
+});
+
+test('Score levels: add, validate, persist, reload and delete; both graphs share the saved config, numbers unchanged',{timeout:60000},async t=>{
+ const candidate={...prepareApplication({...await publicFixture(),fullName:'Synthetic Levels',accountsReached:null},{now:NOW}),scoringVersion:2,socialScore:81};
+ const numeric=computeScore(candidate);
+ const {page,calls}=await pageFor(t,{admin:true,candidate});
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByText('Configurazione assente:',{exact:false}).waitFor();
+ assert.equal(calls.length,0,'missing config is not automatically persisted');
+ await page.getByRole('button',{name:'Aggiungi livello Social Score',exact:true}).click();
+ assert.equal(await page.getByLabel(/Social Score: nome/).count(),5);
+ await page.getByLabel('Social Score: nome 4',{exact:true}).fill('Selezione test');
+ await page.getByLabel('Social Score: colore 4',{exact:true}).evaluate(el=>{
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'#123456');
+  el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
+ });
+ await page.getByLabel('Singole metriche: nome 3',{exact:true}).fill('Metrica test');
+ await page.getByLabel('Social Score: a 1',{exact:true}).fill('18');
+ await page.getByText('Gli intervalli si sovrappongono:',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Salva livelli',exact:true}).isDisabled(),true);
+ assert.equal(calls.length,0);
+ await page.getByLabel('Social Score: a 1',{exact:true}).fill('17');
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
+ await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
+ const sent=calls.filter(c=>c.url.endsWith('/admin/score-levels'));assert.equal(sent.length,1);
+ assert.equal(sent[0].headers.authorization,'Bearer synthetic-firebase-id-token');
+ assert.equal(sent[0].body.social.length,5);assert.equal(sent[0].body.social[3].color,'#123456');
+ await page.reload();
+ await page.locator('button.row').filter({hasText:'Synthetic Levels'}).click();
+ const social=page.getByRole('img',{name:/Social Score:.*Selezione test/});await social.waitFor();
+ assert.equal(await social.locator('[data-score-level="good"]').evaluate(el=>el.style.backgroundColor),'rgb(18, 52, 86)');
+ await page.getByRole('img',{name:/Coinvolgimento:.*Metrica test/}).waitFor();
+ assert.match(await social.getAttribute('aria-label'),new RegExp(numeric.socialScore.toFixed(2)));
+ await page.getByText('Punteggio registrato all\'invio con il modello precedente:',{exact:false}).waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+ assert.equal(calls.some(c=>c.url.endsWith('/admin/scoring')||c.url.endsWith('/applications')||c.url.endsWith('/notify')),false);
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByRole('button',{name:'Social Score: elimina 2',exact:true}).click();
+ assert.equal(await page.getByLabel(/Social Score: nome/).count(),4);
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
+ await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
+ assert.equal(calls.filter(c=>c.url.endsWith('/admin/score-levels')).at(-1).body.social.length,4);
+});
+
+test('Score levels: chart boundaries, missing scores, escaped labels and mobile layout',{timeout:60000},async t=>{
+ const cfg=scoreLevels.defaults();cfg.social[2].label='<img src=x onerror=alert(1)>';
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Graph'},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate,levelsSeed:cfg});
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('button.row').filter({hasText:'Synthetic Graph'}).click();
+ await page.getByRole('img',{name:/Social Score:.*<img src=x/}).waitFor();
+ assert.equal(await page.locator('img[src="x"]').count(),0,'labels are text, never HTML');
+ for(const value of [0,35,55,75,100,null]){
+  await page.evaluate(value=>{
+   if(!window.levelProbe){const el=document.createElement('div');el.id='level-probe';document.body.append(el);window.levelProbe=ReactDOM.createRoot(el);}
+   ReactDOM.flushSync(()=>window.levelProbe.render(React.createElement(ScoreBands,{value,levels:CollectiveScoreLevels.defaults().social,label:'Boundary probe'})));
+  },value);
+  const probe=page.locator('#level-probe');
+  assert.equal(await probe.locator('[data-score-marker]').count(),value===null?0:1);
+  const name=await probe.getByRole('img').getAttribute('aria-label');
+  assert.ok(name.includes(value===null?'non disponibile':scoreLevels.classify(value,scoreLevels.DEFAULT_CONFIG.social).label));
+ }
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'editor table scrolls inside its container');
+});
+
+test('Score levels: manager sees classifications but cannot open the editor',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Manager'},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate,staffRole:'manager'});
+ await page.locator('button.row').filter({hasText:'Synthetic Manager'}).click();
+ await page.getByRole('img',{name:/Social Score:/}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Livelli e colori',exact:true}).count(),0);
+});
+
+test('Score levels: cached HTML and old transport bootstrap the missing dependencies without redirects',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{admin:true,legacyStaffAssets:true});
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
+ await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
+ assert.equal(calls.length,1);assert.ok(calls[0].url.endsWith('/admin/score-levels'));
+ assert.ok(page.url().endsWith('/admin/'));
+});
+test('Score levels: per-group limits are configurable above 20 and persist without truncation',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{admin:true});
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByLabel('Social Score: limite livelli',{exact:true}).fill('25');
+ await page.getByLabel('Singole metriche: limite livelli',{exact:true}).fill('4');
+ for(let i=4;i<21;i++)await page.getByRole('button',{name:'Aggiungi livello Social Score',exact:true}).click();
+ assert.equal(await page.getByLabel(/Social Score: nome/).count(),21);
+ await page.getByLabel('Social Score: limite livelli',{exact:true}).fill('20');
+ assert.equal(await page.getByRole('button',{name:'Salva livelli',exact:true}).isDisabled(),true);
+ assert.equal(await page.getByLabel(/Social Score: nome/).count(),21,'no automatic deletion');
+ await page.getByLabel('Social Score: limite livelli',{exact:true}).fill('101');
+ await page.getByText('Il limite deve essere un numero intero da 1 a 100.',{exact:true}).waitFor();
+ await page.getByLabel('Social Score: limite livelli',{exact:true}).fill('25');
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
+ await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
+ assert.equal(calls.length,1);assert.deepEqual(calls[0].body.maxLevels,{social:25,metrics:4});
+ await page.reload();await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByLabel('Social Score: limite livelli',{exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Social Score: limite livelli',{exact:true}).inputValue(),'25');
+ assert.equal(await page.getByLabel(/Social Score: nome/).count(),21);
+});
+for(const [name,options] of [['read failure',{levelsReadError:true}],['invalid stored config',{levelsSeed:{version:2}}]]){
+ test(`Score levels: ${name} does not silently fall back or permit overwrite`,{timeout:60000},async t=>{
+  const {page,calls}=await pageFor(t,{admin:true,...options});
+  await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+  await page.getByRole('button',{name:'Riprova lettura livelli',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Salva livelli',exact:true}).count(),0);
+  assert.equal(await page.getByText('Configurazione assente:',{exact:false}).count(),0);
+  assert.equal(calls.length,0);
+ });
+}
+for(const status of [400,403,503])test(`Score levels: HTTP ${status} keeps changes local, no false success`,{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{admin:true,levelsResponse:{status}});
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByLabel('Social Score: nome 1',{exact:true}).fill('Synthetic unsaved');
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).waitFor({state:'visible'});
+ await page.waitForFunction(()=>document.body.textContent.includes('Livelli non validi.')||document.body.textContent.includes('Non sei autorizzato')||document.body.textContent.includes('Salvataggio non confermato'));
+ assert.equal(await page.getByLabel('Social Score: nome 1',{exact:true}).inputValue(),'Synthetic unsaved');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('syntheticScoreLevels')),null);
+ assert.equal(await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).count(),0);
+ assert.equal(calls.length,1);
+});
+test('Score levels: HTTP 401 requires login and does not persist',{timeout:60000},async t=>{
+ const {page}=await pageFor(t,{admin:true,levelsResponse:{status:401}});
+ await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();
+ await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
+ await page.getByRole('button',{name:'Accedi',exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>localStorage.getItem('syntheticScoreLevels')),null);
 });
 for(const [status,message] of [[400,'Configurazione non valida. Controlla pesi, riferimenti e soglie.'],[403,'Non sei autorizzato a modificare lo scoring. È richiesto il ruolo admin.']]) {
  test(`Admin scoring HTTP ${status} shows error without saving or logging out`,{timeout:60000},async t=>{

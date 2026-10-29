@@ -38,7 +38,7 @@ test('Every top-level public payload field has a value-validation reference',asy
 });
 test('Current frontend Firestore operations are fully inventoried',()=>{
  const operations=[...frontend.matchAll(/db\.collection\("([^\"]+)"\)([^;]+);/g)].map(m=>[m[1],m[2].includes('.delete(')?'delete':m[2].includes('.update(')?'update':m[2].includes('.set(')?'set':'get']);
- assert.deepEqual(operations,[['candidature','get'],['candidature','update'],['candidature','delete'],['settings','get']]);
+ assert.deepEqual(operations,[['candidature','get'],['candidature','update'],['candidature','delete'],['settings','get'],['settings','get']]);
 });
 test('Schema review document inventories every submitted field exactly once',async()=>{
  const schema=await readFile(new URL('../SCHEMA.md',import.meta.url),'utf8');

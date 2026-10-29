@@ -105,7 +105,7 @@ test('Modello, programma e limiti del Worker sono coerenti con il frontend', () 
 
 test('Il frontend chiama solo gli endpoint del Worker previsti', () => {
   assert.match(frontendSource, /const OCR_PROXY\s*=\s*WORKER_BASE;/);
-  assert.deepEqual([...frontendSource.matchAll(/WORKER_BASE \+ "([^"]+)"/g)].map(m => m[1]).sort(), ['/admin/scoring', '/applications', '/auth', '/notify']);
+  assert.deepEqual([...frontendSource.matchAll(/WORKER_BASE\s*\+\s*"([^"]+)"/g)].map(m => m[1]).sort(), ['/admin/score-levels', '/admin/scoring', '/applications', '/auth', '/notify']);
 });
 
 test('Nessun segreto scritto nel codice del Worker', () => {

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { DEFAULT_SCORING, computeScore } from '../../server/collective/scoring.mjs';
+import scoreLevels from '../../public/score-levels.js';
 import { publicFixture } from '../../server/collective/test/frontend-reference.mjs';
 import { fromFirestoreValue } from '../src/firestore.mjs';
 import { freshWorker, baseEnv, post } from './helpers.mjs';
@@ -73,4 +74,27 @@ test('Emulator: manager e token alterato non modificano il documento', async () 
     { ip: '192.0.2.93', headers: { Authorization: 'Bearer ' + forged.join('.') } }), env, {});
   assert.equal(res.status, 401);
   assert.deepEqual(await readScoring(), before);
+});
+
+test('Emulator: scoreLevels is created/replaced independently, scoring and candidates unchanged',async()=>{
+  const worker=await freshWorker(),scoringBefore=await readScoring();
+  const candidatesBefore=await (await realFetch(`${ROOT}/candidature`,{headers:{Authorization:'Bearer owner'}})).json();
+  await realFetch(`${ROOT}/settings/scoreLevels`,{method:'DELETE',headers:{Authorization:'Bearer owner'}});
+  assert.equal((await realFetch(`${ROOT}/settings/scoreLevels`,{headers:{Authorization:'Bearer owner'}})).status,404);
+  const cfg=scoreLevels.defaults();cfg.social[2].label='Synthetic emulator classification';
+  const request=(role,body)=>post('/admin/score-levels',body,{ip:'192.0.2.99',headers:{Authorization:'Bearer '+idToken(role)}});
+  assert.equal((await worker.fetch(request('admin',cfg),env,{})).status,200);
+  const read=async()=>{
+    const response=await realFetch(`${ROOT}/settings/scoreLevels`,{headers:{Authorization:'Bearer owner'}});
+    assert.equal(response.status,200);return fromFirestoreValue({mapValue:{fields:(await response.json()).fields}});
+  };
+  assert.deepEqual(await read(),cfg);
+  cfg.metrics[0].label='Synthetic replacement';
+  assert.equal((await worker.fetch(request('admin',cfg),env,{})).status,200);
+  assert.deepEqual(await read(),cfg);
+  assert.equal((await worker.fetch(request('manager',scoreLevels.defaults()),env,{})).status,403);
+  assert.equal((await worker.fetch(request('viewer',scoreLevels.defaults()),env,{})).status,403);
+  assert.deepEqual(await read(),cfg);assert.deepEqual(await readScoring(),scoringBefore);
+  const candidatesAfter=await (await realFetch(`${ROOT}/candidature`,{headers:{Authorization:'Bearer owner'}})).json();
+  assert.deepEqual(candidatesAfter,candidatesBefore);
 });

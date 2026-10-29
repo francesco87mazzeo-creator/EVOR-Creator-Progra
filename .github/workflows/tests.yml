@@ -6,7 +6,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, feature/configurable-score-levels]
 
 permissions:
   contents: read
@@ -58,6 +58,14 @@ jobs:
   firestore-rules:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CI: 'true'
+      FIREBASE_CLI_DISABLE_TELEMETRY: '1'
+      FIREBASE_EMULATORS_PATH: ${{ runner.temp }}/evora-firestore-emulators
+      GCLOUD_PROJECT: demo-evora-security
+      GOOGLE_CLOUD_PROJECT: demo-evora-security
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -69,10 +77,16 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Emulator, Rules in produzione (profilo migration)
+      - name: Emulator ufficiale, Rules candidate (profilo migration)
         working-directory: security/firestore
         env:
           EVORA_RULES_PROFILE: migration
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm test
+      - name: Emulator ufficiale, persistenza REST del Worker con token sintetici
+        working-directory: security/firestore
+        run: >-
+          node node_modules/firebase-tools/lib/bin/firebase.js emulators:exec
+          --project demo-evora-security --only firestore --config firebase.migration.json
+          "node --test --test-concurrency=1 ../../worker/test/emulator-scoring.mjs"
