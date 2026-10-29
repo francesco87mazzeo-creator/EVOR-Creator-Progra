@@ -4,6 +4,13 @@ Sorgenti del Worker in produzione, finora conservati solo in locale. `wrangler.t
 
 - **Moduli:** `src/` contiene il Worker; importa la convalida da `../server/collective`.
 
+## Aggiornamento OCR successivo a Scoring V2 (non pubblicato)
+
+Il riconoscimento del layout con account distinti aggiorna i prompt e mantiene gli hash precedenti
+per le pagine aperte. Pubblicare prima il Worker, poi il frontend. Procedura, limiti dei test e
+rollback: [docs/ocr-distinct-accounts.md](../docs/ocr-distinct-accounts.md).
+Le note di provenienza e i prompt invariati citati sotto si riferiscono alla precedente PR #6.
+
 ## Modifiche non ancora pubblicate: scoring v2
 
 Il branch `scoring/v2-engagement-views` modifica i sorgenti del Worker. **Dopo il merge il repository non corrisponde più alla versione in produzione descritta sotto**, finché il Worker non viene pubblicato con autorizzazione.

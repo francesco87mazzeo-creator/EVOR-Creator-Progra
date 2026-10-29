@@ -63,15 +63,21 @@ const LIMITS = {
 };
 const DEFAULT_OCR_MODEL = "claude-sonnet-4-5";
 
-/* SHA-256 dei soli prompt OCR inviati dal frontend (index.html @ 479213a).
-   Rigenerabili con `npm run hashes`; i test verificano che coincidano con il frontend. */
+/* SHA-256 dei soli prompt OCR ammessi: frontend corrente e transizione da ba04424.
+   Rigenerare i correnti con npm run hashes; non rimuovere i legacy finché esistono pagine precedenti aperte.
+   I legacy sono testati contro worker/test/fixtures/ocr-prompts-ba04424.json. */
 const OCR_PROMPTS = new Map([
-  ["2dea2bf57a430850da7d512740e5c8e3e303303adf669e65a25d361a61d7f79b", "insights"],
+  ["3091522f734b4a8875eccf97f1dbb8cacf776aebf6be60fd7e4a491351518894", "insights"],
   ["d0ccf33b257582fdf51e6a6941a909197eb77cbffe577af6b7bfa2e599a481eb", "profile"],
-  ["05e43f92b7dadb41d368ba45c89cbd8e2c3ee6bb0d7edb6aa436738ae3bb430d", "verify:Visualizzazioni"],
-  ["1c12cf071c4c3bcae35cddb173362a7253e87e5e71d0b1d6fef481a770daa9eb", "verify:Follower netti"],
-  ["d0304d49c2c846e3fd54cfd83508cddf6267cd821ea0f8507301e9d088b2c582", "verify:Interazioni"],
-  ["441b34dfcbe42db90643cf87d25deae8d42994ec19e6256737d636a1d4132eab", "verify:Account raggiunti"]
+  ["2f67b5f435e77dd2a98bc85ef449e63de8ced5ba609336dd9d9f1186ee049c81", "verify:Visualizzazioni"],
+  ["2a798829844102fc7f883cc2b1e666f21cd80db70418134faca3954a4eb24a50", "verify:Follower netti"],
+  ["ec39145eed63ae8ac6dd56e6725c4db65e0511b8c5455c45a336ad3fbd36de8a", "verify:Interazioni"],
+  ["9e22b970391c639ca7ca96ce9915a14cc54c43b994647e2f896ca56ad10bfd90", "verify:Account raggiunti"],
+  ["2dea2bf57a430850da7d512740e5c8e3e303303adf669e65a25d361a61d7f79b", "legacy-ba04424:insights"],
+  ["05e43f92b7dadb41d368ba45c89cbd8e2c3ee6bb0d7edb6aa436738ae3bb430d", "legacy-ba04424:verify:Visualizzazioni"],
+  ["1c12cf071c4c3bcae35cddb173362a7253e87e5e71d0b1d6fef481a770daa9eb", "legacy-ba04424:verify:Follower netti"],
+  ["d0304d49c2c846e3fd54cfd83508cddf6267cd821ea0f8507301e9d088b2c582", "legacy-ba04424:verify:Interazioni"],
+  ["441b34dfcbe42db90643cf87d25deae8d42994ec19e6256737d636a1d4132eab", "legacy-ba04424:verify:Account raggiunti"]
 ]);
 
 const PROGRAM = "EVORΛ COLLECTIVE";
