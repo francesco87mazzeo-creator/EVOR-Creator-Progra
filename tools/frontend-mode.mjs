@@ -9,6 +9,7 @@
 // Ritorno alla separazione: vedi docs/separazione-pubblico-admin.md (pagine separate ripristinate e versioni aggiornate).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { assetVersion } from './asset-versions.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
@@ -114,7 +115,8 @@ ${admin ? '<meta name="robots" content="noindex, nofollow">\n<title>EVORΛ COLLE
 <!-- Pagina unica (ripristino, frontend-mode.json = "single-page"): generata da tools/frontend-mode.mjs. Non modificare a mano. -->
 <script src="${base}public/worker-config.js"></script>
 <script src="${base}public/applications-client.js"></script>
-<script src="${base}public/admin-scoring-client.js"></script>
+<script src="${base}public/admin-scoring-client.js?v=${assetVersion('public/admin-scoring-client.js')}"></script>
+<script src="${base}public/score-levels.js?v=${assetVersion('public/score-levels.js')}"></script>
 ${CDN_SCRIPTS}
 ${FIREBASE_SCRIPTS}
 <style>

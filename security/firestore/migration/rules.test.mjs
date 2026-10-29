@@ -1,3 +1,4 @@
+import scoreLevels from '../../../public/score-levels.js';
 import {before,beforeEach,after,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -23,6 +24,7 @@ beforeEach(async()=>{
   await setDoc(doc(context.firestore(),'candidature','existing'),original);
   await setDoc(doc(context.firestore(),'candidature','schema5'),current);
   await setDoc(doc(context.firestore(),'settings','scoring'),defaultScoring());
+  await setDoc(doc(context.firestore(),'settings','scoreLevels'),scoreLevels.defaults());
  });
 });
 after(async()=>env?.cleanup());
@@ -141,3 +143,14 @@ for(const role of ['manager','admin']){
  });
 }
 test('viewer: v2 correction denied',async()=>denied(updateDoc(ref('viewer'),v2Patch(original,NEXT))));
+
+// Exact document reads only; no client can create/update/delete display configuration.
+for(const role of ['anonymous','unprivileged','unknown','viewer','manager','admin']){
+ test(`${role}: scoreLevels restricted read, all direct mutations denied`,async()=>{
+  const canRead=['viewer','manager','admin'].includes(role);
+  await (canRead?assertSucceeds:denied)(getDoc(ref(role,'settings/scoreLevels')));
+  await denied(setDoc(ref(role,'settings/scoreLevels'),{version:1,social:[],metrics:[]}));
+  await denied(updateDoc(ref(role,'settings/scoreLevels'),{version:2}));
+  await denied(deleteDoc(ref(role,'settings/scoreLevels')));
+ });
+}

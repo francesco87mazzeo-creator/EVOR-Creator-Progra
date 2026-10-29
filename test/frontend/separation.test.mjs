@@ -7,11 +7,16 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {existsSync} from 'node:fs';
 import {publicPage,adminPage,modules,shared,publicForm,pageModules,APP_MODULES,SINGLE_PAGE} from './app-source.mjs';
-import {PAGES,references,assetVersion} from '../../tools/asset-versions.mjs';
+import {PAGES,references,assetVersion,bootReferences} from '../../tools/asset-versions.mjs';
 import {buildSinglePage,buildAdminPage,SINGLE_PAGE_MODULES,HEAD_META,CDN_SCRIPTS,FIREBASE_SCRIPTS,FIREBASE_BOOTSTRAP,REGISTRY_SCRIPT,SINGLE_PAGE_ROUTER} from '../../tools/frontend-mode.mjs';
 
 const separatedOnly={skip:SINGLE_PAGE&&'frontend-mode.json = single-page: regola della separazione non applicabile durante il ripristino'};
 const singlePageOnly={skip:!SINGLE_PAGE&&'frontend-mode.json = separated: regola del solo ripristino'};
+
+test('Lazy staff dependencies are content-versioned for old cached HTML',()=>{
+ const refs=bootReferences();assert.equal(refs.length,2);
+ for(const r of refs)assert.equal(r.version,r.expected,r.file);
+});
 
 test('Public page loads only shared and public modules, staff page adds only its own',separatedOnly,()=>{
  assert.deepEqual(pageModules(publicPage).map(m=>m.module),['app/shared.jsx','app/public-form.jsx','app/public-main.jsx']);
@@ -20,7 +25,7 @@ test('Public page loads only shared and public modules, staff page adds only its
 
 test('Every app/ reference carries the content hash of its file (node tools/asset-versions.mjs --write)',separatedOnly,()=>{
  const refs=PAGES.flatMap(references);
- assert.equal(refs.length,9,'4 riferimenti nella pagina pubblica, 5 nell\'area staff');
+ assert.equal(refs.length,11,'4 riferimenti nella pagina pubblica, 7 nell\'area staff');
  const wrong=refs.filter(r=>r.version!==r.expected).map(r=>`${r.page}: ${r.file}?v=${r.version}, atteso ${r.expected}`);
  assert.deepEqual(wrong,[],'Un file app/ è cambiato senza aggiornare le pagine: eseguire node tools/asset-versions.mjs --write');
  // Ogni file app/ è usato da almeno una pagina; nessun riferimento senza versione.
@@ -78,7 +83,9 @@ test('The single-page rollback can always be generated from the current modules'
  // admin/: la stessa pagina unica con percorsi relativi alla cartella, noindex e area staff aperta dal percorso.
  const staff=buildAdminPage();
  assert.match(staff,/<meta name="robots" content="noindex, nofollow">/);
- for(const s of ['worker-config','applications-client','admin-scoring-client'])assert.ok(staff.includes(`<script src="../public/${s}.js"></script>`));
+ for(const s of ['worker-config','applications-client'])assert.ok(staff.includes(`<script src="../public/${s}.js"></script>`));
+ assert.ok(staff.includes(`public/admin-scoring-client.js?v=${assetVersion('public/admin-scoring-client.js')}`));
+ assert.ok(staff.includes(`public/score-levels.js?v=${assetVersion('public/score-levels.js')}`));
  for(const m of SINGLE_PAGE_MODULES)assert.ok(staff.includes(modules[m].trimEnd()));
  assert.ok(staff.includes(SINGLE_PAGE_ROUTER));assert.match(SINGLE_PAGE_ROUTER,/const onAdminPath = /);
 });
@@ -100,7 +107,7 @@ test('Rollback template matches the separated pages it replaces',separatedOnly,(
 test('During the rollback the pages are exactly the generated ones and app/ stays published',singlePageOnly,()=>{
  assert.equal(publicPage,buildSinglePage(),'index.html non allineata ai moduli app/: rieseguire node tools/frontend-mode.mjs single-page');
  assert.equal(adminPage,buildAdminPage(),'admin/index.html non allineata: rieseguire node tools/frontend-mode.mjs single-page');
- assert.deepEqual(PAGES.flatMap(references),[],'nessun riferimento app/ nelle pagine del ripristino');
+ assert.deepEqual(PAGES.flatMap(references).filter(r=>r.file.startsWith('app/')),[],'nessun riferimento app/ nelle pagine del ripristino');
  // Le pagine separate ancora in cache (circa 10 minuti) richiedono questi file.
  for(const file of [...APP_MODULES,'app/styles.css'])assert.ok(existsSync(new URL(`../../${file}`,import.meta.url)),`${file} deve restare pubblicato`);
 });

@@ -21,6 +21,13 @@ const FB = {
   },
   async saveScoring(cfg){
     await CollectiveAdminScoring.saveScoring({endpoint:ADMIN_SCORING_URL,auth,config:cfg});
+  },
+  async getScoreLevels(){
+    const doc = await db.collection("settings").doc("scoreLevels").get();
+    return doc.exists ? CollectiveScoreLevels.validateConfig(doc.data()) : null;
+  },
+  async saveScoreLevels(config){
+    await CollectiveAdminScoring.saveScoreLevels({endpoint:WORKER_BASE+"/admin/score-levels",auth,config});
   }
 };
 
@@ -308,7 +315,7 @@ const DATE_FILTERS = [
 ];
 const PER_PAGE = 10;
 
-function ApplicationsPanel({role, scoring}){
+function ApplicationsPanel({role, scoring, scoreLevels}){
   const [apps,setApps]       = useState([]);
   const [sel,setSel]         = useState(null);
   const [loading,setLoading] = useState(true);
@@ -416,7 +423,7 @@ function ApplicationsPanel({role, scoring}){
   };
 
   if(sel) return (
-    <CandidateDetail app={sel} role={role} scoring={scoring}
+    <CandidateDetail app={sel} role={role} scoring={scoring} scoreLevels={scoreLevels}
       onBack={()=>setSel(null)} onPatch={patchApp} onDelete={removeApp}/>
   );
 
@@ -603,7 +610,8 @@ function ApplicationsPanel({role, scoring}){
                       <div className="metric-v" style={{color:"var(--t1)"}}>{v}</div>
                     </div>
                   ))}
-                  <ScoreRing value={s.socialScore} color={SCORE_COLOR} size={46} label="SCORE"/>
+                  <ScoreRing value={s.socialScore} color={CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.color||SCORE_COLOR} size={46} label="SCORE"/>
+                  <span className="label-xs" style={{overflowWrap:"anywhere"}}>{CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.label||""}</span>
                 </div>
               </div>
             </button>
@@ -830,18 +838,42 @@ function InsightsEditor({app, scoring, onPatch}){
   );
 }
 
-/** Componente del punteggio: valore osservato e contributo, senza livelli né colori di giudizio. */
-function ScorePart({label, value, sub}){
+/** Bands and classification consume exactly the same validated levels. Raw rates are never classified. */
+function ScoreBands({value,levels,label}){
+  const classification=CollectiveScoreLevels.classify(value,levels);
+  const valid=typeof value==="number"&&Number.isFinite(value)&&value>=0&&value<=100;
+  if(!levels)return <div className="body-sm" role="status">Classificazioni non disponibili.</div>;
+  return <div style={{margin:"12px 0",minWidth:0}}>
+    <div className="label-xs" style={{marginBottom:8,overflowWrap:"anywhere"}}>{label}: {classification ? value.toFixed(2)+"/100 · "+classification.label : "Non disponibile"}</div>
+    <div role="img" aria-label={`${label}: ${classification ? value.toFixed(2)+" su 100, "+classification.label : "punteggio non disponibile"}`}
+      style={{position:"relative",paddingTop:10,paddingBottom:6}}>
+      <div style={{display:"flex",height:16,border:"1px solid var(--brd)",overflow:"hidden"}}>
+        {levels.map(l=><div key={l.id} title={`${l.label}: ${l.min}–${l.max}${l.max===100?" (incluso)":" (escluso)"}`}
+          data-score-level={l.id} style={{width:(l.max-l.min)+"%",background:l.color}}/>)}
+      </div>
+      {valid&&<span data-score-marker={label} aria-hidden="true" style={{position:"absolute",left:`clamp(1px, ${value}%, calc(100% - 1px))`,top:3,
+        width:2,height:30,background:"var(--t1)",transform:"translateX(-50%)",boxShadow:"0 0 0 1px var(--bg)"}}/>}
+    </div>
+    <div className="label-xs" style={{display:"flex",justifyContent:"space-between"}}><span>0</span><span>100</span></div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:"5px 14px",marginTop:5}}>
+      {levels.map(l=><span key={l.id} className="body-sm" style={{fontSize:11,minWidth:0,maxWidth:"100%",overflowWrap:"anywhere"}}><span aria-hidden="true" style={{display:"inline-block",width:8,height:8,background:l.color,marginRight:5}}/>
+        {l.label} [{l.min}, {l.max}{l.max===100?"]":")"}</span>)}
+    </div>
+  </div>;
+}
+
+function ScorePart({label, value, sub, score, levels}){
   return (
     <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:15,minWidth:0}}>
       <div style={{fontFamily:"var(--fh)",fontWeight:600,fontSize:9,letterSpacing:".14em",textTransform:"uppercase",color:"var(--t3)",marginBottom:5}}>{label}</div>
       <div style={{fontFamily:"var(--fh)",fontWeight:800,fontSize:22,color:"var(--t1)",lineHeight:1}}>{value}</div>
       <div className="body-sm" style={{fontSize:11,marginTop:6,lineHeight:1.5}}>{sub}</div>
+      {score!==undefined&&<ScoreBands value={score} levels={levels} label={label.split(" · ")[0]}/>}
     </div>
   );
 }
 
-function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
+function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDelete}){
   const s  = computeScore(app, scoring);
   const cfg = scoring || DEFAULT_SCORING;
   const wTot = cfg.weights.engagement + cfg.weights.visibility;
@@ -888,13 +920,14 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
             </div>
           </div>
           <div style={{textAlign:"center"}}>
-            <ScoreRing value={s.socialScore} color={SCORE_COLOR} size={76} label="SCORE"/>
+            <ScoreRing value={s.socialScore} color={CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.color||SCORE_COLOR} size={76} label="SCORE"/>
             <div className="label-xs" style={{marginTop:6,maxWidth:110,lineHeight:1.3}}>Punteggio quantitativo</div>
           </div>
         </div>
 
         {/* PUNTEGGIO QUANTITATIVO */}
         <Section title={<span>Punteggio quantitativo · scoring v2 (configurazione {s.scoringVersion})</span>}>
+          <ScoreBands value={s.socialScore} levels={scoreLevels?.social} label="Social Score"/>
           {!s.available && (
             <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:10}}>
               <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
@@ -907,8 +940,10 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
           )}
           <div className="g3-keep" style={{marginBottom:10}}>
             <ScorePart label={"Coinvolgimento · "+share("engagement")+"%"} value={fmtPct(s.engagementRate)}
+              score={s.engagementScore} levels={scoreLevels?.metrics}
               sub={<>Interazioni / visualizzazioni{s.engagementScore!==null && <> · {Math.round(s.engagementScore)}/100</>}</>}/>
             <ScorePart label={"Visibilità · "+share("visibility")+"%"} value={fmtMaybe(s.views)}
+              score={s.visibilityScore} levels={scoreLevels?.metrics}
               sub={<>Visualizzazioni in 30 giorni{s.visibilityScore!==null && <> · {Math.round(s.visibilityScore)}/100</>}</>}/>
             <ScorePart label="Indicatore B" value={fmtPct(s.reachEngagementRate)}
               sub={s.reachEngagementRate===null ? "Interazioni / account raggiunti · non disponibile" : "Interazioni / account raggiunti · non incide sul punteggio"}/>
@@ -1155,6 +1190,78 @@ function CandidateDetail({app, role, scoring, onBack, onPatch, onDelete}){
    13. PANNELLO SCORING (solo admin)
    ========================================================================== */
 // Campi della configurazione (versione 3). Un campo vuoto o non valido blocca il salvataggio: nessuno zero implicito.
+const scoreLevelsMessage=error=>({
+  LEVEL_COUNT:"Il numero di livelli deve rispettare il limite configurato per il gruppo.",MAX_LEVELS:"Il limite deve essere un numero intero da 1 a 100.",ID:"Gli identificativi dei livelli devono essere univoci.",
+  LABEL:"Inserisci un nome da 1 a 80 caratteri, senza caratteri di controllo.",COLOR:"Scegli un colore nel formato #RRGGBB.",
+  BOUNDARY:"Gli estremi devono essere numeri interi da 0 a 100.",EMPTY_INTERVAL:"Ogni intervallo deve avere un estremo finale maggiore di quello iniziale.",
+  COVERAGE:"Gli intervalli devono iniziare da 0 e terminare a 100.",GAP:"Ci sono valori scoperti: la fine di una fascia deve coincidere con l'inizio della successiva.",
+  OVERLAP:"Gli intervalli si sovrappongono: la fine di una fascia deve coincidere con l'inizio della successiva."
+}[error.code]||"Configurazione dei livelli non valida.");
+
+function ScoreLevelsPanel({state,onSaved,onRetry,onAuthRequired}){
+  const [draft,setDraft]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  useEffect(()=>{setDraft(state.config?JSON.parse(JSON.stringify(state.config)):null);},[state.config]);
+  let validated=null,validationError="";
+  if(draft)try{validated=CollectiveScoreLevels.validateConfig(draft);}catch(e){validationError=scoreLevelsMessage(e);}
+  const edit=(group,id,key,value)=>setDraft(p=>({...p,[group]:p[group].map(l=>l.id===id?{...l,[key]:value}:l)}));
+  const add=group=>setDraft(p=>{
+    const rows=[...p[group]],largest=rows.reduce((a,b)=>(b.max-b.min>a.max-a.min?b:a));
+    if(rows.length>=p.maxLevels[group]||largest.max-largest.min<2)return p;
+    const middle=Math.floor((largest.min+largest.max)/2);
+    return{...p,[group]:rows.flatMap(l=>l.id!==largest.id?[l]:[{...l,max:middle},{...l,id:crypto.randomUUID(),label:"Nuovo livello",min:middle}])};
+  });
+  const remove=(group,index)=>setDraft(p=>{
+    if(p[group].length===1)return p;
+    const rows=p[group].map(l=>({...l})),old=rows[index];
+    if(index>0)rows[index-1].max=old.max;else rows[1].min=old.min;
+    rows.splice(index,1);return{...p,[group]:rows};
+  });
+  const save=async()=>{
+    if(busy||!validated)return;
+    setBusy(true);setMessage("");
+    try{await FB.saveScoreLevels(validated);onSaved(validated);setMessage("Livelli salvati. Punteggi numerici invariati.");}
+    catch(e){setMessage(e instanceof CollectiveAdminScoring.ScoringSaveError?e.message:"Salvataggio non confermato. Riprova più tardi.");
+      if(e.code==="LOGIN_REQUIRED")await onAuthRequired(e.message);}
+    finally{setBusy(false);}
+  };
+  return <div style={{flex:1,overflow:"auto"}}><div className="wrap-panel" style={{padding:"22px 16px 80px",maxWidth:1000}}>
+    <h2 className="h-md">Livelli e colori</h2>
+    <p className="body-sm" style={{margin:"12px 0"}}>Queste fasce classificano punteggi già calcolati: non modificano formule, pesi o candidature.
+      Gli estremi iniziali sono inclusi, quelli finali esclusi; 100 è incluso nell'ultima fascia. Il limite è configurabile per gruppo, fino a 100 livelli.</p>
+    {state.status==="default"&&<p role="status" className="body-sm">Configurazione assente: sono attivi i livelli storici predefiniti. Verranno creati soltanto con Salva livelli.</p>}
+    {state.status==="loading"&&<p role="status">Caricamento livelli…</p>}
+    {state.status==="error"&&<div role="alert">Impossibile leggere una configurazione valida. Nessun valore predefinito è stato applicato al posto di una lettura fallita.
+      <button className="btn btn-ghost" onClick={onRetry}>Riprova lettura livelli</button></div>}
+    {draft&&<fieldset disabled={busy} style={{border:0,padding:0,minWidth:0}}>
+      {[["social","Social Score"],["metrics","Singole metriche"]].map(([group,title])=><section className="panel" key={group} style={{padding:16,margin:"18px 0"}}>
+        <h3 className="h-sm">{title}</h3>
+        <label className="body-sm">Limite livelli del gruppo
+          <input aria-label={`${title}: limite livelli`} type="number" min="1" max={CollectiveScoreLevels.HARD_MAX_LEVELS} step="1" value={draft.maxLevels[group]}
+            onChange={e=>{const value=e.target.value===""?"":Number(e.target.value);setDraft(p=>({...p,maxLevels:{...p.maxLevels,[group]:value}}));}}/>
+        </label>
+        <div style={{overflowX:"auto",marginTop:12}}><table style={{width:"100%",minWidth:560}}>
+          <thead><tr><th>Nome</th><th>Colore</th><th>Da incluso</th><th>A escluso*</th><th>Azioni</th></tr></thead>
+          <tbody>{draft[group].map((l,index)=><tr key={l.id}>
+            <td><input aria-label={`${title}: nome ${index+1}`} value={l.label} maxLength={80} onChange={e=>edit(group,l.id,"label",e.target.value)}/></td>
+            <td><input aria-label={`${title}: colore ${index+1}`} type="color" value={l.color} onChange={e=>edit(group,l.id,"color",e.target.value)}/></td>
+            {["min","max"].map(k=><td key={k}><input aria-label={`${title}: ${k==="min"?"da":"a"} ${index+1}`} type="number" min="0" max="100" step="1" value={l[k]}
+              onChange={e=>edit(group,l.id,k,e.target.value===""?"":Number(e.target.value))}/></td>)}
+            <td><button className="btn btn-ghost btn-sm" disabled={draft[group].length===1} onClick={()=>remove(group,index)} aria-label={`${title}: elimina ${index+1}`}>Elimina</button></td>
+          </tr>)}</tbody>
+        </table></div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>add(group)} disabled={!validated||draft[group].length>=draft.maxLevels[group]||!draft[group].some(l=>l.max-l.min>=2)}>Aggiungi livello {title}</button>
+        <ScoreBands value={50} levels={validated?.[group]} label={`Anteprima ${title}`}/>
+      </section>)}
+      <p className="body-sm">* 100 incluso. Aggiungi divide la fascia più ampia; Elimina la unisce alla vicina. Le modifiche restano locali fino al salvataggio.</p>
+      {validationError&&<p role="alert" style={{color:"var(--bad)"}}>{validationError}</p>}
+      <button className="btn btn-primary" disabled={!validated} onClick={save}>{busy?"Salvataggio livelli…":"Salva livelli"}</button>
+      <button className="btn btn-ghost" onClick={()=>{setDraft(CollectiveScoreLevels.defaults());setMessage("");}}>Ripristina livelli predefiniti</button>
+    </fieldset>}
+    {message&&<p role="status">{message}</p>}
+  </div></div>;
+}
+
+
 const SCORING_FIELDS = [
   {g:"weights",    k:"engagement",     l:"Coinvolgimento",            hint:"Interazioni / visualizzazioni", step:"1",   int:false},
   {g:"weights",    k:"visibility",     l:"Visibilità",                hint:"Volume delle visualizzazioni",  step:"1",   int:false},
@@ -1358,7 +1465,23 @@ function SettingsPanel(){
 /* ============================================================================
    15. AREA RISERVATA
    ========================================================================== */
+// An old cached HTML page may fetch the current app/admin.jsx at an old ?v= URL.
+// Load missing dependencies before mounting panels; no redirects and no production fallback.
+const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=f737fa8a2db9f4e8","public/admin-scoring-client.js?v=bbbe4a5d522e22e7"];
+const scoreLevelAssetsReady=()=>typeof CollectiveScoreLevels!=="undefined"&&typeof CollectiveAdminScoring!=="undefined"&&typeof CollectiveAdminScoring.saveScoreLevels==="function";
+let scoreLevelAssetsPromise;
+function loadScoreLevelAssets(){
+  if(scoreLevelAssetsReady())return Promise.resolve();
+  if(!scoreLevelAssetsPromise)scoreLevelAssetsPromise=Promise.all(SCORE_LEVEL_BOOT_ASSETS.map(path=>new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src=(/\/admin\/(index\.html)?$/.test(location.pathname)?"../":"./")+path;
+    script.onload=resolve;script.onerror=()=>reject(new Error("Score level assets unavailable"));document.head.appendChild(script);
+  }))).then(()=>{if(!scoreLevelAssetsReady())throw new Error("Score level assets invalid");});
+  return scoreLevelAssetsPromise;
+}
 function AdminPanel({onBack, onTestForm}){
+  const [assetsStatus,setAssetsStatus]=useState(()=>scoreLevelAssetsReady()?"ready":"loading");
+  useEffect(()=>{let alive=true;loadScoreLevelAssets().then(()=>{if(alive)setAssetsStatus("ready");}).catch(()=>{if(alive)setAssetsStatus("error");});return()=>{alive=false;};},[]);
   const [role,setRole]       = useState(null);
   const [ready,setReady]     = useState(false);   // sessione già verificata?
   const [code,setCode]       = useState("");
@@ -1366,6 +1489,8 @@ function AdminPanel({onBack, onTestForm}){
   const [checking,setChk]    = useState(false);
   const [tab,setTab]         = useState("apps");
   const [scoring,setScoring] = useState(DEFAULT_SCORING);
+  const [levelsState,setLevelsState]=useState({status:"loading",config:null});
+  const [levelsReload,setLevelsReload]=useState(0);
 
   // Ripristina una sessione ancora valida senza richiedere di nuovo il codice.
   useEffect(()=>{
@@ -1393,6 +1518,15 @@ function AdminPanel({onBack, onTestForm}){
     FB.getScoring().then(c=>setScoring(normalizeScoring(c))).catch(()=>setScoring(DEFAULT_SCORING));
   },[role]);
 
+  useEffect(()=>{
+    let alive=true;
+    setLevelsState({status:"loading",config:null});
+    if(!role||assetsStatus!=="ready")return()=>{alive=false;};
+    FB.getScoreLevels().then(config=>{if(alive)setLevelsState({status:config?"ready":"default",config:config||CollectiveScoreLevels.defaults()});})
+      .catch(()=>{if(alive)setLevelsState({status:"error",config:null});});
+    return()=>{alive=false;};
+  },[role,levelsReload,assetsStatus]);
+
   const login = async ()=>{
     const v = code.trim();
     if(!v){ setErr("Inserisci il codice di accesso."); return; }
@@ -1408,7 +1542,8 @@ function AdminPanel({onBack, onTestForm}){
   const logout = async ()=>{ await AUTH.logout(); setRole(null); setTab("apps"); };
   const requireLogin = async message=>{ await AUTH.logout(); setRole(null); setTab("apps"); setErr(message); };
 
-  if(!ready) return (
+  if(assetsStatus==="error")return <div role="alert" className="wrap-panel">Impossibile caricare i moduli dei livelli. Ricarica la pagina o riprova più tardi.</div>;
+  if(!ready||assetsStatus!=="ready") return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div className="spinner" style={{width:26,height:26}}/>
     </div>
@@ -1458,12 +1593,16 @@ function AdminPanel({onBack, onTestForm}){
         <div className="wrap-panel" style={{display:"flex",padding:0}}>
           <button className={"tab"+(tab==="apps"?" tab-on":"")} onClick={()=>setTab("apps")}>Candidature</button>
           {isAdmin && <button className={"tab"+(tab==="scoring"?" tab-on":"")} onClick={()=>setTab("scoring")}>Scoring</button>}
+          {isAdmin && <button className={"tab"+(tab==="levels"?" tab-on":"")} onClick={()=>setTab("levels")}>Livelli e colori</button>}
           {isAdmin && <button className={"tab"+(tab==="settings"?" tab-on":"")} onClick={()=>setTab("settings")}>Impostazioni</button>}
         </div>
       </div>
 
-      {tab==="apps"     && <ApplicationsPanel role={role} scoring={scoring}/>}
+      {levelsState.status==="error"&&<p role="alert">Classificazioni non disponibili: errore nella lettura dei livelli. I punteggi numerici restano disponibili.</p>}
+      {tab==="apps"     && <ApplicationsPanel role={role} scoring={scoring} scoreLevels={levelsState.config}/>}
       {tab==="scoring"  && isAdmin && <ScoringPanel scoring={scoring} onSaved={setScoring} onAuthRequired={requireLogin}/>}
+      {tab==="levels"&&isAdmin&&<ScoreLevelsPanel state={levelsState} onSaved={config=>setLevelsState({status:"ready",config})}
+        onRetry={()=>setLevelsReload(n=>n+1)} onAuthRequired={requireLogin}/>}
       {tab==="settings" && isAdmin && <SettingsPanel/>}
     </div>
   );

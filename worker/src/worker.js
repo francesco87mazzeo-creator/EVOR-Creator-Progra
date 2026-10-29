@@ -11,6 +11,7 @@
  * Endpoint
  *   POST /applications  candidatura pubblica (54 campi) → { ok, id }   convalida + Firestore + notifica
  *   POST /admin/scoring configurazione scoring    → { ok, scoring }   solo admin (ID token Firebase verificato)
+ *   POST /admin/score-levels classificazioni/colori → { ok, scoreLevels } solo admin; settings/scoring invariato
  *   POST /auth          { code }                   → { ok, role, token }   invariato
  *   POST /ocr           richiesta OCR del frontend  → { content:[{type,text}] }
  *   POST /              alias di /ocr, usato dal frontend attuale (stessi controlli)
@@ -36,6 +37,7 @@ import { computeScore, validateScoringConfig } from "../../server/collective/sco
 import { createFirestoreClient, FirestoreError } from "./firestore.mjs";
 import { b64url, importPrivateKey } from "./google-auth.mjs";
 import { verifyFirebaseIdToken, IdTokenError } from "./firebase-id-token.mjs";
+import scoreLevels from "../../public/score-levels.js";
 
 /* ---------- Limiti ---------- */
 const LIMITS = {
@@ -44,6 +46,7 @@ const LIMITS = {
   applicationPerIsolate: { max: 100, windowMs: 60 * 60 * 1000 },
   scoringCacheMs: 60 * 1000,
   adminBodyBytes: 64_000,       // la configurazione completa occupa circa 2 KB
+  scoreLevelsBodyBytes: 128_000, // fino a 100 livelli per gruppo, anche con nomi UTF-8
   adminPerIp: { max: 30, windowMs: 10 * 60 * 1000 },
   adminPerIsolate: { max: 120, windowMs: 60 * 60 * 1000 },
   adminSessionS: 8 * 3600,      // come SESSION_HOURS del pannello, ma imposto dal server
@@ -549,7 +552,8 @@ async function handleApplication(request, env, ctx) {
  * ID token Firebase verificato con claim role "admin", configurazione convalidata (Codex), scrittura del service account.
  * Turnstile non si applica: l'autorizzazione è il token dello staff.
  */
-async function handleAdminScoring(request, env) {
+async function handleAdminScoring(request, env, levels = false) {
+  const path = levels ? "settings/scoreLevels" : "settings/scoring";
   const g = await guard(env, request, {
     binding: "ADMIN_LIMITER", scope: "admin", perIp: LIMITS.adminPerIp, perIsolate: LIMITS.adminPerIsolate, turnstile: false
   });
@@ -584,24 +588,24 @@ async function handleAdminScoring(request, env) {
   if (claims.role !== "admin" || provider !== "custom") return deny(403, "FORBIDDEN", "ruolo");
 
   // 2 · convalida della configurazione: la stessa che /applications applica in lettura
-  const parsed = await readJson(request, LIMITS.adminBodyBytes);
+  const parsed = await readJson(request, levels ? LIMITS.scoreLevelsBodyBytes : LIMITS.adminBodyBytes);
   if (parsed.error) return fail(parsed.error[0], { code: parsed.error[0] === 413 ? "BODY_TOO_LARGE" : "INVALID_REQUEST", path: "$" });
   let config;
-  try { config = validateScoringConfig(parsed.value); }
+  try { config = levels ? scoreLevels.validateConfig(parsed.value) : validateScoringConfig(parsed.value); }
   catch (e) {
-    if (e instanceof ValidationError) return fail(400, { code: e.code, path: e.path });
+    if (e instanceof ValidationError || e instanceof scoreLevels.ScoreLevelsError) return fail(400, { code: e.code, path: e.path });
     return fail(400, { code: "INVALID_REQUEST", path: "$" });
   }
 
   // 3 · scrittura completa, come set() senza merge
-  try { await client.setDocument("settings/scoring", config); }
+  try { await client.setDocument(path, config); }
   catch (e) {
-    console.error(JSON.stringify({ evt: "scoring_write_failed", status: e.status || e.name }));
+    console.error(JSON.stringify({ evt: levels ? "score_levels_write_failed" : "scoring_write_failed", status: e.status || e.name }));
     return fail(503, { code: "SERVICE_UNAVAILABLE", path: "$" });
   }
-  scoringCache = null;   // le altre istanze si allineano entro scoringCacheMs
-  console.log(JSON.stringify({ evt: "scoring_saved", uid: claims.sub, role: claims.role }));
-  return json({ ok: true, scoring: config }, 200, headers);
+  if (!levels) scoringCache = null;   // le altre istanze si allineano entro scoringCacheMs
+  console.log(JSON.stringify({ evt: levels ? "score_levels_saved" : "scoring_saved", uid: claims.sub, role: claims.role }));
+  return json(levels ? { ok: true, scoreLevels: config } : { ok: true, scoring: config }, 200, headers);
 }
 
 /* ---------- /auth: logica originale invariata ---------- */
@@ -697,6 +701,7 @@ export default {
     if (isAuth) return handleAuth(request, env, headers);
     if (path === "/applications") return handleApplication(request, env, ctx);
     if (path === "/admin/scoring") return handleAdminScoring(request, env);
+    if (path === "/admin/score-levels") return handleAdminScoring(request, env, true);
     if (path === "/notify") return handleNotify(request, env);
     if (path === "" || path === "/ocr") return handleOcr(request, env);
     return json({ ok: false, error: "Endpoint non trovato" }, 404, headers);

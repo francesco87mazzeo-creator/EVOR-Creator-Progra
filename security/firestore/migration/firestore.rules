@@ -127,6 +127,10 @@ service cloud.firestore {
       // IAM server writes bypass Rules; verify endpoint auth/CORS and staging before activation.
       allow create, update, delete: if false;
     }
+    match /settings/scoreLevels {
+      allow get: if reader();
+      allow create, update, delete: if false;
+    }
     // No client access to idempotency records, auth metadata, settings/config or other paths.
   }
 }

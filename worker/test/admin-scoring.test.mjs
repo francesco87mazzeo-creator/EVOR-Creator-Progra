@@ -3,6 +3,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import vm from 'node:vm';
+import scoreLevels from '../../public/score-levels.js';
 import { DEFAULT_SCORING } from '../../server/collective/scoring.mjs';
 import { publicFixture } from '../../server/collective/test/frontend-reference.mjs';
 import { fromFirestoreValue, __resetTokenCacheForTests } from '../src/firestore.mjs';
@@ -53,6 +54,11 @@ function services({ jwks = 200, token = 200, write = 200, stored = null } = {}) 
       return token === 200 ? new Response(JSON.stringify({ access_token: 'ya29.synthetic', expires_in: 3600 }), { status: 200 })
         : new Response('{}', { status: token });
     }
+    if (url === `${ROOT}/settings/scoreLevels`) {
+      if(init.method!=='PATCH')return state.levels?new Response(JSON.stringify(state.levels)):new Response('{}',{status:404});
+      if(write!==200)return new Response('{}',{status:write});
+      state.levels=body;return new Response(JSON.stringify({name:'settings/scoreLevels',...body}));
+    }
     if (url === `${ROOT}/settings/scoring`) {
       if ((init.method || 'GET') === 'PATCH') {
         if (write !== 200) return new Response('{}', { status: write });
@@ -71,10 +77,10 @@ function services({ jwks = 200, token = 200, write = 200, stored = null } = {}) 
   return Object.assign(mock, { state });
 }
 
-function adminPost(body, { auth = 'Bearer ' + idToken(), raw, ...opts } = {}) {
+function adminPost(body, { auth = 'Bearer ' + idToken(), raw, path = '/admin/scoring', ...opts } = {}) {
   const headers = { ...(opts.headers || {}) };
   if (auth !== null) headers.Authorization = auth;
-  return post('/admin/scoring', body, { ...opts, headers, raw });
+  return post(path, body, { ...opts, headers, raw });
 }
 async function save(body, { req = {}, environment = env(), svc = {}, worker } = {}) {
   worker = worker || await freshWorker();
@@ -329,4 +335,63 @@ test('OAuth rifiutato o scrittura Firestore fallita → 503', async () => {
     assert.equal(res.status, 503);
     assert.equal(json.error.code, 'SERVICE_UNAVAILABLE');
   }
+});
+
+/* Isolated display settings: shares the existing authentication, never writes scoring/candidates. */
+const levelRequest=over=>({path:'/admin/score-levels',...over});
+test('Levels: absent document is created, persisted and reread; scoring/candidates remain untouched',async()=>{
+ const worker=await freshWorker(),mock=services();
+ try{
+  const before=mock.state.stored;
+  assert.equal(mock.state.levels,undefined);
+  const cfg=scoreLevels.defaults();cfg.social[2].label='Synthetic selection';
+  const res=await worker.fetch(adminPost(cfg,levelRequest()),env(),{});
+  assert.equal(res.status,200);assert.deepEqual((await res.json()).scoreLevels,cfg);
+  assert.deepEqual(fromFirestoreValue({mapValue:mock.state.levels}),cfg);
+  const second=scoreLevels.defaults();second.metrics[0].label='Synthetic low';
+  assert.equal((await worker.fetch(adminPost(second,levelRequest()),env(),{})).status,200);
+  assert.deepEqual(fromFirestoreValue({mapValue:mock.state.levels}),second);
+  assert.equal(mock.state.stored,before);assert.equal(mock.state.lastApplication,undefined);
+  assert.deepEqual(mock.calls.filter(c=>c.init.method==='PATCH').map(c=>c.url),[ROOT+'/settings/scoreLevels',ROOT+'/settings/scoreLevels']);
+ }finally{mock.restore();}
+});
+for(const [name,auth,status]of [
+ ['anonymous',null,401],['expired','Bearer '+idToken({exp:nowS()-120}),401],
+ ['manager','Bearer '+idToken({role:'manager'}),403],['viewer','Bearer '+idToken({role:'viewer'}),403],
+ ['unknown role','Bearer '+idToken({role:'other'}),403],['Google provider','Bearer '+idToken({firebase:{sign_in_provider:'google.com'}}),403]
+])test(`Levels: ${name} cannot save`,async()=>{
+ const {res,calls}=await save(scoreLevels.defaults(),{req:levelRequest({auth})});
+ assert.equal(res.status,status);assert.equal(calls.some(c=>c.init.method==='PATCH'),false);
+});
+for(const [name,mutate,code]of [
+ ['overlap',c=>c.social[1].min=34,'OVERLAP'],['gap',c=>c.metrics[1].min=26,'GAP'],
+ ['color injection',c=>c.social[0].color='red; background:url(x)','COLOR'],['extra fields',c=>c.scoring={},'UNKNOWN_FIELD']
+])test(`Levels: ${name} rejected before any write`,async()=>{
+ const cfg=scoreLevels.defaults();mutate(cfg);
+ const {res,json,calls}=await save(cfg,{req:levelRequest()});
+ assert.equal(res.status,400);assert.equal(json.error.code,code);assert.equal(calls.some(c=>c.init.method==='PATCH'),false);
+});
+test('Levels: Firestore failure is 503, never false success',async()=>{
+ const {res}=await save(scoreLevels.defaults(),{req:levelRequest(),svc:{write:403}});assert.equal(res.status,503);
+});
+test('Levels: configured 100-level groups with long UTF-8 labels fit the dedicated bounded request',async()=>{
+ const group=prefix=>Array.from({length:100},(_,i)=>({id:prefix+String(i).padStart(39,'0'),label:'界'.repeat(80),color:'#123456',min:i,max:i+1}));
+ const cfg={version:1,maxLevels:{social:100,metrics:100},social:group('s'),metrics:group('m')};
+ assert.ok(new TextEncoder().encode(JSON.stringify(cfg)).length>64000);
+ const {res,state}=await save(cfg,{req:levelRequest()});
+ assert.equal(res.status,200);assert.equal(fromFirestoreValue({mapValue:state.levels}).social.length,100);
+ const denied=await save(cfg,{req:levelRequest({headers:{'Content-Length':'128001'}})});
+ assert.equal(denied.res.status,413);assert.equal(denied.calls.some(c=>c.init.method==='PATCH'),false);
+});
+test('Levels: limits cannot be increased beyond the structural ceiling',async()=>{
+ const cfg=scoreLevels.defaults();cfg.maxLevels.metrics=101;
+ const {res,json,calls}=await save(cfg,{req:levelRequest()});
+ assert.equal(res.status,400);assert.equal(json.error.code,'MAX_LEVELS');assert.equal(calls.some(c=>c.init.method==='PATCH'),false);
+});
+test('Levels: preflight includes Authorization, wrong origin denied, no API calls',async()=>{
+ const worker=await freshWorker();
+ const pre=new Request('https://worker.test/admin/score-levels',{method:'OPTIONS',headers:{Origin:ORIGIN}});
+ const res=await worker.fetch(pre,env(),{});assert.equal(res.status,204);assert.match(res.headers.get('Access-Control-Allow-Headers'),/Authorization/);
+ const denied=await save(scoreLevels.defaults(),{req:levelRequest({origin:'https://evil.example.test'})});
+ assert.equal(denied.res.status,403);assert.equal(denied.calls.length,0);
 });
