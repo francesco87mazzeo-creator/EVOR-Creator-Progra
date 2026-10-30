@@ -5,7 +5,7 @@ name: Repository hygiene
 on:
   pull_request:
   push:
-    branches: [main, feature/configurable-score-levels]
+    branches: [main, feature/configurable-score-levels, feature/instagram-benchmark-editor]
 
 permissions:
   contents: read

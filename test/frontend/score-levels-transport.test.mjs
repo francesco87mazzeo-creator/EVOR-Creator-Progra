@@ -34,3 +34,9 @@ test('Levels transport: network failure and timeout are not success and do not r
  }}),e=>e.code==='TIMEOUT');
  assert.equal(posts,2);
 });
+
+for(const status of [200,400,401,403,429,503])test(`Benchmarks transport HTTP ${status} is isolated and authenticated`,async()=>{
+ const sent=[];const promise=context.CollectiveAdminScoring.saveBenchmarks({endpoint:'https://worker.invalid/admin/benchmarks',config:levels.benchmarks.defaults(),auth,fetchImpl:async(url,opts)=>{sent.push({url,opts});return{ok:status===200,status};}});
+ if(status===200)await promise;else await assert.rejects(promise);
+ assert.equal(sent.length,1);assert.equal(sent[0].opts.headers.Authorization,'Bearer synthetic-id-token');assert.equal(sent[0].url,'https://worker.invalid/admin/benchmarks');
+});

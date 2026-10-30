@@ -34,5 +34,6 @@
   }
   const saveScoring=options=>saveConfiguration(options,'/admin/scoring','Configurazione non valida. Controlla pesi, riferimenti e soglie.');
   const saveScoreLevels=options=>saveConfiguration(options,'/admin/score-levels','Livelli non validi. Controlla nomi, colori e copertura degli intervalli da 0 a 100.');
-  root.CollectiveAdminScoring=Object.freeze({saveScoring,saveScoreLevels,ScoringSaveError});
+  const saveBenchmarks=options=>saveConfiguration(options,'/admin/benchmarks','Benchmark non validi. Verifica valori e ordine Medio < Buono < Eccellente.');
+  root.CollectiveAdminScoring=Object.freeze({saveScoring,saveScoreLevels,saveBenchmarks,ScoringSaveError});
 })(globalThis);

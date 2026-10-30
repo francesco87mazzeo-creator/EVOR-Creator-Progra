@@ -1262,6 +1262,47 @@ function ScoreLevelsPanel({state,onSaved,onRetry,onAuthRequired}){
 }
 
 
+function BenchmarkPanel({onAuthRequired}){
+  const B=CollectiveScoreLevels.benchmarks;
+  const [draft,setDraft]=useState(null),[metric,setMetric]=useState('engagement'),[band,setBand]=useState(2),[level,setLevel]=useState(0),[linked,setLinked]=useState(true);
+  const [message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
+  useEffect(()=>{let alive=true;setDraft(null);setError('');
+    db.collection('settings').doc('instagramBenchmarks').get().then(doc=>{if(alive){setDraft(doc.exists?B.validateConfig(doc.data()):B.defaults());setMessage(doc.exists?'Benchmark caricati.':'Configurazione assente: valori predefiniti, non ancora salvati.');}})
+    .catch(()=>{if(alive)setError('Impossibile leggere i benchmark. Nessun valore è stato sostituito.');});return()=>{alive=false;};},[reload]);
+  const names=['Medio','Buono','Eccellente'],colors=['#ff535f','#3392ff','#32d881'];
+  function change(value){try{setDraft(B.edit(draft,metric,band,level,value,linked));setError('');setMessage('Bozza modificata, non ancora salvata.');}catch{setError('Modifica bloccata: servono valori tra 0 e 100.000%, con Medio < Buono < Eccellente.');}}
+  async function save(){setBusy(true);setError('');try{const config=B.validateConfig(draft);await CollectiveAdminScoring.saveBenchmarks({endpoint:WORKER_BASE+'/admin/benchmarks',auth,config});setMessage('Benchmark salvati. Punteggi numerici invariati.');}catch(e){if(e.code==='LOGIN_REQUIRED')onAuthRequired();else setError(e.message||'Salvataggio non confermato.');}finally{setBusy(false);}}
+  if(!draft)return <section className="wrap-panel" style={{padding:24}}>{error?<><p role="alert">{error}</p><button className="btn btn-ghost" onClick={()=>setReload(n=>n+1)}>Riprova lettura benchmark</button></>:<p>Caricamento benchmark…</p>}</section>;
+  const rows=draft[metric],top=Math.max(1,...rows.flat())*1.12;
+  const x=f=>60+820*Math.log(f/1000)/Math.log(500),y=v=>300-260*v/top;
+  const points=Array.from({length:161},(_,i)=>{const f=1000*Math.pow(500,i/160);return{x:x(f),values:B.thresholds(draft,metric,f)};});
+  const path=j=>points.map((p,i)=>(i?'L':'M')+p.x+','+y(p.values[j])).join(' ');
+  const area=(lo,hi)=>path(hi)+' '+[...points].reverse().map(p=>'L'+p.x+','+y(p.values[lo])).join(' ')+' Z';
+  const selected=rows[band][level];
+  return <section className="benchmark-page">
+    <style>{`.benchmark-page{width:100%;min-width:0;padding:26px;max-width:1500px;margin:auto;background:radial-gradient(ellipse at 95% 0,rgba(150,22,32,.14),transparent 55%)}.benchmark-head,.benchmark-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}.benchmark-page .btn{border-radius:8px;letter-spacing:0;text-transform:none;font-family:var(--fb);font-size:14px}.benchmark-page .btn-primary{background:linear-gradient(135deg,#e73945,#a71926);box-shadow:0 4px 18px #b31b2a33}.benchmark-page input,.benchmark-page select{border-radius:8px}.benchmark-page input[type=range]{accent-color:#ee414f}.benchmark-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0}.benchmark-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}.benchmark-card{background:linear-gradient(130deg,#131719,#0d1012);border:1px solid #30383e;border-radius:14px;padding:20px;min-width:0}.benchmark-card input,.benchmark-card select{width:100%}.benchmark-table{width:100%;border-collapse:collapse}.benchmark-table th,.benchmark-table td{padding:13px;text-align:left;border-bottom:1px solid #30383e}.benchmark-chart{width:100%;min-width:420px}.benchmark-quick{display:flex;gap:6px;flex-wrap:wrap}.benchmark-control{display:grid;gap:14px}.benchmark-table-wrap{overflow:auto;margin-top:16px}@media(max-width:900px){.benchmark-layout{grid-template-columns:1fr}.benchmark-page{padding:16px}.benchmark-chart{min-width:560px}}`}</style>
+    <header className="benchmark-head"><div><h2 className="h-md">Configurazione Scoring</h2><p className="body-sm">Definisci i riferimenti osservati per fascia follower. Nessun effetto sullo scoring attuale.</p></div><div className="benchmark-actions"><button className="btn btn-ghost" disabled={busy} onClick={()=>{setDraft(B.defaults());setError('');setMessage('Valori predefiniti ripristinati nella bozza. Premi Salva per confermare.');}}>Ripristina valori predefiniti</button><button className="btn btn-primary" disabled={busy} onClick={save}>{busy?'Salvataggio…':'Salva benchmark'}</button></div></header>
+    <nav className="benchmark-tabs" aria-label="Metrica benchmark">{[['engagement','Engagement'],['reach','Reach'],['growth','Growth']].map(([key,label])=><button key={key} className={'btn '+(metric===key?'btn-primary':'btn-ghost')} aria-pressed={metric===key} onClick={()=>{setMetric(key);setError('');}}>{label}</button>)}</nav>
+    <p className="body-sm">{metric==='engagement'?'Engagement: soglie sperimentali non validate. Interazioni / account raggiunti.':metric==='reach'?'Reach: riferimenti storici provvisori. Account raggiunti / follower.':'Growth: riferimenti storici provvisori. Follower netti / follower iniziali.'} Valori in percentuale; le regolazioni sono in punti percentuali.</p>
+    <div className="benchmark-layout"><div className="benchmark-card"><h3 className="h-sm">{metric==='engagement'?'Engagement':metric==='reach'?'Reach':'Growth'} per fascia follower</h3><div style={{display:'flex',gap:20,margin:'16px 0'}}>{names.map((n,j)=><span key={n} style={{color:colors[j]}}>● {n}</span>)}</div><div style={{overflowX:'auto'}}><svg className="benchmark-chart" viewBox="0 0 920 360" role="img" aria-label={`Curve benchmark ${metric}; interpolazione continua logaritmica`}>
+      {[0,1,2,3,4].map(i=><g key={i}><line x1="60" x2="880" y1={y(top*i/4)} y2={y(top*i/4)} stroke="#2b3339"/><text x="53" y={y(top*i/4)+4} fill="#b9c1ca" fontSize="12" textAnchor="end">{(top*i/4).toFixed(1)}%</text></g>)}
+      <path d={area(0,1)} fill="#3392ff" opacity=".09"/><path d={area(1,2)} fill="#32d881" opacity=".09"/>
+      {names.map((n,j)=><path key={n} d={path(j)} fill="none" stroke={colors[j]} strokeWidth="2.5"/>)}
+      {draft.followers.map((f,i)=><g key={f}><line x1={x(f)} x2={x(f)} y1="30" y2="300" stroke={i===band?'#a53c46':'#20282c'}/><text x={x(f)} y="330" textAnchor="middle" fill={i===band?'#fff':'#aab3be'} fontSize="13">{f/1000}K</text>{names.map((n,j)=><circle key={n} cx={x(f)} cy={y(rows[i][j])} r={i===band&&j===level?8:5} fill={colors[j]} stroke="white" strokeWidth="1.5" role="button" tabIndex="0" aria-label={`${f} follower ${n}`} onClick={()=>{setBand(i);setLevel(j);}} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setBand(i);setLevel(j);}}}/>)}</g>)}
+    </svg></div><p className="body-sm">Curva continua su scala logaritmica, senza oscillazioni. Estremi costanti sotto 1.000 e sopra 500.000 follower.</p></div>
+    <aside className="benchmark-card benchmark-control"><label>Fascia follower selezionata<select aria-label="Fascia benchmark" value={band} disabled={busy} onChange={e=>setBand(Number(e.target.value))}>{draft.followers.map((f,i)=><option key={f} value={i}>{f.toLocaleString('it-IT')} follower{ i===4?' (riferimento oltre 100.000)':''}</option>)}</select></label>
+      {names.map((n,j)=><div key={n} style={{display:'flex',justifyContent:'space-between',color:colors[j]}}><span>{n}</span><strong>{rows[band][j].toLocaleString('it-IT',{maximumFractionDigits:4})}%</strong></div>)}
+      <label><input type="checkbox" style={{width:'auto',marginRight:8}} checked={linked} disabled={busy} onChange={e=>setLinked(e.target.checked)}/>Muovi insieme i 3 livelli</label><p className="body-sm">{linked?'Sposta solo questa fascia, mantenendo le distanze tra i tre valori.':'Modifica soltanto la soglia selezionata.'}</p>
+      <label>Soglia<select aria-label="Soglia benchmark" value={level} disabled={busy} onChange={e=>setLevel(Number(e.target.value))}>{names.map((n,j)=><option key={n} value={j}>{n}</option>)}</select></label>
+      <label>Valore percentuale<input aria-label="Valore benchmark" type="number" step="any" min="0" max="100000" value={selected} disabled={busy} onChange={e=>{if(e.target.value!=='')change(e.target.valueAsNumber);}}/></label>
+      <input aria-label="Regolazione benchmark" type="range" min="0" max={Math.min(100000,Math.max(top,selected*1.5))} step="0.01" value={selected} disabled={busy} onChange={e=>change(Number(e.target.value))}/>
+      <div className="benchmark-quick">{[-1,-.5,.5,1].map(d=><button key={d} className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>change(selected+d)}>{d>0?'+':''}{d} pp</button>)}</div>
+    </aside></div>
+    {error&&<p role="alert" style={{color:'var(--bad)'}}>{error}</p>}{message&&<p role="status">{message}</p>}
+    <div className="benchmark-card benchmark-table-wrap"><table className="benchmark-table"><caption>Riepilogo benchmark — {metric}</caption><thead><tr><th>Follower (riferimento)</th>{names.map(n=><th key={n}>{n}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={i}><th>{draft.followers[i].toLocaleString('it-IT')}</th>{row.map((v,j)=><td key={j} style={{color:colors[j]}}>{v.toLocaleString('it-IT',{maximumFractionDigits:4})}%</td>)}</tr>)}</tbody></table></div>
+  </section>;
+}
+
 const SCORING_FIELDS = [
   {g:"weights",    k:"engagement",     l:"Coinvolgimento",            hint:"Interazioni / visualizzazioni", step:"1",   int:false},
   {g:"weights",    k:"visibility",     l:"Visibilità",                hint:"Volume delle visualizzazioni",  step:"1",   int:false},
@@ -1467,8 +1508,8 @@ function SettingsPanel(){
    ========================================================================== */
 // An old cached HTML page may fetch the current app/admin.jsx at an old ?v= URL.
 // Load missing dependencies before mounting panels; no redirects and no production fallback.
-const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=f737fa8a2db9f4e8","public/admin-scoring-client.js?v=bbbe4a5d522e22e7"];
-const scoreLevelAssetsReady=()=>typeof CollectiveScoreLevels!=="undefined"&&typeof CollectiveAdminScoring!=="undefined"&&typeof CollectiveAdminScoring.saveScoreLevels==="function";
+const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=e485adbc1f84a06f","public/admin-scoring-client.js?v=5284c02816765c0f"];
+const scoreLevelAssetsReady=()=>typeof CollectiveScoreLevels!=="undefined"&&typeof CollectiveAdminScoring!=="undefined"&&typeof CollectiveAdminScoring.saveScoreLevels==="function"&&typeof CollectiveAdminScoring.saveBenchmarks==="function"&&!!CollectiveScoreLevels.benchmarks;
 let scoreLevelAssetsPromise;
 function loadScoreLevelAssets(){
   if(scoreLevelAssetsReady())return Promise.resolve();
@@ -1592,15 +1633,15 @@ function AdminPanel({onBack, onTestForm}){
       <div className="tabs">
         <div className="wrap-panel" style={{display:"flex",padding:0}}>
           <button className={"tab"+(tab==="apps"?" tab-on":"")} onClick={()=>setTab("apps")}>Candidature</button>
-          {isAdmin && <button className={"tab"+(tab==="scoring"?" tab-on":"")} onClick={()=>setTab("scoring")}>Scoring</button>}
-          {isAdmin && <button className={"tab"+(tab==="levels"?" tab-on":"")} onClick={()=>setTab("levels")}>Livelli e colori</button>}
+          {isAdmin && <button className={"tab"+(tab==="scoring"?" tab-on":"")} onClick={()=>setTab("scoring")}>Configurazione Scoring</button>}
+          {isAdmin && <button className={"tab"+(tab==="levels"?" tab-on":"")} onClick={()=>setTab("scoring")}>Livelli e colori</button>}
           {isAdmin && <button className={"tab"+(tab==="settings"?" tab-on":"")} onClick={()=>setTab("settings")}>Impostazioni</button>}
         </div>
       </div>
 
       {levelsState.status==="error"&&<p role="alert">Classificazioni non disponibili: errore nella lettura dei livelli. I punteggi numerici restano disponibili.</p>}
       {tab==="apps"     && <ApplicationsPanel role={role} scoring={scoring} scoreLevels={levelsState.config}/>}
-      {tab==="scoring"  && isAdmin && <ScoringPanel scoring={scoring} onSaved={setScoring} onAuthRequired={requireLogin}/>}
+      {tab==="scoring" && isAdmin && <><BenchmarkPanel onAuthRequired={requireLogin}/><details className="wrap-panel"><summary>Formule attuali e parametri numerici (invariati)</summary><ScoringPanel scoring={scoring} onSaved={setScoring} onAuthRequired={requireLogin}/></details><details className="wrap-panel"><summary>Livelli numerici e colori</summary><ScoreLevelsPanel state={levelsState} onSaved={config=>setLevelsState({status:"ready",config})} onRetry={()=>setLevelsReload(n=>n+1)} onAuthRequired={requireLogin}/></details></>}
       {tab==="levels"&&isAdmin&&<ScoreLevelsPanel state={levelsState} onSaved={config=>setLevelsState({status:"ready",config})}
         onRetry={()=>setLevelsReload(n=>n+1)} onAuthRequired={requireLogin}/>}
       {tab==="settings" && isAdmin && <SettingsPanel/>}

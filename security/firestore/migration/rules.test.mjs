@@ -25,6 +25,7 @@ beforeEach(async()=>{
   await setDoc(doc(context.firestore(),'candidature','schema5'),current);
   await setDoc(doc(context.firestore(),'settings','scoring'),defaultScoring());
   await setDoc(doc(context.firestore(),'settings','scoreLevels'),scoreLevels.defaults());
+  await setDoc(doc(context.firestore(),'settings','instagramBenchmarks'),scoreLevels.benchmarks.defaults());
  });
 });
 after(async()=>env?.cleanup());
@@ -154,3 +155,10 @@ for(const role of ['anonymous','unprivileged','unknown','viewer','manager','admi
   await denied(deleteDoc(ref(role,'settings/scoreLevels')));
  });
 }
+
+for(const role of ['anonymous','unprivileged','unknown','viewer','manager','admin'])test(`${role}: benchmarks get restricted; client writes forbidden`,async()=>{
+ await (['viewer','manager','admin'].includes(role)?assertSucceeds:denied)(getDoc(ref(role,'settings/instagramBenchmarks')));
+ await denied(setDoc(ref(role,'settings/instagramBenchmarks'),scoreLevels.benchmarks.defaults()));
+ await denied(updateDoc(ref(role,'settings/instagramBenchmarks'),{version:2}));
+ await denied(deleteDoc(ref(role,'settings/instagramBenchmarks')));
+});

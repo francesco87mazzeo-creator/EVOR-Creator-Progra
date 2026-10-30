@@ -127,6 +127,11 @@ service cloud.firestore {
       // IAM server writes bypass Rules; verify endpoint auth/CORS and staging before activation.
       allow create, update, delete: if false;
     }
+    // Configurazione osservata: creazione/sostituzione solo tramite Worker validante.
+    match /settings/instagramBenchmarks {
+      allow get: if reader();
+      allow create, update, delete: if false;
+    }
     match /settings/scoreLevels {
       allow get: if reader();
       allow create, update, delete: if false;
