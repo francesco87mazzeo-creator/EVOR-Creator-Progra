@@ -1360,3 +1360,35 @@ test('Candidate rings distinguish invalid/missing values from zero and respect m
  }
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);assert.equal(calls.length,0);
 });
+
+for(const width of [1440,768,390,320])test(`Scoring workspace demonstration is local and responsive ${width}`,{timeout:60000},async t=>{
+ const config=scoreLevels.defaults();config.social.forEach(l=>{l.color='#A658F0';l.label='Classe salvata';});config.metrics.forEach(l=>l.color='#28D8BD');
+ const {page,calls}=await pageFor(t,{admin:true,levelsSeed:config});await page.setViewportSize({width,height:1000});
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();const preview=page.getByRole('region',{name:'Anteprima dimostrativa scoring'});
+ await preview.waitFor();await page.emulateMedia({reducedMotion:'reduce'});
+ assert.equal(await preview.locator('[data-score-label="Score V2 dimostrativo"]').getAttribute('data-score-value'),'');
+ for(const [name,value] of [['Follower','2000'],['Visualizzazioni','30000'],['Interazioni','600'],['Account raggiunti','250'],['Follower netti','0']])await preview.getByLabel('Esempio: '+name,{exact:true}).fill(value);
+ const total=preview.locator('[data-score-label="Score V2 dimostrativo"]');assert.equal(await total.getAttribute('data-score-value'),'50');
+ await page.getByText('Classe salvata',{exact:true}).waitFor();assert.equal(await total.evaluate(el=>el.style.getPropertyValue('--ring-color')),'#A658F0');
+ assert.match(await preview.innerText(),/Non contribuisce allo Score V2/);assert.equal(await preview.locator('[data-score-label*="Growth"]').count(),0);
+ await preview.getByLabel('Esempio: Interazioni',{exact:true}).fill('0');assert.equal(await preview.locator('[data-score-label="Engagement dimostrativo"]').getAttribute('data-score-value'),'0');
+ await preview.getByLabel('Esempio: Visualizzazioni',{exact:true}).fill('0');assert.equal(await total.getAttribute('data-score-value'),'');
+ await preview.getByLabel('Esempio: Visualizzazioni',{exact:true}).fill('30000');await preview.getByLabel('Esempio: Interazioni',{exact:true}).fill('600');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.equal(calls.length,0);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+ if(process.env.EVORA_SCREENSHOT_DIR){await page.screenshot({path:`${process.env.EVORA_SCREENSHOT_DIR}/scoring-block4-${width}.png`,fullPage:true});}
+});
+
+test('Scoring workspace updates saved parameters, keeps drafts independent and animates once',{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{admin:true,clock:true});await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();
+ const preview=page.getByRole('region',{name:'Anteprima dimostrativa scoring'});
+ await preview.getByLabel('Esempio: Visualizzazioni',{exact:true}).fill('30000');await preview.getByLabel('Esempio: Interazioni',{exact:true}).fill('3000');
+ const ring=preview.locator('[data-score-label="Score V2 dimostrativo"]');await ring.scrollIntoViewIfNeeded();await page.clock.runFor(1500);assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ const original=await ring.getAttribute('data-score-value');await openConfigSection(page,'Formule attuali e parametri numerici (invariati)');
+ await page.getByLabel('Coinvolgimento',{exact:true}).fill('0');await page.getByLabel('Visibilità',{exact:true}).fill('100');assert.equal(await ring.getAttribute('data-score-value'),original,'unsaved draft cannot change preview');
+ await page.getByRole('button',{name:'Salva configurazione',exact:true}).click();await page.getByText('Configurazione salvata',{exact:true}).waitFor();assert.equal(await ring.getAttribute('data-score-value'),'50');assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ await ring.scrollIntoViewIfNeeded();await page.clock.runFor(150);assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ await preview.getByLabel('Esempio: Interazioni',{exact:true}).fill('');assert.equal(await ring.getAttribute('data-animation-state'),'unavailable');assert.equal(await ring.locator('.candidate-ring-fill').count(),0);
+ await preview.getByLabel('Esempio: Interazioni',{exact:true}).fill('600');assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ await preview.getByLabel('Esempio: Follower',{exact:true}).fill('100');await preview.getByLabel('Esempio: Follower netti',{exact:true}).fill('100');assert.match(await preview.locator('article').nth(2).innerText(),/Non disponibile/);
+ assert.equal(calls.length,1);assert.ok(calls[0].url.endsWith('/admin/scoring'));assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
