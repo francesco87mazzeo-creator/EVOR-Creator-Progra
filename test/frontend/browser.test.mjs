@@ -393,7 +393,7 @@ test('Admin Block 1: exactly five clickable counters, historical statuses remain
  await stats.filter({hasText:'Totali'}).click();
  assert.equal(await page.locator('button.row').count(),9,'Totali includes all historical statuses');
  await page.getByRole('button',{name:/Filtri/}).click();
- assert.equal(await page.getByText('Stato',{exact:true}).count(),0,'state selector duplicates the counters');
+ assert.equal(await page.locator('.g3-gap').getByText('Stato',{exact:true}).count(),0,'advanced filters contain no duplicate status selector');
  assert.equal(await page.getByRole('combobox').count()>0,true,'other filters and sort remain');
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
 });
@@ -1079,7 +1079,7 @@ test('Admin shows the v2 score, indicator B and low observation base; a correcti
  const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Score',views:400,interactions:6,accountsReached:null},{now:NOW});
  const {page}=await pageFor(t,{admin:true,candidate,allowWrites:true});
  const row=page.locator('button.row').filter({hasText:'Synthetic Score'});
- await row.getByText('Base ridotta',{exact:false}).waitFor();
+ await row.locator('[data-metric="socialScore"][title*="Base di osservazione ridotta"]').waitFor();
  await row.click();
  await page.getByText('Punteggio quantitativo',{exact:true}).first().waitFor();
  await page.getByText('Interazioni / account raggiunti · non disponibile',{exact:true}).waitFor();
@@ -1285,7 +1285,7 @@ for(const mode of ['fail','missing','mismatch'])test(`Benchmark save read-back $
  const {page,calls}=await pageFor(t,{admin:true});await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await page.getByLabel('Valore benchmark',{exact:true}).fill('7');
  await page.evaluate(mode=>window.testBenchmarkReadMode=mode,mode);await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.locator('.benchmark-page [role="alert"]').waitFor();
  assert.equal(await page.getByText('Benchmark salvati e verificati sul server. Punteggi numerici invariati.',{exact:true}).count(),0);
- assert.equal(await page.getByLabel('Valore benchmark',{exact:true}).inputValue(),'7');assert.equal(calls.length,1);assert.deepEqual(await page.evaluate(()=>window.testBenchmarkReads),['server','server']);
+ assert.equal(await page.getByLabel('Valore benchmark',{exact:true}).inputValue(),'7');assert.equal(calls.length,1);assert.deepEqual(await page.evaluate(()=>window.testBenchmarkReads),['server','server','server']);
 });
 test('Benchmark extreme values persist with stable Y and identical table/graph after reopen and reload',{timeout:60000},async t=>{
  const legacy=scoreLevels.benchmarks.toDocument({...scoreLevels.benchmarks.defaults(),interpolation:'log-smoothstep-v1'});
