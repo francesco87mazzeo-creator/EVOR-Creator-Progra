@@ -419,7 +419,8 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
   },[enriched]);
 
   const resetFilters = ()=>{ setQ("");setFStatus("all");setFCat("all");setFBand("all");setFBase("all");setFDate("all");setFPlace("");setFCollab("all");setFNotes("all"); };
-  const activeFilters = [fStatus,fCat,fBand,fBase,fDate,fCollab,fNotes].filter(v=>v!=="all").length + (fPlace?1:0);
+  // Lo stato si seleziona tramite i contatori, non compare nel numero dei filtri avanzati.
+  const activeFilters = [fCat,fBand,fBase,fDate,fCollab,fNotes].filter(v=>v!=="all").length + (fPlace?1:0);
 
   const patchApp = async (id, data) => {
     await FB.updateApp(id, data);
