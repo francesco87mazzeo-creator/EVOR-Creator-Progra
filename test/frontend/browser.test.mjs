@@ -225,7 +225,8 @@ test('Score levels: add, validate, persist, reload and delete; both graphs share
  const candidate={...prepareApplication({...await publicFixture(),fullName:'Synthetic Levels',accountsReached:null},{now:NOW}),scoringVersion:2,socialScore:81};
  const numeric=computeScore(candidate);
  const {page,calls}=await pageFor(t,{admin:true,candidate});
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ assert.equal(await page.getByRole('button',{name:'Livelli e colori',exact:true}).count(),0,'remove redundant navigation tab');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByText('Configurazione assente: sono attivi i livelli storici predefiniti.',{exact:false}).waitFor();
  assert.equal(calls.length,0,'missing config is not automatically persisted');
  await page.getByRole('button',{name:'Aggiungi livello Social Score',exact:true}).click();
@@ -255,7 +256,7 @@ test('Score levels: add, validate, persist, reload and delete; both graphs share
  await page.getByText('Punteggio registrato all\'invio con il modello precedente:',{exact:false}).waitFor();
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
  assert.equal(calls.some(c=>c.url.endsWith('/admin/scoring')||c.url.endsWith('/applications')||c.url.endsWith('/notify')),false);
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByRole('button',{name:'Social Score: elimina 2',exact:true}).click();
  assert.equal(await page.getByLabel(/Social Score: nome/).count(),4);
  await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
@@ -281,7 +282,7 @@ test('Score levels: chart boundaries, missing scores, escaped labels and mobile 
   const name=await probe.getByRole('img').getAttribute('aria-label');
   assert.ok(name.includes(value===null?'non disponibile':scoreLevels.classify(value,scoreLevels.DEFAULT_CONFIG.social).label));
  }
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'editor table scrolls inside its container');
 });
 
@@ -295,7 +296,7 @@ test('Score levels: manager sees classifications but cannot open the editor',{ti
 
 test('Score levels: cached HTML and old transport bootstrap the missing dependencies without redirects',{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{admin:true,legacyStaffAssets:true});
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
  await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
  assert.equal(calls.length,1);assert.ok(calls[0].url.endsWith('/admin/score-levels'));
@@ -303,7 +304,7 @@ test('Score levels: cached HTML and old transport bootstrap the missing dependen
 });
 test('Score levels: per-group limits are configurable above 20 and persist without truncation',{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{admin:true});
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByLabel('Social Score: limite livelli',{exact:true}).fill('25');
  await page.getByLabel('Singole metriche: limite livelli',{exact:true}).fill('4');
  for(let i=4;i<21;i++)await page.getByRole('button',{name:'Aggiungi livello Social Score',exact:true}).click();
@@ -317,7 +318,7 @@ test('Score levels: per-group limits are configurable above 20 and persist witho
  await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
  await page.getByText('Livelli salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
  assert.equal(calls.length,1);assert.deepEqual(calls[0].body.maxLevels,{social:25,metrics:4});
- await page.reload();await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.reload();await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByLabel('Social Score: limite livelli',{exact:true}).waitFor();
  assert.equal(await page.getByLabel('Social Score: limite livelli',{exact:true}).inputValue(),'25');
  assert.equal(await page.getByLabel(/Social Score: nome/).count(),21);
@@ -325,7 +326,7 @@ test('Score levels: per-group limits are configurable above 20 and persist witho
 for(const [name,options] of [['read failure',{levelsReadError:true}],['invalid stored config',{levelsSeed:{version:2}}]]){
  test(`Score levels: ${name} does not silently fall back or permit overwrite`,{timeout:60000},async t=>{
   const {page,calls}=await pageFor(t,{admin:true,...options});
-  await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+  await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
   await page.getByRole('button',{name:'Riprova lettura livelli',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Salva livelli',exact:true}).count(),0);
   assert.equal(await page.getByText('Configurazione assente: sono attivi i livelli storici predefiniti.',{exact:false}).count(),0);
@@ -334,7 +335,7 @@ for(const [name,options] of [['read failure',{levelsReadError:true}],['invalid s
 }
 for(const status of [400,403,503])test(`Score levels: HTTP ${status} keeps changes local, no false success`,{timeout:60000},async t=>{
  const {page,calls}=await pageFor(t,{admin:true,levelsResponse:{status}});
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByLabel('Social Score: nome 1',{exact:true}).fill('Synthetic unsaved');
  await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
  await page.getByRole('button',{name:'Salva livelli',exact:true}).waitFor({state:'visible'});
@@ -346,7 +347,7 @@ for(const status of [400,403,503])test(`Score levels: HTTP ${status} keeps chang
 });
 test('Score levels: HTTP 401 requires login and does not persist',{timeout:60000},async t=>{
  const {page}=await pageFor(t,{admin:true,levelsResponse:{status:401}});
- await page.getByRole('button',{name:'Livelli e colori',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
+ await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Livelli numerici e colori');
  await page.getByRole('button',{name:'Salva livelli',exact:true}).click();
  await page.getByRole('button',{name:'Accedi',exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>localStorage.getItem('syntheticScoreLevels')),null);
