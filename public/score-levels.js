@@ -101,6 +101,23 @@
     out[metric][index]=row.map((n,j)=>linked?n+delta:(j===level?value:n));
     return validateBenchmarks(out);
   }
-  const benchmarks=Object.freeze({defaults:benchmarkDefaults,validateConfig:validateBenchmarks,thresholds,edit:editBenchmark,metrics:Object.freeze(benchmarkMetrics)});
+  // Firestore forbids arrays directly containing arrays. Keep the UI/API matrix,
+  // but persist named threshold maps; decode only this explicit strict format.
+  function benchmarksToDocument(config){
+    const out=validateBenchmarks(config);out.storageFormat='named-thresholds-v1';
+    for(const metric of benchmarkMetrics)out[metric]=out[metric].map(([medium,good,excellent])=>({medium,good,excellent}));
+    return out;
+  }
+  function benchmarksFromDocument(value){
+    exact(value,['version','interpolation','followers','storageFormat',...benchmarkMetrics],'$benchmarkDocument');
+    if(value.storageFormat!=='named-thresholds-v1')fail('STORAGE_FORMAT','$benchmarkDocument');
+    const out={version:value.version,interpolation:value.interpolation,followers:value.followers};
+    for(const metric of benchmarkMetrics){
+      benchmarkArray(value[metric],5,metric);
+      out[metric]=value[metric].map((row,i)=>{exact(row,['medium','good','excellent'],metric+'.'+i);return[row.medium,row.good,row.excellent];});
+    }
+    return validateBenchmarks(out);
+  }
+  const benchmarks=Object.freeze({defaults:benchmarkDefaults,validateConfig:validateBenchmarks,thresholds,edit:editBenchmark,toDocument:benchmarksToDocument,fromDocument:benchmarksFromDocument,metrics:Object.freeze(benchmarkMetrics)});
   return Object.freeze({HARD_MAX_LEVELS,DEFAULT_MAX_LEVELS,ScoreLevelsError,DEFAULT_CONFIG,defaults,validateConfig,classify,benchmarks});
 });

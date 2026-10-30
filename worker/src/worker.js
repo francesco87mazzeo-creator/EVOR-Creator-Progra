@@ -599,7 +599,7 @@ async function handleAdminScoring(request, env, levels = false) {
   }
 
   // 3 · scrittura completa, come set() senza merge
-  try { await client.setDocument(path, config); }
+  try { await client.setDocument(path, benchmarks ? scoreLevels.benchmarks.toDocument(config) : config); }
   catch (e) {
     console.error(JSON.stringify({ evt: benchmarks ? "benchmarks_write_failed" : levels ? "score_levels_write_failed" : "scoring_write_failed", status: e.status || e.name }));
     return fail(503, { code: "SERVICE_UNAVAILABLE", path: "$" });

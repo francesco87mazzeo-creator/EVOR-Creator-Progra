@@ -90,7 +90,7 @@ async function pageFor(t,{admin=false,applicationResponse,applicationResponses,a
     if(status===200)await page.evaluate(config=>localStorage.setItem('syntheticScoreLevels',JSON.stringify(config)),req.postDataJSON());
     return route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify(levelsResponse?.body||{ok:true})});
    }
-   if(url.endsWith('/admin/benchmarks')){const status=benchmarksResponse?.status||200;if(status===200)await page.evaluate(config=>localStorage.setItem('syntheticBenchmarks',JSON.stringify(config)),req.postDataJSON());return route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify({ok:status===200})});}
+   if(url.endsWith('/admin/benchmarks')){const status=benchmarksResponse?.status||200;if(status===200)await page.evaluate(config=>localStorage.setItem('syntheticBenchmarks',JSON.stringify(config)),scoreLevels.benchmarks.toDocument(req.postDataJSON()));return route.fulfill({status,headers:cors,contentType:'application/json',body:JSON.stringify({ok:status===200})});}
    if(url.endsWith('/admin/scoring'))return route.fulfill({status:scoringResponse?.status||200,headers:cors,contentType:'application/json',body:JSON.stringify(scoringResponse?.body||{ok:true})});
    if(url.endsWith('/applications')){
     if(applicationHandler){

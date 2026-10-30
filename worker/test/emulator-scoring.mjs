@@ -109,7 +109,7 @@ test('Emulator: benchmarks are created/replaced independently, scoring and candi
   assert.equal((await worker.fetch(request('admin',cfg),env,{})).status,200);
   const read=async()=>{
     const response=await realFetch(`${ROOT}/settings/instagramBenchmarks`,{headers:{Authorization:'Bearer owner'}});
-    assert.equal(response.status,200);return fromFirestoreValue({mapValue:{fields:(await response.json()).fields}});
+    assert.equal(response.status,200);const stored=fromFirestoreValue({mapValue:{fields:(await response.json()).fields}});assert.equal(stored.storageFormat,'named-thresholds-v1');return scoreLevels.benchmarks.fromDocument(stored);
   };
   assert.deepEqual(await read(),cfg);
   cfg.growth[2][0]=0.35;

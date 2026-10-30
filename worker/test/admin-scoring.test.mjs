@@ -402,7 +402,7 @@ test('Levels: preflight includes Authorization, wrong origin denied, no API call
 for(const role of ['admin','manager','viewer'])test(`benchmarks: ${role} authorization and isolated persistence`,async()=>{
  const r=await save(scoreLevels.benchmarks.defaults(),{req:{path:'/admin/benchmarks',auth:'Bearer '+idToken({role})}});
  assert.equal(r.res.status,role==='admin'?200:403);
- if(role==='admin'){assert.deepEqual(r.json.benchmarks,scoreLevels.benchmarks.defaults());assert.equal(r.calls.filter(c=>c.url===`${ROOT}/settings/instagramBenchmarks`&&c.init.method==='PATCH').length,1);}
+ if(role==='admin'){assert.deepEqual(r.json.benchmarks,scoreLevels.benchmarks.defaults());assert.deepEqual(fromFirestoreValue({mapValue:{fields:r.state.benchmarks.fields}}),scoreLevels.benchmarks.toDocument(scoreLevels.benchmarks.defaults()));assert.equal(r.calls.filter(c=>c.url===`${ROOT}/settings/instagramBenchmarks`&&c.init.method==='PATCH').length,1);}
  else assert.equal(r.state.benchmarks,undefined);
  assert.equal(patches(r.calls).length,0);assert.equal(r.state.lastApplication,undefined);
 });

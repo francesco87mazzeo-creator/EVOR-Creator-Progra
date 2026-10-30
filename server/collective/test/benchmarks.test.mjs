@@ -45,3 +45,12 @@ for(const metric of B.metrics)test(`${metric}: linked edits isolate all five ban
   }
  }
 });
+
+test('Firestore storage uses named maps, never nested arrays; strict round-trip retains thresholds',()=>{
+ const c=B.edit(B.defaults(),'growth',3,0,.2,true),stored=B.toDocument(c);
+ assert.equal(stored.storageFormat,'named-thresholds-v1');assert.deepEqual(stored.reach[0],{medium:60,good:120,excellent:250});
+ const inspect=v=>{if(Array.isArray(v)){assert.equal(v.some(Array.isArray),false,'Firestore nested arrays unsupported');v.forEach(inspect);}else if(v&&typeof v==='object')Object.values(v).forEach(inspect);};inspect(stored);
+ assert.deepEqual(B.fromDocument(JSON.parse(JSON.stringify(stored))),c);
+ assert.throws(()=>B.fromDocument(c));assert.throws(()=>B.fromDocument({...stored,storageFormat:'unknown'}));
+ const bad=structuredClone(stored);bad.reach[0].hidden=1;assert.throws(()=>B.fromDocument(bad));
+});

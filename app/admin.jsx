@@ -1267,7 +1267,7 @@ function BenchmarkPanel({onAuthRequired}){
   const [draft,setDraft]=useState(null),[metric,setMetric]=useState('engagement'),[band,setBand]=useState(2),[level,setLevel]=useState(0),[linked,setLinked]=useState(true);
   const [message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
   useEffect(()=>{let alive=true;setDraft(null);setError('');
-    db.collection('settings').doc('instagramBenchmarks').get().then(doc=>{if(alive){setDraft(doc.exists?B.validateConfig(doc.data()):B.defaults());setMessage(doc.exists?'Benchmark caricati.':'Configurazione assente: valori predefiniti, non ancora salvati.');}})
+    db.collection('settings').doc('instagramBenchmarks').get().then(doc=>{if(alive){setDraft(doc.exists?B.fromDocument(doc.data()):B.defaults());setMessage(doc.exists?'Benchmark caricati.':'Configurazione assente: valori predefiniti, non ancora salvati.');}})
     .catch(()=>{if(alive)setError('Impossibile leggere i benchmark. Nessun valore è stato sostituito.');});return()=>{alive=false;};},[reload]);
   const names=['Medio','Buono','Eccellente'],colors=['#ff535f','#3392ff','#32d881'];
   function change(value){try{setDraft(B.edit(draft,metric,band,level,value,linked));setError('');setMessage('Bozza modificata, non ancora salvata.');}catch{setError('Modifica bloccata: servono valori tra 0 e 100.000%, con Medio < Buono < Eccellente.');}}
@@ -1508,7 +1508,7 @@ function SettingsPanel(){
    ========================================================================== */
 // An old cached HTML page may fetch the current app/admin.jsx at an old ?v= URL.
 // Load missing dependencies before mounting panels; no redirects and no production fallback.
-const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=e485adbc1f84a06f","public/admin-scoring-client.js?v=5284c02816765c0f"];
+const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=019c385181da474b","public/admin-scoring-client.js?v=5284c02816765c0f"];
 const scoreLevelAssetsReady=()=>typeof CollectiveScoreLevels!=="undefined"&&typeof CollectiveAdminScoring!=="undefined"&&typeof CollectiveAdminScoring.saveScoreLevels==="function"&&typeof CollectiveAdminScoring.saveBenchmarks==="function"&&!!CollectiveScoreLevels.benchmarks;
 let scoreLevelAssetsPromise;
 function loadScoreLevelAssets(){

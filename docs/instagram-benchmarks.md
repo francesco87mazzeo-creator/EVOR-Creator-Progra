@@ -24,12 +24,32 @@ Documento separato `settings/instagramBenchmarks`:
 {
   version: 1,
   interpolation: 'log-smoothstep-v1',
+  storageFormat: 'named-thresholds-v1',
   followers: [1000, 5000, 20000, 100000, 500000],
-  engagement: [[10,20,40],[8,16,32],[6,12,24],[5,10,20],[4,8,16]],
-  reach: [[60,120,250],[40,80,160],[30,60,120],[20,40,80],[15,30,60]],
-  growth: [[1,3,7],[0.5,1.5,4],[0.3,1,3],[0.15,0.5,1.5],[0.08,0.25,0.8]]
+  engagement: [
+    {medium:10,good:20,excellent:40}, {medium:8,good:16,excellent:32},
+    {medium:6,good:12,excellent:24}, {medium:5,good:10,excellent:20},
+    {medium:4,good:8,excellent:16}
+  ],
+  reach: [
+    {medium:60,good:120,excellent:250}, {medium:40,good:80,excellent:160},
+    {medium:30,good:60,excellent:120}, {medium:20,good:40,excellent:80},
+    {medium:15,good:30,excellent:60}
+  ],
+  growth: [
+    {medium:1,good:3,excellent:7}, {medium:0.5,good:1.5,excellent:4},
+    {medium:0.3,good:1,excellent:3}, {medium:0.15,good:0.5,excellent:1.5},
+    {medium:0.08,good:0.25,excellent:0.8}
+  ]
 }
 ```
+
+Il browser e il contratto JSON HTTP usano matrici di tre numeri per riga; il
+Worker applica `toDocument` prima di salvare e l'Admin applica `fromDocument`
+in lettura. Le conversioni condivise sono rigorose e senza perdita di valori.
+Il documento usa array di mappe perché Firestore non supporta array annidati:
+il precedente formato locale è stato corretto prima di qualsiasi pubblicazione
+in produzione. Nessuna migrazione o scrittura di dati reali è stata eseguita.
 
 Le righe corrispondono alle cinque fasce storiche; i nodi usano gli estremi superiori
 1K / 5K / 20K / 100K e il riferimento 500K dell'immagine per la fascia aperta.
@@ -116,7 +136,7 @@ deploy o accesso a dati Firebase reali eseguito per questa implementazione.
 
 ## Verifiche pre-PR
 
-- 735 test non browser e igiene repository superati, 2 esclusi relativi alla modalità alternativa.
+- 736 test non browser e igiene repository superati, 2 esclusi relativi alla modalità alternativa.
 - La suite Playwright comprende 77 test. Include il confronto numerico di tutti i
   campioni SVG con la funzione condivisa di interpolazione, prima e dopo una modifica
   collegata, e l'assenza di anteprime creator/candidature nella pagina benchmark.
@@ -132,3 +152,13 @@ deploy o accesso a dati Firebase reali eseguito per questa implementazione.
   esegue le Rules migration e poi il file REST completo con il caso
   settings/instagramBenchmarks. Progetto demo, nessun secret di produzione,
   permessi GitHub contents:read, nessun comando deploy. Verificare i risultati sul commit pubblicato.
+
+### Prima esecuzione CI
+
+Il primo commit9aa1263 ha esposto un errore nel job Rules: lo schema locale
+usava array annidati. Il rifiuto è stato riprodotto senza rete con l'SDK Firebase
+ufficiale (`invalid-argument: Nested arrays are not supported`). Il formato
+persistente è stato corretto in array di mappe, senza cambiare l'API HTTP, i
+valori o l'interpolazione. I test ora controllano anche il documento Firestore
+serializzato e la conversione rigorosa in lettura. Consultare l'ultima esecuzione
+CI, non quella del primo commit, per il risultato finale Emulator.
