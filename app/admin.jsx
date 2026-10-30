@@ -1530,7 +1530,7 @@ function SettingsPanel(){
    ========================================================================== */
 // An old cached HTML page may fetch the current app/admin.jsx at an old ?v= URL.
 // Load missing dependencies before mounting panels; no redirects and no production fallback.
-const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=3d06fb4e318843b5","public/admin-scoring-client.js?v=5284c02816765c0f"];
+const SCORE_LEVEL_BOOT_ASSETS = ["public/score-levels.js?v=ef68737513bd2b1d","public/admin-scoring-client.js?v=5284c02816765c0f"];
 const scoreLevelAssetsReady=()=>typeof CollectiveScoreLevels!=="undefined"&&typeof CollectiveAdminScoring!=="undefined"&&typeof CollectiveAdminScoring.saveScoreLevels==="function"&&typeof CollectiveAdminScoring.saveBenchmarks==="function"&&typeof CollectiveScoreLevels.benchmarks?.axisPosition==="function";
 let scoreLevelAssetsPromise;
 function loadScoreLevelAssets(){

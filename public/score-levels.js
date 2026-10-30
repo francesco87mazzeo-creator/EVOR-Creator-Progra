@@ -58,9 +58,10 @@
   const benchmarkFollowers=Object.freeze([1000,5000,20000,100000,500000]);
   const benchmarkMetrics=['engagement','reach','growth'];
   const benchmarkDefaults=()=>({version:1,interpolation:'log-pchip-ordered-v2',followers:[...benchmarkFollowers],
-    engagement:[[10,20,40],[8,16,32],[6,12,24],[5,10,20],[4,8,16]],
+    // Soglie EVORΛ approvate il 30 ottobre 2026: calibrazione iniziale, non percentili validati.
+    engagement:[[12,24,45],[9,18,34],[7,14,26],[5,10,20],[4,8,16]],
     reach:[[60,120,250],[40,80,160],[30,60,120],[20,40,80],[15,30,60]],
-    growth:[[1,3,7],[0.5,1.5,4],[0.3,1,3],[0.15,0.5,1.5],[0.08,0.25,0.8]]});
+    growth:[[0.5,1.5,3.5],[0.45,1.3,3],[0.35,1.1,2.7],[0.25,0.9,2.2],[0.2,0.7,1.8]]});
   function benchmarkArray(v,length,path){
     if(!Array.isArray(v)||v.length!==length)fail('ROWS',path);
     const d=Object.getOwnPropertyDescriptors(v);

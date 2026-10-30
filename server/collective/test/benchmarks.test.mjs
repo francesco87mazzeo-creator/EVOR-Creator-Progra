@@ -2,8 +2,12 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import levels from '../../../public/score-levels.js';
 const B=levels.benchmarks;
-test('defaults separate observed historical Reach/Growth from experimental Engagement',()=>{
- const c=B.validateConfig(B.defaults());assert.deepEqual(c.reach[0],[60,120,250]);assert.deepEqual(c.growth[4],[.08,.25,.8]);assert.deepEqual(c.engagement[2],[6,12,24]);
+test('approved provisional EVORΛ benchmark defaults match all five follower tiers',()=>{
+ const c=B.validateConfig(B.defaults());
+ assert.deepEqual(c.followers,[1000,5000,20000,100000,500000]);
+ assert.deepEqual(c.engagement,[[12,24,45],[9,18,34],[7,14,26],[5,10,20],[4,8,16]]);
+ assert.deepEqual(c.reach,[[60,120,250],[40,80,160],[30,60,120],[20,40,80],[15,30,60]]);
+ assert.deepEqual(c.growth,[[.5,1.5,3.5],[.45,1.3,3],[.35,1.1,2.7],[.25,.9,2.2],[.2,.7,1.8]]);
 });
 for(const metric of B.metrics){
  test(`${metric}: exact anchors, constant tails, continuous ordered convex curve`,()=>{
