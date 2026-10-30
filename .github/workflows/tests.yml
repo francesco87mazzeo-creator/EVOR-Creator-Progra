@@ -6,7 +6,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main, feature/configurable-score-levels, feature/instagram-benchmark-editor, fix/benchmark-persistence-curves, design/admin-candidate-block-3, design/admin-scoring-block-4]
+    branches: [main, feature/configurable-score-levels, feature/instagram-benchmark-editor, fix/benchmark-persistence-curves, design/admin-candidate-block-3, design/admin-scoring-block-4, design/admin-list-block-5]
 
 permissions:
   contents: read

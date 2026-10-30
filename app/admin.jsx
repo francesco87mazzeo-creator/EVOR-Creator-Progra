@@ -356,6 +356,9 @@ const benchmarkGrade = (rate,metric,followers,config) => {
 };
 
 function ApplicationsPanel({role, scoring, scoreLevels}){
+  const seenScores=React.useRef(new Set());
+  const rowVisibility=React.useMemo(()=>candidateRowVisibility(),[]);
+  useEffect(()=>()=>rowVisibility.dispose(),[rowVisibility]);
   const [apps,setApps]       = useState([]);
   const [sel,setSel]         = useState(null);
   const [loading,setLoading] = useState(true);
@@ -612,9 +615,10 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
 
       {/* LISTA: soli dati effettivamente osservati, classificazioni benchmark indipendenti. */}
       <div className="wrap-panel candidate-list" style={{padding:"0 16px"}}>
+        <style>{CANDIDATE_RING_STYLE}</style>
         {benchmarkState.status==="error" && (
           <div className="candidate-benchmark-error" role="alert">
-            Classificazioni ENG, RE e GR non disponibili: impossibile leggere i benchmark.
+            Classificazioni Engagement, Reach e Growth non disponibili: impossibile leggere i benchmark.
             I valori osservati restano visibili senza colori.
             <button className="nav-link" type="button" onClick={()=>setBenchmarkRetry(n=>n+1)}>Riprova</button>
           </div>
@@ -628,12 +632,12 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
 
         {slice.length>0 && (
           <div className="candidate-list-head" aria-hidden="true">
-            <span>Candidato</span><span>Stato</span><span>Follower</span>
-            <span>ENG</span><span>RE</span><span>GR</span><span>Score V2</span><span>Data</span>
+            <span>Candidato e stato</span><span>Follower</span>
+            <span>Engagement</span><span>Reach</span><span>Growth</span><span>Score V2</span>
           </div>
         )}
         {slice.map(a=>{
-          const s=a._s, st=adminStatusMeta(a.status), late=a._status==="new"&&daysSince(a.date)>7;
+          const s=a._s, st=adminStatusMeta(a.status);
           const ig=socialLink(a,"instagram"), rates=benchmarkRatesOf(s);
           const grades={
             engagement:benchmarkGrade(rates.engagement,"engagement",s.followers,benchmarkState.config),
@@ -648,8 +652,6 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
               <div className="candidate-cell candidate-identity">
                 <span className="candidate-name">{a.fullName||"—"}</span>
                 <span className="candidate-username">{ig.handle?"@"+ig.handle:"—"}</span>
-              </div>
-              <div className="candidate-cell candidate-status-cell">
                 <span className="candidate-status-badge" style={{color:st.c,borderColor:st.c}}>{st.l}</span>
               </div>
               <div className="candidate-cell candidate-followers">
@@ -659,7 +661,7 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
                 </span>
               </div>
               {[
-                ["engagement","ENG"],["reach","RE"],["growth","GR"]
+                ["engagement","Engagement"],["reach","Reach"],["growth","Growth"]
               ].map(([key,label])=>{
                 const value=rates[key],grade=grades[key];
                 const description=value===null?"Dato non disponibile"
@@ -672,17 +674,11 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
                   </span>
                 </div>;
               })}
-              <div className="candidate-cell candidate-score">
+              <div className="candidate-cell candidate-score" data-metric="socialScore"
+                title={(socialGrade?.label||"Punteggio quantitativo V2")+(s.lowBase?" · Base di osservazione ridotta":"")}>
                 <span className="candidate-cell-label">Score V2</span>
-                <span className="candidate-value" data-metric="socialScore"
-                  style={{color:socialGrade?.color||"var(--t1)"}}
-                  title={(socialGrade?.label||"Punteggio quantitativo V2")+(s.lowBase?" · Base di osservazione ridotta":"")}>
-                  {s.socialScore===null?"—":s.socialScore+"/100"}
-                </span>
-              </div>
-              <div className="candidate-cell candidate-date">
-                <span className="candidate-cell-label">Data</span>
-                <time dateTime={a.date||undefined} className={late?"candidate-date-overdue":""}>{fmtDate(a.date)}</time>
+                <CandidateScoreRing value={s.socialScore} levels={scoreLevels?.social} label="Score V2" compact
+                  settled={seenScores.current.has(a.id)} onStarted={()=>seenScores.current.add(a.id)} observe={rowVisibility.observe}/>
               </div>
             </button>
           );
@@ -937,10 +933,24 @@ const candidateScoreValue = value => typeof value==='number'&&Number.isFinite(va
 const candidateScoreText = value => candidateScoreValue(value)===null ? '—' : value.toLocaleString('it-IT',{maximumFractionDigits:2});
 /* candidate-display:end */
 
-function CandidateScoreRing({value,levels,label,large=false}){
+// Un solo osservatore per l'elenco; i target vengono rimossi alla prima entrata.
+function candidateRowVisibility(){
+  const pending=new Map();let observer=null;
+  return {
+    observe(element,start){
+      if(typeof IntersectionObserver==='undefined'){start();return()=>{};}
+      if(!observer)observer=new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;const callback=pending.get(entry.target);if(callback){pending.delete(entry.target);observer.unobserve(entry.target);callback();}}},{threshold:0.15});
+      pending.set(element,start);observer.observe(element);
+      return()=>{pending.delete(element);observer?.unobserve(element);};
+    },
+    dispose(){observer?.disconnect();pending.clear();observer=null;}
+  };
+}
+
+function CandidateScoreRing({value,levels,label,large=false,compact=false,observe=null,settled=false,onStarted=null}){
   const target=candidateScoreValue(value),classification=CollectiveScoreLevels.classify(target,levels);
-  const element=React.useRef(null),animation=React.useRef({started:false,done:false,frame:0}),previous=React.useRef(value);
-  const [progress,setProgress]=useState(0),[phase,setPhase]=useState('waiting');
+  const element=React.useRef(null),animation=React.useRef({started:settled,done:settled,frame:0}),previous=React.useRef(value);
+  const [progress,setProgress]=useState(settled?1:0),[phase,setPhase]=useState(settled?'complete':'waiting');
   const valid=target!==null;
   useEffect(()=>{
     const state=animation.current;
@@ -951,20 +961,20 @@ function CandidateScoreRing({value,levels,label,large=false}){
     const state=animation.current;
     if(!valid)return;
     const media=window.matchMedia('(prefers-reduced-motion: reduce)');let observer;
-    const finish=()=>{cancelAnimationFrame(state.frame);observer?.disconnect();state.done=true;setProgress(1);setPhase('complete');};
+    const finish=()=>{cancelAnimationFrame(state.frame);observer?.disconnect();state.done=true;onStarted?.();setProgress(1);setPhase('complete');};
     if(state.done||target===0||media.matches||typeof IntersectionObserver==='undefined'){finish();return;}
     const start=()=>{
-      if(state.started||state.done)return;state.started=true;observer?.disconnect();setPhase('running');const began=performance.now();
+      if(state.started||state.done)return;state.started=true;onStarted?.();observer?.disconnect();setPhase('running');const began=performance.now();
       const tick=now=>{if(state.done)return;const fraction=Math.min(1,(now-began)/1200);setProgress(1-Math.pow(1-fraction,3));if(fraction<1)state.frame=requestAnimationFrame(tick);else finish();};
       state.frame=requestAnimationFrame(tick);
     };
-    observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))start();},{threshold:0.15});state.observer=observer;observer.observe(element.current);
+    if(observe){observer={disconnect:observe(element.current,start)};}else{observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))start();},{threshold:0.15});observer.observe(element.current);}state.observer=observer;
     const reduce=event=>{if(event.matches)finish();};media.addEventListener?.('change',reduce);
     return()=>{observer?.disconnect();cancelAnimationFrame(state.frame);media.removeEventListener?.('change',reduce);};
   },[valid]);
   const shown=valid?target*(animation.current.done?1:progress):null;
   const color=classification?.color||'var(--t4)';
-  return <div ref={element} className={'candidate-score-ring'+(large?' candidate-score-ring-large':'')} role="img"
+  return <div ref={element} className={'candidate-score-ring'+(large?' candidate-score-ring-large':'')+(compact?' candidate-score-ring-compact':'')} role="img"
     aria-label={`${label}: ${valid?target.toFixed(2)+' su 100'+(classification?', '+classification.label:'; classificazione non disponibile'):'punteggio non disponibile'}`}
     data-score-label={label} data-score-value={target??''} data-animation-state={valid?phase:'unavailable'} style={{'--ring-color':color}}>
     <svg viewBox="0 0 120 120" aria-hidden="true"><circle className="candidate-ring-track" cx="60" cy="60" r="49"/>
@@ -985,6 +995,14 @@ function CandidateMetricCard({label,score,levels,observed,description,weight}){
   </article>;
 }
 
+const CANDIDATE_RING_STYLE=`
+.candidate-score-ring{width:100px;height:100px;position:relative;flex-shrink:0;isolation:isolate}
+.candidate-score-ring::before{content:'';position:absolute;inset:12%;border-radius:50%;background:var(--ring-color);filter:blur(17px);opacity:.13;z-index:-1}
+.candidate-score-ring svg{width:100%;height:100%;overflow:visible;transform:rotate(-90deg)}.candidate-ring-track{fill:#101216;stroke:#282d36;stroke-width:4}.candidate-ring-fill{fill:none;stroke-width:4;stroke-linecap:round;filter:drop-shadow(0 0 3px var(--ring-color))}
+.candidate-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}.candidate-ring-center strong{color:var(--t1);font-family:var(--fh);font-size:25px;line-height:1;font-variant-numeric:tabular-nums}.candidate-ring-center span{font-size:10px;color:var(--t3);letter-spacing:.08em}
+.candidate-score-ring-large{width:244px;height:244px;max-width:100%;margin:22px auto}.candidate-score-ring-large .candidate-ring-center strong{font-size:58px}.candidate-score-ring-large .candidate-ring-center span{font-size:13px}.candidate-score-ring-large::before{filter:blur(30px);opacity:.18}
+`;
+
 const CANDIDATE_DETAIL_STYLE=`
 .candidate-detail{width:100%;min-width:0;flex:1;background:radial-gradient(ellipse at 90% 0,rgba(169,25,38,.10),transparent 45%)}
 .candidate-detail .candidate-detail-inner{max-width:1160px;padding:24px 20px 80px}
@@ -997,11 +1015,7 @@ const CANDIDATE_DETAIL_STYLE=`
 .candidate-detail .candidate-metric-card{display:flex;align-items:center;gap:20px}.candidate-metric-copy{min-width:0;flex:1}.candidate-metric-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.candidate-detail .candidate-metric-heading h3{margin:0;color:var(--t1);font-size:15px;font-weight:600}
 .candidate-weight{font-size:11px;white-space:nowrap;color:var(--t3);padding:4px 8px;border:1px solid var(--brd);border-radius:100px}
 .candidate-detail .candidate-observed{display:block;color:var(--t1);font-size:21px;margin:7px 0 3px;overflow-wrap:anywhere}.candidate-detail .candidate-metric-copy p{font-size:12px;color:var(--t3);line-height:1.55;margin:0 0 6px}.candidate-grade{font-size:12px;font-weight:600;overflow-wrap:anywhere}
-.candidate-score-ring{width:100px;height:100px;position:relative;flex-shrink:0;isolation:isolate}
-.candidate-score-ring::before{content:'';position:absolute;inset:12%;border-radius:50%;background:var(--ring-color);filter:blur(17px);opacity:.13;z-index:-1}
-.candidate-score-ring svg{width:100%;height:100%;overflow:visible;transform:rotate(-90deg)}.candidate-ring-track{fill:#101216;stroke:#282d36;stroke-width:4}.candidate-ring-fill{fill:none;stroke-width:4;stroke-linecap:round;filter:drop-shadow(0 0 3px var(--ring-color))}
-.candidate-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}.candidate-ring-center strong{color:var(--t1);font-family:var(--fh);font-size:25px;line-height:1;font-variant-numeric:tabular-nums}.candidate-ring-center span{font-size:10px;color:var(--t3);letter-spacing:.08em}
-.candidate-score-ring-large{width:244px;height:244px;max-width:100%;margin:22px auto}.candidate-score-ring-large .candidate-ring-center strong{font-size:58px}.candidate-score-ring-large .candidate-ring-center span{font-size:13px}.candidate-score-ring-large::before{filter:blur(30px);opacity:.18}
+${CANDIDATE_RING_STYLE}
 .candidate-final-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px}.candidate-final-card h3{margin:0;font-size:20px;color:var(--t1)}.candidate-final-card>p{font-size:13px;line-height:1.65;color:var(--t3);max-width:290px;margin:6px auto}.candidate-final-card .candidate-grade{font-size:17px}
 .candidate-rate-ring{width:100px;height:100px;flex-shrink:0;border:2px solid #454b57;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,#20242c,#121419);color:var(--t2)}.candidate-rate-ring strong{font-size:29px;font-family:var(--fh)}.candidate-rate-ring span{font-size:9px;letter-spacing:.1em}
 .candidate-detail .panel,.candidate-detail .detail-block,.candidate-detail .kv{border-radius:12px}.candidate-detail .detail-block{padding:20px;margin-bottom:12px}.candidate-detail .detail-q{line-height:1.6}.candidate-detail .detail-a{font-size:14px;line-height:1.85}.candidate-detail input,.candidate-detail textarea,.candidate-detail .btn{border-radius:8px}.candidate-detail .status-box{border-radius:10px}.candidate-detail .rate-row{gap:12px;flex-wrap:wrap}
