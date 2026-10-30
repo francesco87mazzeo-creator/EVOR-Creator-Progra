@@ -45,7 +45,7 @@ const firebaseStub=`(function(){
  async signInWithCustomToken(token){if(token!=='synthetic-custom-token')throw Error('Unexpected custom token');session.signIns++;auth.currentUser=user;notify();},
  async signOut(){session.signOuts++;auth.currentUser=null;notify();}};
  // Like the production Rules: reads without a signed-in staff user are denied.
- const read=async()=>{if(!auth.currentUser)throw Object.assign(Error('Missing or insufficient permissions.'),{code:'permission-denied'});counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
+ const read=async()=>{if(!auth.currentUser)throw Object.assign(Error('Missing or insufficient permissions.'),{code:'permission-denied'});counters.reads++;return{exists:false,docs:Array.isArray(candidate)?candidate.map((item,index)=>({id:"synthetic-id-"+index,data:()=>item})):candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
  const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
  const db={collection(collection){return{doc(id){return{get:async(options)=>{if(collection==="settings"&&id==="instagramBenchmarks"){await read();(window.testBenchmarkReads??=[]).push(options?.source||"default");if(window.testBenchmarkReadMode==="fail")throw Error("Synthetic post-write read failure");if(window.testBenchmarkReadMode==="missing")return{exists:false};if(__BENCHMARKS_READ_ERROR__)throw Error('Synthetic benchmark read error');const value=localStorage.getItem('syntheticBenchmarks');return{exists:value!==null,data:()=>{const result=JSON.parse(value);if(window.testBenchmarkReadMode==="mismatch"&&result)result.engagement[0].medium+=0.125;return result;}};}if(collection==="settings"&&id==="scoreLevels"){await read();if(__LEVELS_READ_ERROR__)throw Error("Synthetic levels read error");const value=localStorage.getItem("syntheticScoreLevels");return{exists:value!==null,data:()=>JSON.parse(value)};}return read();},set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
  window.firebase={initializeApp(config){if(config.projectId!=="evora-athletes")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
@@ -370,6 +370,65 @@ test('Admin scoring HTTP 401 ends local session and requests a new login',{timeo
  await page.getByText('Sessione scaduta. Accedi nuovamente all’area riservata.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>localStorage.getItem('evora_login_at')),null);
  assert.equal(calls.filter(c=>c.url.endsWith('/admin/scoring')).length,1);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+test('Admin Block 1: exactly five clickable counters, historical statuses remain visible and untouched',{timeout:60000},async t=>{
+ const base=prepareApplication({...await publicFixture(),fullName:'Synthetic State Base'},{now:NOW});
+ const statuses=['new','review','approved','rejected','shortlist','watchlist','more_info','archived','legacy_special'];
+ const candidates=statuses.map((status,index)=>({...base,fullName:'Synthetic State '+index,status,instagram:'@synthetic'+index,instagramHandle:'synthetic'+index}));
+ const {page}=await pageFor(t,{admin:true,candidate:candidates,allowWrites:true});
+ const stats=page.locator('button.stat');
+ await stats.first().waitFor();
+ assert.equal(await stats.count(),5);
+ assert.deepEqual(await stats.allTextContents(),['9Totali','1Nuove','1In valutazione','1Approvate','1Rifiutate']);
+ assert.equal(await page.locator('button.row').count(),9);
+ assert.equal(await page.getByText('Stato non riconosciuto: legacy_special',{exact:true}).count(),1,'unknown statuses must not masquerade as Nuova');
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'reading historical statuses never writes');
+ await stats.filter({hasText:'Nuove'}).click();
+ assert.equal(await page.locator('button.row').count(),1);
+ assert.equal(await page.locator('button.row').filter({hasText:'Synthetic State 0'}).count(),1);
+ await stats.filter({hasText:'In valutazione'}).click();
+ assert.equal(await page.locator('button.row').count(),1);
+ assert.equal(await page.locator('button.row').filter({hasText:'Synthetic State 1'}).count(),1);
+ await stats.filter({hasText:'Totali'}).click();
+ assert.equal(await page.locator('button.row').count(),9,'Totali includes all historical statuses');
+ await page.getByRole('button',{name:/Filtri/}).click();
+ assert.equal(await page.getByText('Stato',{exact:true}).count(),0,'state selector duplicates the counters');
+ assert.equal(await page.getByRole('combobox').count()>0,true,'other filters and sort remain');
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+test('Admin Block 1: legacy status can be inspected, only four states are selectable',{timeout:60000},async t=>{
+ const base=prepareApplication({...await publicFixture(),fullName:'Synthetic Legacy Status'},{now:NOW});
+ base.status='shortlist';
+ const {page}=await pageFor(t,{admin:true,candidate:base,allowWrites:true});
+ await page.locator('button.row').filter({hasText:'Synthetic Legacy Status'}).click();
+ await page.getByText('Stato storico attuale:',{exact:false}).waitFor();
+ assert.equal(await page.getByText('Shortlist',{exact:true}).count()>0,true);
+ const statusGroup=page.getByRole('group',{name:'Seleziona stato candidatura'});
+ assert.deepEqual(await statusGroup.locator('button').allTextContents(),['Nuova','In valutazione','Approvata','Rifiutata']);
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'opening a legacy status never converts it');
+ await statusGroup.getByRole('button',{name:'In valutazione',exact:true}).click();
+ await page.getByText('Stato aggiornato',{exact:true}).waitFor();
+ assert.equal((await page.evaluate(()=>window.testCounters.lastWrite)).status,'review');
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),1,'only explicit selection updates the state');
+});
+
+test('Admin Block 1: CSV is available only in the secondary menu and still exports',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Export'},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate});
+ const actions=page.locator('.admin-actions-menu');
+ await actions.locator('summary').waitFor();
+ assert.equal(await page.getByRole('button',{name:'Esporta CSV',exact:true}).isVisible(),false);
+ await actions.locator('summary').click();
+ const exportButton=page.getByRole('button',{name:'Esporta CSV',exact:true});
+ assert.equal(await exportButton.isVisible(),true);
+ const downloadPromise=page.waitForEvent('download');
+ await exportButton.click();
+ const download=await downloadPromise;
+ assert.ok(download.suggestedFilename().startsWith('evora_collective_'));
+ assert.ok(download.suggestedFilename().endsWith('.csv'));
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'export remains read-only');
 });
 
 test('Management input limits accept boundary-length values without altering save behavior',{timeout:60000},async t=>{
