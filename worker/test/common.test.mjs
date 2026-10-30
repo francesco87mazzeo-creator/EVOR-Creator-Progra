@@ -10,7 +10,7 @@ const ocr = () => ({ model: frontendOcrModel, max_tokens: 200, messages: [{ role
   { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: JPEG } }, { type: 'text', text: prompts.insights }] }] });
 
 /* ---------- Origine e CORS ---------- */
-for (const path of ['/', '/ocr', '/notify']) {
+for (const path of ['/', '/ocr', '/notify', '/admin/benchmarks']) {
   test(`${path}: senza Origin o da un'altra origine → 403, nessuna chiamata esterna`, async () => {
     const worker = await freshWorker();
     const mock = mockFetch(anthropicOk());

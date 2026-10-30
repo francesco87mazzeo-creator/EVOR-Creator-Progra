@@ -553,7 +553,8 @@ async function handleApplication(request, env, ctx) {
  * Turnstile non si applica: l'autorizzazione è il token dello staff.
  */
 async function handleAdminScoring(request, env, levels = false) {
-  const path = levels ? "settings/scoreLevels" : "settings/scoring";
+  const benchmarks = levels === "benchmarks";
+  const path = benchmarks ? "settings/instagramBenchmarks" : levels ? "settings/scoreLevels" : "settings/scoring";
   const g = await guard(env, request, {
     binding: "ADMIN_LIMITER", scope: "admin", perIp: LIMITS.adminPerIp, perIsolate: LIMITS.adminPerIsolate, turnstile: false
   });
@@ -591,21 +592,21 @@ async function handleAdminScoring(request, env, levels = false) {
   const parsed = await readJson(request, levels ? LIMITS.scoreLevelsBodyBytes : LIMITS.adminBodyBytes);
   if (parsed.error) return fail(parsed.error[0], { code: parsed.error[0] === 413 ? "BODY_TOO_LARGE" : "INVALID_REQUEST", path: "$" });
   let config;
-  try { config = levels ? scoreLevels.validateConfig(parsed.value) : validateScoringConfig(parsed.value); }
+  try { config = benchmarks ? scoreLevels.benchmarks.validateConfig(parsed.value) : levels ? scoreLevels.validateConfig(parsed.value) : validateScoringConfig(parsed.value); }
   catch (e) {
     if (e instanceof ValidationError || e instanceof scoreLevels.ScoreLevelsError) return fail(400, { code: e.code, path: e.path });
     return fail(400, { code: "INVALID_REQUEST", path: "$" });
   }
 
   // 3 · scrittura completa, come set() senza merge
-  try { await client.setDocument(path, config); }
+  try { await client.setDocument(path, benchmarks ? scoreLevels.benchmarks.toDocument(config) : config); }
   catch (e) {
-    console.error(JSON.stringify({ evt: levels ? "score_levels_write_failed" : "scoring_write_failed", status: e.status || e.name }));
+    console.error(JSON.stringify({ evt: benchmarks ? "benchmarks_write_failed" : levels ? "score_levels_write_failed" : "scoring_write_failed", status: e.status || e.name }));
     return fail(503, { code: "SERVICE_UNAVAILABLE", path: "$" });
   }
   if (!levels) scoringCache = null;   // le altre istanze si allineano entro scoringCacheMs
-  console.log(JSON.stringify({ evt: levels ? "score_levels_saved" : "scoring_saved", uid: claims.sub, role: claims.role }));
-  return json(levels ? { ok: true, scoreLevels: config } : { ok: true, scoring: config }, 200, headers);
+  console.log(JSON.stringify({ evt: benchmarks ? "benchmarks_saved" : levels ? "score_levels_saved" : "scoring_saved", uid: claims.sub, role: claims.role }));
+  return json(benchmarks ? { ok: true, benchmarks: config } : levels ? { ok: true, scoreLevels: config } : { ok: true, scoring: config }, 200, headers);
 }
 
 /* ---------- /auth: logica originale invariata ---------- */
@@ -701,6 +702,7 @@ export default {
     if (isAuth) return handleAuth(request, env, headers);
     if (path === "/applications") return handleApplication(request, env, ctx);
     if (path === "/admin/scoring") return handleAdminScoring(request, env);
+    if (path === "/admin/benchmarks") return handleAdminScoring(request, env, "benchmarks");
     if (path === "/admin/score-levels") return handleAdminScoring(request, env, true);
     if (path === "/notify") return handleNotify(request, env);
     if (path === "" || path === "/ocr") return handleOcr(request, env);

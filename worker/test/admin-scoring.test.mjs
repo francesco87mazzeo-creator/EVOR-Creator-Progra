@@ -54,6 +54,9 @@ function services({ jwks = 200, token = 200, write = 200, stored = null } = {}) 
       return token === 200 ? new Response(JSON.stringify({ access_token: 'ya29.synthetic', expires_in: 3600 }), { status: 200 })
         : new Response('{}', { status: token });
     }
+    if (url === `${ROOT}/settings/instagramBenchmarks`) {
+      if(write===200)state.benchmarks=body;return new Response(JSON.stringify(body),{status:write});
+    }
     if (url === `${ROOT}/settings/scoreLevels`) {
       if(init.method!=='PATCH')return state.levels?new Response(JSON.stringify(state.levels)):new Response('{}',{status:404});
       if(write!==200)return new Response('{}',{status:write});
@@ -394,4 +397,22 @@ test('Levels: preflight includes Authorization, wrong origin denied, no API call
  const res=await worker.fetch(pre,env(),{});assert.equal(res.status,204);assert.match(res.headers.get('Access-Control-Allow-Headers'),/Authorization/);
  const denied=await save(scoreLevels.defaults(),{req:levelRequest({origin:'https://evil.example.test'})});
  assert.equal(denied.res.status,403);assert.equal(denied.calls.length,0);
+});
+
+for(const role of ['admin','manager','viewer'])test(`benchmarks: ${role} authorization and isolated persistence`,async()=>{
+ const r=await save(scoreLevels.benchmarks.defaults(),{req:{path:'/admin/benchmarks',auth:'Bearer '+idToken({role})}});
+ assert.equal(r.res.status,role==='admin'?200:403);
+ if(role==='admin'){assert.deepEqual(r.json.benchmarks,scoreLevels.benchmarks.defaults());assert.deepEqual(fromFirestoreValue({mapValue:{fields:r.state.benchmarks.fields}}),scoreLevels.benchmarks.toDocument(scoreLevels.benchmarks.defaults()));assert.equal(r.calls.filter(c=>c.url===`${ROOT}/settings/instagramBenchmarks`&&c.init.method==='PATCH').length,1);}
+ else assert.equal(r.state.benchmarks,undefined);
+ assert.equal(patches(r.calls).length,0);assert.equal(r.state.lastApplication,undefined);
+});
+test('benchmarks: anonymous and crossed thresholds rejected before writes',async()=>{
+ assert.equal((await save({}, {req:{path:'/admin/benchmarks',auth:null}})).res.status,401);
+ const c=scoreLevels.benchmarks.defaults();c.engagement[0]=[20,10,40];
+ const r=await save(c,{req:{path:'/admin/benchmarks'}});assert.equal(r.res.status,400);assert.equal(r.state.benchmarks,undefined);
+});
+
+test('benchmarks: storage error is not success; expired token cannot write',async()=>{
+ const c=scoreLevels.benchmarks.defaults();const r=await save(c,{req:{path:'/admin/benchmarks'},svc:{write:503}});assert.equal(r.res.status,503);assert.equal(r.state.benchmarks,undefined);
+ const expired=await save(c,{req:{path:'/admin/benchmarks',auth:'Bearer '+idToken({exp:nowS()-60})}});assert.equal(expired.res.status,401);assert.equal(expired.state.benchmarks,undefined);
 });

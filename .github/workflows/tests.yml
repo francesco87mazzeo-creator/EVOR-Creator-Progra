@@ -6,7 +6,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main, feature/configurable-score-levels]
+    branches: [main, feature/configurable-score-levels, feature/instagram-benchmark-editor]
 
 permissions:
   contents: read
@@ -80,14 +80,14 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/evora-firestore-emulators"
           echo "FIREBASE_EMULATORS_PATH=$RUNNER_TEMP/evora-firestore-emulators" >> "$GITHUB_ENV"
-      - name: Emulator ufficiale, Rules candidate (profilo migration)
+      - name: Emulator ufficiale, Rules candidate incluse instagramBenchmarks (profilo migration)
         working-directory: security/firestore
         env:
           EVORA_RULES_PROFILE: migration
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm test
-      - name: Emulator ufficiale, persistenza REST del Worker con token sintetici
+      - name: Emulator ufficiale, persistenza REST scoring, scoreLevels e instagramBenchmarks
         working-directory: security/firestore
         run: >-
           node node_modules/firebase-tools/lib/bin/firebase.js emulators:exec

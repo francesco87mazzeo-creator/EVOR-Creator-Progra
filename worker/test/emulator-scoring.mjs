@@ -98,3 +98,26 @@ test('Emulator: scoreLevels is created/replaced independently, scoring and candi
   const candidatesAfter=await (await realFetch(`${ROOT}/candidature`,{headers:{Authorization:'Bearer owner'}})).json();
   assert.deepEqual(candidatesAfter,candidatesBefore);
 });
+
+test('Emulator: benchmarks are created/replaced independently, scoring and candidates unchanged',async()=>{
+  const worker=await freshWorker(),scoringBefore=await readScoring();
+  const candidatesBefore=await (await realFetch(`${ROOT}/candidature`,{headers:{Authorization:'Bearer owner'}})).json();
+  await realFetch(`${ROOT}/settings/instagramBenchmarks`,{method:'DELETE',headers:{Authorization:'Bearer owner'}});
+  assert.equal((await realFetch(`${ROOT}/settings/instagramBenchmarks`,{headers:{Authorization:'Bearer owner'}})).status,404);
+  const cfg=scoreLevels.benchmarks.defaults();cfg.reach[2][0]=31;
+  const request=(role,body)=>post('/admin/benchmarks',body,{ip:'192.0.2.100',headers:{Authorization:'Bearer '+idToken(role)}});
+  assert.equal((await worker.fetch(request('admin',cfg),env,{})).status,200);
+  const read=async()=>{
+    const response=await realFetch(`${ROOT}/settings/instagramBenchmarks`,{headers:{Authorization:'Bearer owner'}});
+    assert.equal(response.status,200);const stored=fromFirestoreValue({mapValue:{fields:(await response.json()).fields}});assert.equal(stored.storageFormat,'named-thresholds-v1');return scoreLevels.benchmarks.fromDocument(stored);
+  };
+  assert.deepEqual(await read(),cfg);
+  cfg.growth[2][0]=0.35;
+  assert.equal((await worker.fetch(request('admin',cfg),env,{})).status,200);
+  assert.deepEqual(await read(),cfg);
+  assert.equal((await worker.fetch(request('manager',scoreLevels.benchmarks.defaults()),env,{})).status,403);
+  assert.equal((await worker.fetch(request('viewer',scoreLevels.benchmarks.defaults()),env,{})).status,403);
+  assert.deepEqual(await read(),cfg);assert.deepEqual(await readScoring(),scoringBefore);
+  const candidatesAfter=await (await realFetch(`${ROOT}/candidature`,{headers:{Authorization:'Bearer owner'}})).json();
+  assert.deepEqual(candidatesAfter,candidatesBefore);
+});
