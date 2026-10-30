@@ -47,7 +47,7 @@ const firebaseStub=`(function(){
  // Like the production Rules: reads without a signed-in staff user are denied.
  const read=async()=>{if(!auth.currentUser)throw Object.assign(Error('Missing or insufficient permissions.'),{code:'permission-denied'});counters.reads++;return{exists:false,docs:candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
  const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
- const db={collection(collection){return{doc(id){return{get:async()=>{if(collection==="settings"&&id==="instagramBenchmarks"){await read();if(__BENCHMARKS_READ_ERROR__)throw Error('Synthetic benchmark read error');const value=localStorage.getItem('syntheticBenchmarks');return{exists:value!==null,data:()=>JSON.parse(value)};}if(collection==="settings"&&id==="scoreLevels"){await read();if(__LEVELS_READ_ERROR__)throw Error("Synthetic levels read error");const value=localStorage.getItem("syntheticScoreLevels");return{exists:value!==null,data:()=>JSON.parse(value)};}return read();},set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
+ const db={collection(collection){return{doc(id){return{get:async(options)=>{if(collection==="settings"&&id==="instagramBenchmarks"){await read();(counters.benchmarkReads??=[]).push(options?.source||"default");if(window.testBenchmarkReadMode==="fail")throw Error("Synthetic post-write read failure");if(window.testBenchmarkReadMode==="missing")return{exists:false};if(__BENCHMARKS_READ_ERROR__)throw Error('Synthetic benchmark read error');const value=localStorage.getItem('syntheticBenchmarks');return{exists:value!==null,data:()=>{const result=JSON.parse(value);if(window.testBenchmarkReadMode==="mismatch"&&result)result.engagement[0].medium+=0.125;return result;}};}if(collection==="settings"&&id==="scoreLevels"){await read();if(__LEVELS_READ_ERROR__)throw Error("Synthetic levels read error");const value=localStorage.getItem("syntheticScoreLevels");return{exists:value!==null,data:()=>JSON.parse(value)};}return read();},set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
  window.firebase={initializeApp(config){if(config.projectId!=="evora-athletes")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
 })();`;
 let browser;
@@ -1093,12 +1093,12 @@ test('Benchmark editor linked/single controls, blocked crossing, persistence and
  await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Formule attuali e parametri numerici (invariati)');
  const value=page.getByLabel('Valore benchmark',{exact:true});await value.waitFor();
  assert.equal(await value.inputValue(),'6');
- await page.getByRole('button',{name:'+0.5 pp',exact:true}).click();assert.equal(await value.inputValue(),'6.5');
- await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.getByText('Benchmark salvati. Punteggi numerici invariati.',{exact:true}).waitFor();
+ await page.getByLabel('Valore benchmark',{exact:true}).fill('6.5');assert.equal(await value.inputValue(),'6.5');
+ await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.getByText('Benchmark salvati e verificati sul server. Punteggi numerici invariati.',{exact:true}).waitFor();
  let sent=calls.filter(c=>c.url.endsWith('/admin/benchmarks'));assert.deepEqual(sent[0].body.engagement[2],[6.5,12.5,24.5]);assert.equal(sent[0].headers.authorization,'Bearer synthetic-firebase-id-token');
  await page.reload();await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await openConfigSection(page,'Formule attuali e parametri numerici (invariati)');await value.waitFor();assert.equal(await value.inputValue(),'6.5');
  await page.getByLabel('Muovi insieme i 3 livelli').uncheck();await value.fill('13');await page.getByRole('alert').filter({hasText:'Modifica bloccata'}).waitFor();assert.equal(await value.inputValue(),'6.5');
- await value.fill('7');await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.getByText('Benchmark salvati. Punteggi numerici invariati.',{exact:true}).waitFor();sent=calls.filter(c=>c.url.endsWith('/admin/benchmarks'));assert.deepEqual(sent.at(-1).body.engagement[2],[7,12.5,24.5]);
+ await value.fill('7');await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.getByText('Benchmark salvati e verificati sul server. Punteggi numerici invariati.',{exact:true}).waitFor();sent=calls.filter(c=>c.url.endsWith('/admin/benchmarks'));assert.deepEqual(sent.at(-1).body.engagement[2],[7,12.5,24.5]);
  await page.getByRole('button',{name:'Ripristina valori predefiniti',exact:true}).click();assert.equal(await value.inputValue(),'6');assert.equal(calls.filter(c=>c.url.endsWith('/admin/benchmarks')).length,2);
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+5).slice(0,12).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width]))));
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);assert.equal(calls.some(c=>/applications|notify|admin\/scoring/.test(c.url)),false);
@@ -1123,20 +1123,43 @@ test('Benchmark rendered curves use shared interpolation; page has no creator or
  const defaults=scoreLevels.benchmarks.defaults();
  async function verify(metric,config){
   const paths=await panel.locator('svg path[fill="none"]').evaluateAll(els=>els.map(el=>el.getAttribute('d')));assert.equal(paths.length,3);
-  const top=Math.max(1,...config[metric].flat())*1.12;
+  const top=scoreLevels.benchmarks.axisDefaults[metric];
   paths.forEach((path,j)=>{
-   const coords=path.split(/[ML]/).filter(Boolean).map(pair=>pair.split(',').map(Number));assert.equal(coords.length,161);
-   coords.forEach(([x,y],i)=>{const f=1000*Math.pow(500,i/160),v=scoreLevels.benchmarks.thresholds(config,metric,f)[j];assert.ok(Math.abs(x-(60+820*Math.log(f/1000)/Math.log(500)))<1e-8);assert.ok(Math.abs(y-(300-260*v/top))<1e-8);});
+   const coords=path.split(/[ML]/).filter(Boolean).map(pair=>pair.split(',').map(Number));assert.equal(coords.length,321);
+   coords.forEach(([x,y],i)=>{const f=1000*Math.pow(500,i/320),v=scoreLevels.benchmarks.thresholds(config,metric,f)[j];assert.ok(Math.abs(x-(60+820*scoreLevels.benchmarks.axisPosition(f)))<1e-8);assert.ok(Math.abs(y-(300-260*v/top))<1e-8);});
   });
   assert.equal(await panel.locator('svg circle').count(),15);
  }
  for(const [metric,label,notice] of [['engagement','Engagement','soglie sperimentali non validate'],['reach','Reach','riferimenti storici provvisori'],['growth','Growth','riferimenti storici provvisori']]){
   await panel.getByRole('button',{name:label,exact:true}).click();await verify(metric,defaults);assert.ok((await panel.innerText()).includes(notice));
  }
- await panel.getByRole('button',{name:'Engagement',exact:true}).click();await panel.getByRole('button',{name:'+0.5 pp',exact:true}).click();
+ await panel.getByRole('button',{name:'Engagement',exact:true}).click();await panel.getByLabel('Valore benchmark',{exact:true}).fill('6.5');
  await verify('engagement',scoreLevels.benchmarks.edit(defaults,'engagement',2,0,6.5,true));
  assert.equal(await panel.locator('img,.row,[data-score-level],input[type=file]').count(),0);
  assert.equal((await panel.innerText()).includes(candidate.fullName),false);
  assert.equal((await panel.innerText()).includes('Esempio creator'),false);
  assert.equal(calls.length,0);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+for(const mode of ['fail','missing','mismatch'])test(`Benchmark save read-back ${mode} never confirms or overwrites the draft`,{timeout:60000},async t=>{
+ const {page,calls}=await pageFor(t,{admin:true});await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await page.getByLabel('Valore benchmark',{exact:true}).fill('7');
+ await page.evaluate(mode=>window.testBenchmarkReadMode=mode,mode);await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.locator('.benchmark-page [role="alert"]').waitFor();
+ assert.equal(await page.getByText('Benchmark salvati e verificati sul server. Punteggi numerici invariati.',{exact:true}).count(),0);
+ assert.equal(await page.getByLabel('Valore benchmark',{exact:true}).inputValue(),'7');assert.equal(calls.length,1);assert.deepEqual(await page.evaluate(()=>window.testCounters.benchmarkReads),['server','server']);
+});
+test('Benchmark extreme values persist with stable Y and identical table/graph after reopen and reload',{timeout:60000},async t=>{
+ const legacy=scoreLevels.benchmarks.toDocument({...scoreLevels.benchmarks.defaults(),interpolation:'log-smoothstep-v1'});
+ legacy.reach[2]={medium:33,good:77,excellent:135};
+ const {page,calls}=await pageFor(t,{admin:true,benchmarksSeed:legacy});await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();
+ await page.getByText('Valori salvati conservati.',{exact:false}).waitFor();assert.equal(calls.length,0);
+ const input=page.getByLabel('Valore benchmark',{exact:true}),svg=page.locator('.benchmark-page svg');
+ assert.equal(await svg.getAttribute('data-axis-max'),'50');await input.fill('900');assert.equal(await svg.getAttribute('data-axis-max'),'50');await page.getByText('Valori fuori scala:',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('button',{name:/^[+−-].*pp$/}).count(),0);
+ await page.getByRole('button',{name:'Adatta scala ai valori',exact:true}).click();assert.equal(await svg.getAttribute('data-axis-max'),'2000');
+ await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.getByText('Benchmark salvati e verificati sul server. Punteggi numerici invariati.',{exact:true}).waitFor();
+ const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('syntheticBenchmarks')));assert.deepEqual(persisted.engagement[2],{medium:900,good:906,excellent:918});assert.deepEqual(persisted.reach,legacy.reach);
+ const curve=await svg.locator('path[fill="none"]').evaluateAll(els=>els.map(el=>el.getAttribute('d')));
+ await page.getByRole('button',{name:'Candidature',exact:true}).click();await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await input.waitFor();assert.equal(await input.inputValue(),'900');assert.equal(await svg.getAttribute('data-axis-max'),'2000');assert.deepEqual(await svg.locator('path[fill="none"]').evaluateAll(els=>els.map(el=>el.getAttribute('d'))),curve);
+ await page.reload();await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await input.waitFor();assert.equal(await input.inputValue(),'900');assert.equal(await svg.getAttribute('data-axis-max'),'2000');assert.deepEqual(await svg.locator('path[fill="none"]').evaluateAll(els=>els.map(el=>el.getAttribute('d'))),curve);
+ const row=page.locator('.benchmark-table tbody tr').nth(2);assert.ok((await row.innerText()).includes('900%'));assert.equal(calls.length,1);
 });
