@@ -610,8 +610,15 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
         </div>
       </div>
 
-      {/* LISTA */}
-      <div className="wrap-panel" style={{padding:"0 16px"}}>
+      {/* LISTA: soli dati effettivamente osservati, classificazioni benchmark indipendenti. */}
+      <div className="wrap-panel candidate-list" style={{padding:"0 16px"}}>
+        {benchmarkState.status==="error" && (
+          <div className="candidate-benchmark-error" role="alert">
+            Classificazioni ENG, RE e GR non disponibili: impossibile leggere i benchmark.
+            I valori osservati restano visibili senza colori.
+            <button className="nav-link" type="button" onClick={()=>setBenchmarkRetry(n=>n+1)}>Riprova</button>
+          </div>
+        )}
         {slice.length===0 && (
           <div style={{padding:"60px 20px",textAlign:"center"}}>
             <div className="h-sm" style={{marginBottom:6}}>Nessuna candidatura</div>
@@ -619,54 +626,63 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
           </div>
         )}
 
+        {slice.length>0 && (
+          <div className="candidate-list-head" aria-hidden="true">
+            <span>Candidato</span><span>Stato</span><span>Follower</span>
+            <span>ENG</span><span>RE</span><span>GR</span><span>Score V2</span><span>Data</span>
+          </div>
+        )}
         {slice.map(a=>{
-          const s=a._s, st=adminStatusMeta(a.status), late = a._status==="new" && daysSince(a.date)>7;
+          const s=a._s, st=adminStatusMeta(a.status), late=a._status==="new"&&daysSince(a.date)>7;
+          const ig=socialLink(a,"instagram"), rates=benchmarkRatesOf(s);
+          const grades={
+            engagement:benchmarkGrade(rates.engagement,"engagement",s.followers,benchmarkState.config),
+            reach:benchmarkGrade(rates.reach,"reach",s.followers,benchmarkState.config),
+            growth:benchmarkGrade(rates.growth,"growth",s.followers,benchmarkState.config)
+          };
+          const socialGrade=CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social);
           return (
-            <button key={a.id} className="row" style={{borderLeftColor:s.lowBase?"var(--warn)":"var(--brd)"}} onClick={()=>setSel(a)}>
-              <div style={{padding:"13px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <div style={{flex:"1 1 190px",minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:3}}>
-                    <span style={{fontFamily:"var(--fh)",fontWeight:700,fontSize:14,color:"var(--t1)"}}>{a.fullName||"—"}</span>
-                    <Badge color={st.c}>{st.l}</Badge>
-                    {String(a.notes||"").trim() && <Badge color="#7A6AD5">Note</Badge>}
-                  </div>
-                  <div className="body-sm" style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {(()=>{
-                       const ig=socialLink(a,"instagram");
-                       const cats=categoriesOf(a).slice(0,2).map(catLabel).join(", ");
-                       return <>
-                         {ig.handle
-                           ? <a href={ig.url} target="_blank" rel="noopener noreferrer"
-                                onClick={e=>e.stopPropagation()}
-                                style={{color:"var(--info)",textDecoration:"none"}}>@{ig.handle}</a>
-                           : "—"}
-                         {cats?" · "+cats:""}{a.city?" · "+a.city:""}
-                       </>;
-                     })()}
-                  </div>
-                  <div className="label-xs" style={{marginTop:4,color:"var(--t3)",letterSpacing:".06em"}}>
-                    Visual. {s.views===null?"—":fmtShort(s.views)} · Interaz. {s.interactions===null?"—":fmtShort(s.interactions)} · Netti {s.netFollowers===null?"—":(s.netFollowers>0?"+":s.netFollowers<0?"−":"")+fmtShort(Math.abs(s.netFollowers))} · Raggiunti {s.accountsReached===null?"—":fmtShort(s.accountsReached)}
-                    {s.lowBase && <span style={{color:"var(--warn)"}}> · Base ridotta</span>}
-                  </div>
-                  <div className="label-xs" style={{marginTop:3,color: late ? "var(--warn)" : "var(--t4)"}}>
-                    {fmtDate(a.date)} · {agoLabel(a.date)}
-                  </div>
-                </div>
-
-                <div style={{display:"flex",alignItems:"center",gap:14,flex:"1 1 320px",justifyContent:"flex-end"}}>
-                  <div className="metric-cell" style={{minWidth:58}}>
-                    <div className="metric-l">Follower</div>
-                    <div className="metric-v" style={{color:"var(--t1)"}}>{s.followers===null?"—":fmtShort(s.followers)}</div>
-                  </div>
-                  {[["Coinvolg.",fmtPct(s.engagementRate)],["Indic. B",fmtPct(s.reachEngagementRate)]].map(([l,v])=>(
-                    <div className="metric-cell" key={l} style={{minWidth:58}}>
-                      <div className="metric-l">{l}</div>
-                      <div className="metric-v" style={{color:"var(--t1)"}}>{v}</div>
-                    </div>
-                  ))}
-                  <ScoreRing value={s.socialScore} color={CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.color||SCORE_COLOR} size={46} label="SCORE"/>
-                  <span className="label-xs" style={{overflowWrap:"anywhere"}}>{CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.label||""}</span>
-                </div>
+            <button key={a.id} type="button" className="row candidate-row"
+              style={{borderLeftColor:s.lowBase?"var(--warn)":"var(--brd)"}}
+              onClick={()=>setSel(a)}>
+              <div className="candidate-cell candidate-identity">
+                <span className="candidate-name">{a.fullName||"—"}</span>
+                <span className="candidate-username">{ig.handle?"@"+ig.handle:"—"}</span>
+              </div>
+              <div className="candidate-cell candidate-status-cell">
+                <span className="candidate-status-badge" style={{color:st.c,borderColor:st.c}}>{st.l}</span>
+              </div>
+              <div className="candidate-cell candidate-followers">
+                <span className="candidate-cell-label">Follower</span>
+                <span className="candidate-value" data-metric="followers">
+                  {s.followers===null?"—":fmtShort(s.followers)}
+                </span>
+              </div>
+              {[
+                ["engagement","ENG"],["reach","RE"],["growth","GR"]
+              ].map(([key,label])=>{
+                const value=rates[key],grade=grades[key];
+                const description=value===null?"Dato non disponibile"
+                  :grade?.label || (benchmarkState.status==="loading"?"Benchmark in caricamento":"Classificazione non disponibile");
+                return <div className="candidate-cell candidate-metric" key={key}>
+                  <span className="candidate-cell-label">{label}</span>
+                  <span className="candidate-value" data-metric={key} data-level={grade?.id||undefined}
+                    title={description} aria-label={label+": "+(value===null?"non disponibile":fmtPct(value))+". "+description}>
+                    {value===null?"—":fmtPct(value)}
+                  </span>
+                </div>;
+              })}
+              <div className="candidate-cell candidate-score">
+                <span className="candidate-cell-label">Score V2</span>
+                <span className="candidate-value" data-metric="socialScore"
+                  style={{color:socialGrade?.color||"var(--t1)"}}
+                  title={(socialGrade?.label||"Punteggio quantitativo V2")+(s.lowBase?" · Base di osservazione ridotta":"")}>
+                  {s.socialScore===null?"—":s.socialScore+"/100"}
+                </span>
+              </div>
+              <div className="candidate-cell candidate-date">
+                <span className="candidate-cell-label">Data</span>
+                <time dateTime={a.date||undefined} className={late?"candidate-date-overdue":""}>{fmtDate(a.date)}</time>
               </div>
             </button>
           );
