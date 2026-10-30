@@ -442,7 +442,7 @@ test('Admin Block 2: compact rows use saved per-metric curves and preserve V2 nu
  const row=page.locator('button.row').filter({hasText:'Synthetic Compact Row'});
  await row.waitFor();
  await row.locator('[data-metric="engagement"][data-level="scarso"]').waitFor();
- assert.deepEqual(await page.locator('.candidate-list-head span').allTextContents(),['Candidato','Stato','Follower','ENG','RE','GR','Score V2','Data']);
+ assert.deepEqual(await page.locator('.candidate-list-head span').allTextContents(),['Candidato e stato','Follower','Engagement','Reach','Growth','Score V2']);
  assert.equal(await row.locator('img,a').count(),0,'no profile picture or nested Instagram link in a clickable row');
  assert.equal(await row.locator('[data-metric="followers"]').innerText(),'5K');
  assert.equal(await row.locator('[data-metric="engagement"]').innerText(),'40,00%');
@@ -454,7 +454,7 @@ test('Admin Block 2: compact rows use saved per-metric curves and preserve V2 nu
  const colors=await row.locator('.candidate-metric .candidate-value').evaluateAll(els=>els.map(el=>getComputedStyle(el).color));
  assert.deepEqual(colors,['rgb(255, 80, 102)','rgb(52, 229, 138)','rgb(255, 183, 68)']);
  const score=computeScore(candidate).socialScore;
- assert.equal(await row.locator('[data-metric="socialScore"]').innerText(),score+'/100','numerical scoring V2 is not replaced by ENG/RE/GR');
+ assert.equal(await row.locator('[data-score-label="Score V2"]').getAttribute('data-score-value'),String(score),'numerical scoring V2 is not replaced by Engagement/Reach/Growth');
  assert.deepEqual(await page.evaluate(()=>window.testBenchmarkReads),['server']);
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
  await row.click();
@@ -486,7 +486,7 @@ test('Admin Block 2: missing and zero observations are not invented or colored',
 test('Admin Block 2: failed benchmark read keeps real percentages neutral and retryable',{timeout:60000},async t=>{
  const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Neutral Metrics',followers:5000,accountsReached:5000,interactions:900,netFollowers:25},{now:NOW});
  const {page}=await pageFor(t,{admin:true,candidate,benchmarksReadError:true});
- const warning=page.getByRole('alert').filter({hasText:'Classificazioni ENG, RE e GR non disponibili'});
+ const warning=page.getByRole('alert').filter({hasText:'Classificazioni Engagement, Reach e Growth non disponibili'});
  await warning.waitFor();
  const row=page.locator('button.row').filter({hasText:'Synthetic Neutral Metrics'});
  assert.equal(await row.locator('[data-metric="engagement"]').innerText(),'18,00%');
@@ -1391,4 +1391,50 @@ test('Scoring workspace updates saved parameters, keeps drafts independent and a
  await preview.getByLabel('Esempio: Interazioni',{exact:true}).fill('600');assert.equal(await ring.getAttribute('data-animation-state'),'complete');
  await preview.getByLabel('Esempio: Follower',{exact:true}).fill('100');await preview.getByLabel('Esempio: Follower netti',{exact:true}).fill('100');assert.match(await preview.locator('article').nth(2).innerText(),/Non disponibile/);
  assert.equal(calls.length,1);assert.ok(calls[0].url.endsWith('/admin/scoring'));assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+for(const width of [1440,768,390,320])test(`Admin Block 5: shared ring layout, full labels, missing and zero scores ${width}`,{timeout:60000},async t=>{
+ const base=prepareApplication({...await publicFixture(),fullName:'Synthetic List Premium',views:30000,interactions:600},{now:NOW});
+ const candidates=[base,{...base,fullName:'Synthetic Missing Score',views:null},{...base,fullName:'Synthetic Zero Views',views:0},{...base,fullName:'Synthetic Zero Interactions',interactions:0},{...base,fullName:'Synthetic Zero Score',views:1,interactions:0}];
+ const config=scoreLevels.defaults();config.social.forEach(l=>{l.color='#A658F0';l.label='Livello configurato';});
+ const {page,calls}=await pageFor(t,{admin:true,candidate:candidates,levelsSeed:config});await page.setViewportSize({width,height:1000});await page.emulateMedia({reducedMotion:'reduce'});
+ const row=page.locator('button.candidate-row').filter({hasText:'Synthetic List Premium'});await row.waitFor();
+ const ring=row.locator('[data-score-label="Score V2"]');await ring.scrollIntoViewIfNeeded();await ring.locator('.candidate-ring-center strong').getByText('50',{exact:true}).waitFor();
+ assert.equal(await ring.getAttribute('data-score-value'),'50');assert.equal(await ring.evaluate(el=>el.style.getPropertyValue('--ring-color')),'#A658F0');assert.match(await ring.getAttribute('aria-label'),/Livello configurato/);
+ assert.equal(await row.locator('time,.candidate-date,button,a').count(),0);assert.equal(await row.locator('.candidate-identity .candidate-status-badge').count(),1);
+ for(const label of ['Engagement','Reach','Growth'])assert.equal(await row.locator('.candidate-cell-label').getByText(label,{exact:true}).count(),1);
+ const boxes=await row.locator('.candidate-followers,.candidate-metric,.candidate-score').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return{left:r.left,right:r.right};}));assert.ok(boxes.slice(0,-1).every(box=>box.right<=boxes.at(-1).left+1),'score stays on the far right');
+ assert.equal(await ring.evaluate(el=>Math.round(el.getBoundingClientRect().width)),width>620?64:60);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ for(const name of ['Synthetic Missing Score','Synthetic Zero Views']){const item=page.locator('button.candidate-row').filter({hasText:name}).locator('[data-score-label="Score V2"]');assert.equal(await item.getAttribute('data-animation-state'),'unavailable');assert.equal(await item.locator('.candidate-ring-fill').count(),0);}
+ assert.equal(await page.locator('button.candidate-row').filter({hasText:'Synthetic Zero Interactions'}).locator('[data-score-label="Score V2"]').getAttribute('data-score-value'),String(computeScore(candidates[3]).socialScore));
+ const zero=page.locator('button.candidate-row').filter({hasText:'Synthetic Zero Score'}).locator('[data-score-label="Score V2"]');assert.equal(await zero.getAttribute('data-score-value'),'0');assert.equal(await zero.getAttribute('data-animation-state'),'complete');assert.equal(await zero.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset'),'100');
+ if(process.env.EVORA_SCREENSHOT_DIR)await page.screenshot({path:`${process.env.EVORA_SCREENSHOT_DIR}/list-block5-${width}.png`,fullPage:true});
+ await row.focus();await page.keyboard.press('Enter');await page.getByText('Data candidatura',{exact:true}).waitFor();assert.equal(await page.locator('.candidate-score-ring-large').getAttribute('data-score-value'),'50');assert.equal(await page.locator('.candidate-score-ring-large').evaluate(el=>el.style.getPropertyValue('--ring-color')),'#A658F0');
+ assert.equal(calls.length,0);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+test('Admin Block 5: one list observer, no replay after scroll, search, pagination or detail',{timeout:60000},async t=>{
+ const base=prepareApplication({...await publicFixture(),views:30000,interactions:600},{now:NOW});
+ const candidates=Array.from({length:12},(_,i)=>({...base,fullName:'Synthetic Row '+String(i).padStart(2,'0'),followers:1000+i,interactions:600+i*10}));
+ const {page,calls}=await pageFor(t,{admin:true,candidate:candidates,clock:true,setup:()=>{const Native=window.IntersectionObserver;window.testIOCount=0;window.IntersectionObserver=class extends Native{constructor(...args){super(...args);window.testIOCount++;}};}});
+ const rows=page.locator('button.candidate-row');await rows.first().waitFor();assert.equal(await rows.count(),10);assert.equal(await page.evaluate(()=>window.testIOCount),1);
+ const first=rows.filter({hasText:'Synthetic Row 00'}),last=rows.filter({hasText:'Synthetic Row 09'});const ring=first.locator('[data-score-label="Score V2"]');
+ await ring.scrollIntoViewIfNeeded();await page.clock.runFor(1500);assert.equal(await ring.getAttribute('data-animation-state'),'complete');const lastRing=last.locator('[data-score-label="Score V2"]');assert.equal(await lastRing.getAttribute('data-animation-state'),'waiting');
+ await lastRing.scrollIntoViewIfNeeded();await last.locator('[data-animation-state="running"]').waitFor();await page.clock.runFor(150);assert.equal(await lastRing.getAttribute('data-animation-state'),'running');await page.clock.runFor(1400);assert.equal(await lastRing.getAttribute('data-animation-state'),'complete');
+ await ring.scrollIntoViewIfNeeded();await page.clock.runFor(150);assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ await page.getByRole('button',{name:'2',exact:true}).click();await rows.filter({hasText:'Synthetic Row 10'}).waitFor();await page.getByRole('button',{name:'1',exact:true}).click();await ring.waitFor();assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(await page.evaluate(()=>window.testIOCount),1);
+ await page.getByLabel('Cerca',{exact:true}).fill('Synthetic Row 00');assert.equal(await rows.count(),1);assert.equal(await ring.getAttribute('data-animation-state'),'complete');await page.getByLabel('Cerca',{exact:true}).fill('');
+ await page.getByLabel('Ordina per',{exact:true}).selectOption('followers');await rows.filter({hasText:'Synthetic Row 00'}).waitFor({state:'hidden'});await page.getByLabel('Ordina per',{exact:true}).selectOption('name');await ring.waitFor();assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ await first.click();await page.getByRole('button',{name:'← Elenco candidature',exact:true}).click();await ring.waitFor();assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(calls.length,0);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+
+test('Admin Block 5: corrected candidate updates the cached ring without animation or extra writes',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Updated Ring',views:30000,interactions:600},{now:NOW});
+ const {page,calls}=await pageFor(t,{admin:true,candidate,allowWrites:true});await page.emulateMedia({reducedMotion:'reduce'});
+ const row=page.locator('button.candidate-row');const ring=row.locator('[data-score-label="Score V2"]');await ring.waitFor();await row.click();
+ await page.getByRole('button',{name:'Correggi dati Insights',exact:true}).click();await page.getByLabel('Interazioni',{exact:true}).fill('3000');
+ await page.getByRole('button',{name:'Salva e ricalcola',exact:true}).click();await page.getByRole('button',{name:'Correggi dati Insights',exact:true}).waitFor();
+ await page.emulateMedia({reducedMotion:'no-preference'});await page.getByRole('button',{name:'← Elenco candidature',exact:true}).click();await ring.waitFor();
+ assert.equal(await ring.getAttribute('data-score-value'),String(computeScore({...candidate,interactions:3000}).socialScore));assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(await page.evaluate(()=>window.testCounters.writes),1);assert.equal(calls.length,0);
 });

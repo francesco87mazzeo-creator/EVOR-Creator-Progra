@@ -167,11 +167,11 @@ select option{background:var(--surf-2);color:var(--t1);}
 .metric-l{font-family:var(--fh);font-weight:500;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--t4);margin-bottom:3px;}
 
 /* EVORΛ COLLECTIVE — Blocco 2: elenco candidature compatto.
-   ENG, RE e GR sono tassi osservati, NON componenti del punteggio V2. */
-.candidate-list{--candidate-cols:minmax(158px,1.85fr) minmax(108px,1.1fr) minmax(63px,.73fr) repeat(3,minmax(72px,.79fr)) minmax(73px,.79fr) minmax(88px,.9fr);}
+   Engagement, Reach e Growth sono tassi osservati, NON componenti del punteggio V2. */
+.candidate-list{--candidate-cols:minmax(190px,1.8fr) minmax(65px,.7fr) repeat(3,minmax(90px,.9fr)) 80px;}
 .candidate-list-head,.candidate-row{display:grid;grid-template-columns:var(--candidate-cols);gap:12px;align-items:center;}
 .candidate-list-head{padding:11px 13px;background:var(--bg-2);border-bottom:1px solid var(--brd);font-family:var(--fh);font-weight:700;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--t3);}
-.candidate-list-head>span:nth-child(n+3){text-align:center;}
+.candidate-list-head>span:nth-child(n+2){text-align:center;}
 .candidate-row{min-height:74px;padding:11px 13px;border-top:0;border-left-width:3px;background:var(--bg);font-family:var(--fb);}
 .candidate-row:hover{background:#1B1B1B;}
 .candidate-row:focus-visible{outline:2px solid var(--red-hi);outline-offset:-2px;background:var(--surf);}
@@ -179,7 +179,7 @@ select option{background:var(--surf-2);color:var(--t1);}
 .candidate-identity{display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
 .candidate-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--fh);font-size:13px;font-weight:700;color:var(--t1);}
 .candidate-username{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#94A8C6;}
-.candidate-status-badge{display:inline-block;max-width:100%;padding:5px 7px;border:1px solid;font-family:var(--fh);font-weight:700;font-size:10px;line-height:1.25;overflow-wrap:anywhere;text-transform:uppercase;letter-spacing:.025em;text-align:left;}
+.candidate-status-badge{display:inline-block;margin-top:3px;border-radius:6px;max-width:100%;padding:5px 7px;border:1px solid;font-family:var(--fh);font-weight:700;font-size:10px;line-height:1.25;overflow-wrap:anywhere;text-transform:uppercase;letter-spacing:.025em;text-align:left;}
 .candidate-followers,.candidate-metric,.candidate-score,.candidate-date{text-align:center;}
 .candidate-value{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--fh);font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--t1);line-height:1.25;}
 .candidate-metric .candidate-value{font-size:14px;color:var(--t2);text-shadow:none;}
@@ -188,33 +188,33 @@ select option{background:var(--surf-2);color:var(--t1);}
 .candidate-value[data-level="buono"]{color:#34E58A;text-shadow:0 0 13px rgba(52,229,138,.18);}
 .candidate-value[data-level="eccellente"]{color:#4D9FFF;text-shadow:0 0 13px rgba(77,159,255,.2);}
 .candidate-cell-label{display:none;}
-.candidate-date time{font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums;white-space:nowrap;}
-.candidate-date time.candidate-date-overdue{color:var(--warn);}
 .candidate-benchmark-error{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border:1px solid rgba(255,80,102,.35);font-size:12px;color:var(--t2);background:var(--bg-2);}
 .candidate-benchmark-error .nav-link{border:0;background:transparent;text-decoration:underline;cursor:pointer;color:var(--t1);}
 
+.candidate-list .candidate-score-ring{width:64px;height:64px;margin:0 auto}
+.candidate-list .candidate-ring-center strong{font-size:20px}.candidate-list .candidate-ring-center span{font-size:8px;letter-spacing:0}
+.candidate-list .candidate-score-ring::before{filter:blur(10px)}
+.candidate-row{border-radius:12px;margin:7px 0;border:1px solid var(--brd);border-left-width:3px}
 @media(max-width:1020px){
-  .candidate-list-head{display:none;}
-  .candidate-row{grid-template-columns:repeat(5,minmax(0,1fr));gap:10px 8px;padding:13px 12px;}
-  .candidate-identity{grid-column:1/4;}
-  .candidate-status-cell{grid-column:4/6;justify-self:end;text-align:right;}
-  .candidate-followers,.candidate-metric,.candidate-score{grid-row:2;}
-  .candidate-date{grid-column:1/-1;text-align:right;}
-  .candidate-cell-label{display:block;margin-bottom:4px;font-family:var(--fh);font-weight:600;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--t4);}
+  .candidate-list-head{display:none}
+  .candidate-row{grid-template-columns:repeat(4,minmax(0,1fr)) 76px;gap:12px 8px;padding:14px 12px}
+  .candidate-identity{grid-column:1/5;grid-row:1}
+  .candidate-followers,.candidate-metric{grid-row:2}
+  .candidate-score{grid-column:5;grid-row:1/3;align-self:center}
+  .candidate-cell-label{display:block;margin-bottom:5px;font-family:var(--fh);font-weight:600;font-size:10px;color:var(--t3);letter-spacing:0;text-transform:none}
 }
 @media(max-width:620px){
-  .candidate-row{grid-template-columns:repeat(4,minmax(0,1fr));gap:11px 6px;}
-  .candidate-identity{grid-column:1/4;}
-  .candidate-status-cell{grid-column:4/5;}
-  .candidate-followers,.candidate-metric{grid-row:2;}
-  .candidate-score,.candidate-date{grid-row:3;}
-  .candidate-score{grid-column:1/3;text-align:left;}
-  .candidate-date{grid-column:3/5;text-align:right;}
-  .candidate-name{font-size:13px;}
-  .candidate-status-badge{font-size:9px;padding:5px;}
-  .candidate-value{font-size:13px;}
-  .candidate-metric .candidate-value{font-size:13px;}
+  .candidate-row{grid-template-columns:repeat(2,minmax(0,1fr)) 68px;gap:12px 6px;padding:13px 10px}
+  .candidate-identity{grid-column:1/3;grid-row:1}
+  .candidate-followers{grid-column:1;grid-row:2}
+  .candidate-metric:nth-child(3){grid-column:2;grid-row:2}
+  .candidate-metric:nth-child(4){grid-column:1;grid-row:3}
+  .candidate-metric:nth-child(5){grid-column:2;grid-row:3}
+  .candidate-score{grid-column:3;grid-row:1/4}
+  .candidate-list .candidate-score-ring{width:60px;height:60px}
+  .candidate-value{font-size:13px}.candidate-name{font-size:13px}
 }
+
 
 .detail-block{background:var(--bg-2);border:1px solid var(--brd);padding:16px;margin-bottom:8px;}
 .detail-q{font-family:var(--fh);font-weight:600;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);margin-bottom:8px;}
