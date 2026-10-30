@@ -6,7 +6,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { DEFAULT_SCORING, computeScore } from '../../server/collective/scoring.mjs';
 import scoreLevels from '../../public/score-levels.js';
 import { publicFixture } from '../../server/collective/test/frontend-reference.mjs';
-import { fromFirestoreValue } from '../src/firestore.mjs';
+import { fromFirestoreValue, toFirestoreDocument } from '../src/firestore.mjs';
 import { freshWorker, baseEnv, post } from './helpers.mjs';
 
 const host = process.env.FIRESTORE_EMULATOR_HOST;
@@ -120,4 +120,17 @@ test('Emulator: benchmarks are created/replaced independently, scoring and candi
   assert.deepEqual(await read(),cfg);assert.deepEqual(await readScoring(),scoringBefore);
   const candidatesAfter=await (await realFetch(`${ROOT}/candidature`,{headers:{Authorization:'Bearer owner'}})).json();
   assert.deepEqual(candidatesAfter,candidatesBefore);
+});
+
+test('Emulator: legacy custom benchmark values survive explicit v2 migration and old-client saves',async()=>{
+ const B=scoreLevels.benchmarks,legacy={...B.defaults(),interpolation:'log-smoothstep-v1'};legacy.engagement[2]=[900,906,918];legacy.reach[0]=[61,122,255];
+ const scoringBefore=await readScoring();
+ const seed=await realFetch(`${ROOT}/settings/instagramBenchmarks`,{method:'PATCH',headers:{Authorization:'Bearer owner','Content-Type':'application/json'},body:JSON.stringify(toFirestoreDocument(B.toDocument(legacy)))});assert.equal(seed.status,200);
+ const read=async()=>{const r=await realFetch(`${ROOT}/settings/instagramBenchmarks`,{headers:{Authorization:'Bearer owner'}});assert.equal(r.status,200);return B.fromDocument(fromFirestoreValue({mapValue:{fields:(await r.json()).fields}}));};
+ assert.deepEqual(await read(),legacy);
+ const worker=await freshWorker(),request=cfg=>post('/admin/benchmarks',cfg,{ip:'192.0.2.101',headers:{Authorization:'Bearer '+idToken('admin')}}),upgraded=B.upgrade(legacy);
+ assert.deepEqual(await read(),legacy,'loading a new Worker never rewrites saved values');
+ assert.equal((await worker.fetch(request(upgraded),env,{})).status,200);assert.deepEqual(await read(),upgraded);
+ assert.equal((await worker.fetch(request(legacy),env,{})).status,200);assert.deepEqual(await read(),legacy,'previous payload method remains accepted');
+ assert.deepEqual(await readScoring(),scoringBefore);
 });

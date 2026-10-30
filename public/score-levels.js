@@ -57,7 +57,7 @@
   // Observed benchmarks only: never used by the numerical scoring core.
   const benchmarkFollowers=Object.freeze([1000,5000,20000,100000,500000]);
   const benchmarkMetrics=['engagement','reach','growth'];
-  const benchmarkDefaults=()=>({version:1,interpolation:'log-smoothstep-v1',followers:[...benchmarkFollowers],
+  const benchmarkDefaults=()=>({version:1,interpolation:'log-pchip-ordered-v2',followers:[...benchmarkFollowers],
     engagement:[[10,20,40],[8,16,32],[6,12,24],[5,10,20],[4,8,16]],
     reach:[[60,120,250],[40,80,160],[30,60,120],[20,40,80],[15,30,60]],
     growth:[[1,3,7],[0.5,1.5,4],[0.3,1,3],[0.15,0.5,1.5],[0.08,0.25,0.8]]});
@@ -69,7 +69,7 @@
   }
   function validateBenchmarks(v){
     exact(v,['version','interpolation','followers',...benchmarkMetrics],'$benchmarks');
-    if(v.version!==1||v.interpolation!=='log-smoothstep-v1')fail('VERSION','$benchmarks');
+    if(v.version!==1||!['log-smoothstep-v1','log-pchip-ordered-v2'].includes(v.interpolation))fail('VERSION','$benchmarks');
     benchmarkArray(v.followers,5,'$benchmarks.followers');
     if(v.followers.some((n,i)=>n!==benchmarkFollowers[i]))fail('FOLLOWERS','$benchmarks.followers');
     const out={version:1,interpolation:v.interpolation,followers:[...benchmarkFollowers]};
@@ -84,7 +84,7 @@
     }
     return out;
   }
-  function thresholds(config,metric,followers){
+  function legacyThresholds(config,metric,followers){
     if(!benchmarkMetrics.includes(metric)||typeof followers!=='number'||!Number.isFinite(followers)||followers<0)return null;
     const rows=config[metric],xs=config.followers;
     if(followers<=xs[0])return [...rows[0]];
@@ -94,6 +94,51 @@
     const w=t*t*(3-2*t); // convex, C1: no overshoot, crossings or boundary jumps
     return rows[i].map((v,j)=>v+(rows[i+1][j]-v)*w);
   }
+  const CURRENT_INTERPOLATION='log-pchip-ordered-v2';
+  function pchipSlopes(xs,ys){
+    const n=xs.length,h=xs.slice(1).map((x,i)=>x-xs[i]),d=h.map((v,i)=>(ys[i+1]-ys[i])/v),m=Array(n).fill(0);
+    for(let i=1;i<n-1;i++)if(d[i-1]*d[i]>0){const w1=2*h[i]+h[i-1],w2=h[i]+2*h[i-1];m[i]=(w1+w2)/(w1/d[i-1]+w2/d[i]);}
+    const end=(a,b,ha,hb)=>{let v=((2*ha+hb)*a-ha*b)/(ha+hb);if(v*a<=0)return 0;if(a*b<0&&Math.abs(v)>3*Math.abs(a))v=3*a;return v;};
+    m[0]=end(d[0],d[1],h[0],h[1]);m[n-1]=end(d[n-2],d[n-3],h[n-2],h[n-3]);
+    // Ordered Bézier control polygons are a sufficient monotonicity guarantee.
+    for(let i=0;i<n-1;i++){const sum=Math.abs(m[i])+Math.abs(m[i+1]),limit=3*Math.abs(d[i]);if(sum>limit){const factor=limit/sum;m[i]*=factor;m[i+1]*=factor;}}
+    return m;
+  }
+  function hermite(xs,ys,m,x){
+    if(x<=xs[0])return ys[0];if(x>=xs.at(-1))return ys.at(-1);
+    const i=xs.findIndex(v=>v>=x)-1,h=xs[i+1]-xs[i],t=(x-xs[i])/h;
+    return(2*t*t*t-3*t*t+1)*ys[i]+(t*t*t-2*t*t+t)*h*m[i]+(-2*t*t*t+3*t*t)*ys[i+1]+(t*t*t-t*t)*h*m[i+1];
+  }
+  function orderedSlopes(xs,rows){
+    const slopes=[0,1,2].map(j=>pchipSlopes(xs,rows.map(row=>row[j])));
+    // Reduce a node's three tangents together when an ordered gap control point
+    // would be negative. Shared node tangents preserve C1 continuity.
+    for(let i=0;i<rows.length;i++){
+      let factor=1;
+      for(let j=0;j<2;j++){
+        const gap=rows[i][j+1]-rows[i][j],delta=slopes[j+1][i]-slopes[j][i];
+        if(i<rows.length-1&&delta<0)factor=Math.min(factor,3*gap/((xs[i+1]-xs[i])*-delta));
+        if(i>0&&delta>0)factor=Math.min(factor,3*gap/((xs[i]-xs[i-1])*delta));
+      }
+      for(let j=0;j<3;j++)slopes[j][i]*=Math.max(0,factor);
+    }
+    return slopes;
+  }
+  function thresholds(config,metric,followers){
+    if(!benchmarkMetrics.includes(metric)||typeof followers!=='number'||!Number.isFinite(followers)||followers<0)return null;
+    if(config.interpolation==='log-smoothstep-v1')return legacyThresholds(config,metric,followers);
+    const rows=config[metric],xs=config.followers.map(Math.log),m=orderedSlopes(xs,rows),x=Math.log(Math.max(1,followers));
+    return[0,1,2].map(j=>hermite(xs,rows.map(row=>row[j]),m[j],x));
+  }
+  const axisKnots=benchmarkFollowers.map(Math.log),axisTicks=[0,0.24,0.60,0.80,1],axisSlopes=pchipSlopes(axisKnots,axisTicks);
+  function axisPosition(followers){
+    if(typeof followers!=='number'||!Number.isFinite(followers)||followers<0)return null;
+    return hermite(axisKnots,axisTicks,axisSlopes,Math.log(Math.max(1,followers)));
+  }
+  const upgrade=config=>({...validateBenchmarks(config),interpolation:CURRENT_INTERPOLATION});
+  const same=(a,b)=>JSON.stringify(validateBenchmarks(a))===JSON.stringify(validateBenchmarks(b));
+  const axisDefaults=Object.freeze({engagement:50,reach:300,growth:10});
+  function fitY(rows){const value=Math.max(...rows.flat())*1.1,power=10**Math.floor(Math.log10(Math.max(value,0.01))),ratio=value/power;return Math.min(1000000,(ratio<=1?1:ratio<=2?2:ratio<=5?5:10)*power);}
   function editBenchmark(config,metric,index,level,value,linked){
     const out=validateBenchmarks(config);
     if(!benchmarkMetrics.includes(metric)||!Number.isInteger(index)||index<0||index>4||!Number.isInteger(level)||level<0||level>2||!Number.isFinite(value))fail('VALUE','$edit');
@@ -118,6 +163,6 @@
     }
     return validateBenchmarks(out);
   }
-  const benchmarks=Object.freeze({defaults:benchmarkDefaults,validateConfig:validateBenchmarks,thresholds,edit:editBenchmark,toDocument:benchmarksToDocument,fromDocument:benchmarksFromDocument,metrics:Object.freeze(benchmarkMetrics)});
+  const benchmarks=Object.freeze({defaults:benchmarkDefaults,validateConfig:validateBenchmarks,thresholds,axisPosition,axisDefaults,fitY,upgrade,same,CURRENT_INTERPOLATION,edit:editBenchmark,toDocument:benchmarksToDocument,fromDocument:benchmarksFromDocument,metrics:Object.freeze(benchmarkMetrics)});
   return Object.freeze({HARD_MAX_LEVELS,DEFAULT_MAX_LEVELS,ScoreLevelsError,DEFAULT_CONFIG,defaults,validateConfig,classify,benchmarks});
 });

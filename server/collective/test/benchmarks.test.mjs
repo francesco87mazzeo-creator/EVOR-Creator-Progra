@@ -13,7 +13,7 @@ for(const metric of B.metrics){
    const f=c.followers[i]*Math.pow(c.followers[i+1]/c.followers[i],k/100),r=B.thresholds(c,metric,f);
    assert.ok(r[0]<r[1]&&r[1]<r[2]);r.forEach((v,j)=>assert.ok(v>=Math.min(c[metric][i][j],c[metric][i+1][j])-1e-9&&v<=Math.max(c[metric][i][j],c[metric][i+1][j])+1e-9));
   }
-  c.followers.slice(1,-1).forEach(f=>B.thresholds(c,metric,f-1e-4).forEach((v,j)=>assert.ok(Math.abs(v-B.thresholds(c,metric,f+1e-4)[j])<1e-6)));
+  c.followers.slice(1,-1).forEach(f=>B.thresholds(c,metric,f-1e-4).forEach((v,j)=>assert.ok(Math.abs(v-B.thresholds(c,metric,f+1e-4)[j])<1e-7*Math.max(1,Math.abs(v)))));
  });
  test(`${metric}: linked editing preserves gaps and only chosen band; single editing isolated`,()=>{
   const c=B.defaults(),r=B.edit(c,metric,2,0,c[metric][2][0]+.5,true);
@@ -53,4 +53,37 @@ test('Firestore storage uses named maps, never nested arrays; strict round-trip 
  assert.deepEqual(B.fromDocument(JSON.parse(JSON.stringify(stored))),c);
  assert.throws(()=>B.fromDocument(c));assert.throws(()=>B.fromDocument({...stored,storageFormat:'unknown'}));
  const bad=structuredClone(stored);bad.reach[0].hidden=1;assert.throws(()=>B.fromDocument(bad));
+});
+
+test('v2 cubics retain nonzero, continuous tangents at ordinary interior nodes',()=>{
+ const c=B.defaults(),eps=1e-6;
+ for(const metric of B.metrics)for(const f of c.followers.slice(1,-1)){
+  const a=B.thresholds(c,metric,f*Math.exp(-eps)),b=B.thresholds(c,metric,f),d=B.thresholds(c,metric,f*Math.exp(eps));
+  b.forEach((v,j)=>{const left=(v-a[j])/eps,right=(d[j]-v)/eps;assert.ok(Math.abs(left-right)<1e-3*Math.max(1,Math.abs(left)));assert.ok(Math.abs(left)>1e-4,'not a forced flat node');});
+ }
+});
+test('ordered cubic controls prevent overshoot/crossings for asymmetric and nonmonotonic edits',()=>{
+ let seed=773;const rand=()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296);
+ for(let n=0;n<100;n++){
+  const c=B.defaults();c.engagement=Array.from({length:5},()=>{const a=rand()*100,b=a+.0001+rand()*100;return[a,b,b+.0001+rand()*100];});
+  B.validateConfig(c);
+  for(let i=0;i<4;i++)for(let k=0;k<=80;k++){
+   const f=c.followers[i]*Math.pow(c.followers[i+1]/c.followers[i],k/80),row=B.thresholds(c,'engagement',f);
+   assert.ok(row[0]<row[1]&&row[1]<row[2]);row.forEach((v,j)=>assert.ok(v>=Math.min(c.engagement[i][j],c.engagement[i+1][j])-1e-9&&v<=Math.max(c.engagement[i][j],c.engagement[i+1][j])+1e-9));
+  }
+ }
+});
+test('legacy interpolation and persisted custom values remain readable; upgrade is explicit and immutable',()=>{
+ const legacy={...B.edit(B.defaults(),'reach',2,0,41,true),interpolation:'log-smoothstep-v1'},snapshot=JSON.stringify(legacy);
+ const stored=B.toDocument(legacy);assert.deepEqual(B.fromDocument(stored),legacy);
+ const f=10000,t=Math.log(f/5000)/Math.log(20000/5000),w=t*t*(3-2*t);
+ assert.deepEqual(B.thresholds(legacy,'reach',f),legacy.reach[1].map((v,j)=>v+(legacy.reach[2][j]-v)*w));
+ const upgraded=B.upgrade(legacy);assert.equal(upgraded.interpolation,B.CURRENT_INTERPOLATION);assert.deepEqual(upgraded.reach,legacy.reach);assert.equal(JSON.stringify(legacy),snapshot);
+ assert.equal(B.same(upgraded,B.fromDocument(B.toDocument(upgraded))),true);assert.equal(B.same(upgraded,legacy),false);
+});
+test('display axis preserves exact follower references and brings 20K nearer to 100K',()=>{
+ [1000,5000,20000,100000,500000].forEach((f,i)=>assert.equal(B.axisPosition(f),[0,.24,.60,.80,1][i]));
+ let previous=-1;for(let i=0;i<=2000;i++){const f=1000*Math.pow(500,i/2000),x=B.axisPosition(f);assert.ok(x>=previous);previous=x;}
+ assert.ok(B.axisPosition(100000)-B.axisPosition(20000)<Math.log(100000/20000)/Math.log(500));assert.equal(B.axisPosition(null),null);
+ assert.equal(B.fitY([[100,200,900]]),1000);assert.ok(B.fitY([[0,.0001,.0002]])>0);
 });
