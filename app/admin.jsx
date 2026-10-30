@@ -269,7 +269,7 @@ const exportCSV = (rows, cfg) => {
     const vals = EVAL_CRITERIA.map(c=>ev[c.k]).filter(v=>typeof v==="number" && v>0);
     const avg = vals.length ? (vals.reduce((x,y)=>x+y,0)/vals.length).toFixed(2) : "";
     return [
-      fmtDate(a.date), a.updatedAt?fmtDateTime(a.updatedAt):"", statusMeta(a.status).l,
+      fmtDate(a.date), a.updatedAt?fmtDateTime(a.updatedAt):"", adminStatusMeta(a.status).l,
       a.fullName, a.age, a.email, a.city, a.country||"", categoriesOf(a).map(catLabel).join(" | "), a.otherProfileCategory||"",
       a.instagram, csvNum(s.followers), a.tiktok||"", a.tiktokFollowers||"",
       csvNum(s.views), csvNum(s.accountsReached), csvNum(s.interactions), csvNum(s.netFollowers),
@@ -315,6 +315,17 @@ const DATE_FILTERS = [
 ];
 const PER_PAGE = 10;
 
+// Quattro stati selezionabili: gli altri restano leggibili nelle candidature storiche.
+const PRIMARY_STATUS_KEYS = new Set(["new","review","approved","rejected"]);
+const PRIMARY_STATUSES = STATUSES.filter(status=>PRIMARY_STATUS_KEYS.has(status.v));
+const adminStatusKey = value => String(value??"").trim().toLowerCase() || "new";
+const adminStatusMeta = value => {
+  const key=adminStatusKey(value);
+  return STATUSES.find(status=>status.v===key) || {
+    v:key,l:"Stato non riconosciuto: "+String(value).trim(),c:"#8E8F96"
+  };
+};
+
 function ApplicationsPanel({role, scoring, scoreLevels}){
   const [apps,setApps]       = useState([]);
   const [sel,setSel]         = useState(null);
@@ -342,8 +353,8 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
   },[]);
   useEffect(()=>{ load(); },[load]);
 
-  // Metriche ricalcolate a runtime con i benchmark correnti
-  const enriched = useMemo(()=> apps.map(a=>({ ...a, _s:computeScore(a,scoring), _status:normStatus(a.status) })), [apps,scoring]);
+  // Scoring V2 ricalcolato a runtime; nessuna scrittura sugli stati storici.
+  const enriched = useMemo(()=> apps.map(a=>({ ...a, _s:computeScore(a,scoring), _status:adminStatusKey(a.status) })), [apps,scoring]);
 
   const overdue = useMemo(()=> enriched.filter(a=> a._status==="new" && daysSince(a.date)>7), [enriched]);
 
@@ -401,7 +412,8 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
   useEffect(()=>{ setPage(1); },[q,fStatus,fCat,fBand,fBase,fDate,fPlace,fCollab,fNotes,sort]);
 
   const counts = useMemo(()=>{
-    const c={ total:enriched.length, new:0, review:0, shortlist:0, watchlist:0, approved:0, rejected:0 };
+    // Totali comprende anche shortlist, watchlist, more_info, archived e stati sconosciuti.
+    const c={ total:enriched.length, new:0, review:0, approved:0, rejected:0 };
     enriched.forEach(a=>{ if(c[a._status]!==undefined) c[a._status]++; });
     return c;
   },[enriched]);
@@ -474,13 +486,13 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
               ["all","Totali",counts.total,"var(--t1)"],
               ["new","Nuove",counts.new,"#B22222"],
               ["review","In valutazione",counts.review,"#C0A060"],
-              ["shortlist","Shortlist",counts.shortlist,"#3A7BD5"],
-              ["watchlist","Da monitorare",counts.watchlist,"#7A6AD5"],
               ["approved","Approvate",counts.approved,"#27AE60"],
               ["rejected","Rifiutate",counts.rejected,"#8A2A2A"]
             ].map(([v,l,n,c])=>(
               <button key={v} className={"stat"+(fStatus===v?" stat-on":"")}
                 style={{flex:"1 1 100px",minWidth:96}}
+                aria-pressed={fStatus===v}
+                title={v==="all"?"Comprende anche le candidature con stati storici":undefined}
                 onClick={()=>setFStatus(v)}>
                 <div className="stat-n" style={{color:c}}>{n}</div>
                 <div className="stat-l">{l}</div>
@@ -511,16 +523,17 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
             <button className="btn btn-ghost btn-sm" onClick={()=>setOpenFilters(o=>!o)}>
               Filtri{activeFilters?" ("+activeFilters+")":""}
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={()=>exportCSV(sorted,scoring)}>Esporta CSV</button>
+            <details className="admin-actions-menu">
+              <summary className="btn btn-ghost btn-sm">Altro</summary>
+              <div className="admin-actions-dropdown">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={()=>exportCSV(sorted,scoring)}>Esporta CSV</button>
+              </div>
+            </details>
           </div>
 
           {openFilters && (
             <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:14}}>
               <div className="g3-gap">
-                <Field label="Stato"><select value={fStatus} onChange={e=>setFStatus(e.target.value)}>
-                  <option value="all">Tutti</option>
-                  {STATUSES.map(s=><option key={s.v} value={s.v}>{s.l}</option>)}
-                </select></Field>
                 <Field label="Categoria"><select value={fCat} onChange={e=>setFCat(e.target.value)}>
                   <option value="all">Tutte</option>
                   {CATEGORIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
@@ -566,7 +579,7 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
         )}
 
         {slice.map(a=>{
-          const s=a._s, st=statusMeta(a._status), late = a._status==="new" && daysSince(a.date)>7;
+          const s=a._s, st=adminStatusMeta(a.status), late = a._status==="new" && daysSince(a.date)>7;
           return (
             <button key={a.id} className="row" style={{borderLeftColor:s.lowBase?"var(--warn)":"var(--brd)"}} onClick={()=>setSel(a)}>
               <div style={{padding:"13px 14px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -878,7 +891,7 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
   const cfg = scoring || DEFAULT_SCORING;
   const wTot = cfg.weights.engagement + cfg.weights.visibility;
   const share = k => Math.round(cfg.weights[k] / wTot * 100);
-  const st = statusMeta(app.status);
+  const st = adminStatusMeta(app.status);
   const [notes,setNotes]   = useState(app.notes||"");
   const [code,setCode]     = useState(app.creatorCode||"");
   const [evalv,setEvalv]   = useState(app.evaluation||{});
@@ -1138,10 +1151,16 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
         <Section title="Gestione interna">
           <div className="panel" style={{padding:16}}>
             <div className="label-xs" style={{marginBottom:10}}>Stato candidatura</div>
-            <div className="chips" style={{marginBottom:20}}>
-              {STATUSES.map(x=>(
-                <button key={x.v} className={"chip"+(normStatus(app.status)===x.v?" chip-on":"")}
-                  style={ normStatus(app.status)===x.v ? {background:x.c,borderColor:x.c} : null }
+            {!PRIMARY_STATUS_KEYS.has(adminStatusKey(app.status)) && (
+              <p className="body-sm" role="status" style={{marginBottom:12}}>
+                Stato storico attuale: <strong>{st.l}</strong>. Rimane invariato finché non selezioni uno dei quattro stati.
+              </p>
+            )}
+            <div className="chips" role="group" aria-label="Seleziona stato candidatura" style={{marginBottom:20}}>
+              {PRIMARY_STATUSES.map(x=>(
+                <button key={x.v} className={"chip"+(adminStatusKey(app.status)===x.v?" chip-on":"")}
+                  aria-pressed={adminStatusKey(app.status)===x.v}
+                  style={adminStatusKey(app.status)===x.v ? {background:x.c,borderColor:x.c} : null}
                   disabled={busy==="status"}
                   onClick={()=>saveStatus(x.v)}>{x.l}</button>
               ))}
