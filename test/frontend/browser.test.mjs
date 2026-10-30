@@ -46,7 +46,7 @@ const firebaseStub=`(function(){
  async signOut(){session.signOuts++;auth.currentUser=null;notify();}};
  // Like the production Rules: reads without a signed-in staff user are denied.
  const read=async()=>{if(!auth.currentUser)throw Object.assign(Error('Missing or insufficient permissions.'),{code:'permission-denied'});counters.reads++;return{exists:false,docs:Array.isArray(candidate)?candidate.map((item,index)=>({id:"synthetic-id-"+index,data:()=>item})):candidate?[{id:"synthetic-id",data:()=>candidate}]:[]};};
- const write=patch=>{counters.writes++;if(allowWrites){counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
+ const write=patch=>{counters.writes++;if(allowWrites){(window.testWrites??=[]).push(patch);counters.lastWrite=patch;return Promise.resolve();}throw Error('Unexpected Firestore write');};
  const db={collection(collection){return{doc(id){return{get:async(options)=>{if(collection==="settings"&&id==="instagramBenchmarks"){await read();(window.testBenchmarkReads??=[]).push(options?.source||"default");if(window.testBenchmarkReadMode==="fail")throw Error("Synthetic post-write read failure");if(window.testBenchmarkReadMode==="missing")return{exists:false};if(__BENCHMARKS_READ_ERROR__)throw Error('Synthetic benchmark read error');const value=localStorage.getItem('syntheticBenchmarks');return{exists:value!==null,data:()=>{const result=JSON.parse(value);if(window.testBenchmarkReadMode==="mismatch"&&result)result.engagement[0].medium+=0.125;return result;}};}if(collection==="settings"&&id==="scoreLevels"){await read();if(__LEVELS_READ_ERROR__)throw Error("Synthetic levels read error");const value=localStorage.getItem("syntheticScoreLevels");return{exists:value!==null,data:()=>JSON.parse(value)};}return read();},set:write,update:write,delete:write};},orderBy(){return{get:read};}};}};
  window.firebase={initializeApp(config){if(config.projectId!=="evora-athletes")throw Error("Production Firebase blocked by test harness");window.testFirebaseConfig=config;},firestore:()=>db,auth:Object.assign(()=>auth,{Auth:{Persistence:{LOCAL:'local'}}})};
 })();`;
@@ -56,12 +56,13 @@ after(async()=>browser?.close());
 // ocr: ({kind,index,route,cors,synthetic}) può rispondere al posto del Worker simulato (errore, ritardo, nessuna risposta);
 // se restituisce undefined vale la risposta sintetica. applicationResponses: risposte in sequenza per /applications.
 async function openConfigSection(page,label){const summary=page.getByText(label,{exact:true});if(!await summary.evaluate(el=>el.parentElement.open))await summary.click();}
-async function pageFor(t,{admin=false,applicationResponse,applicationResponses,applicationHandler=null,scoringResponse,benchmarksResponse,benchmarksReadError=false,benchmarksSeed=null,levelsResponse,levelsSeed=null,levelsReadError=false,staffRole="admin",legacyStaffAssets=false,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false}={}) {
+async function pageFor(t,{admin=false,applicationResponse,applicationResponses,applicationHandler=null,scoringResponse,benchmarksResponse,benchmarksReadError=false,benchmarksSeed=null,levelsResponse,levelsSeed=null,levelsReadError=false,staffRole="admin",legacyStaffAssets=false,candidate=null,allowWrites=false,configuration=workerConfig,bootFailure=false,signedIn=true,expectBlocked=false,moduleOverrides={},expectErrors=false,ocr=null,clock=false,setup=null}={}) {
  const context=await browser.newContext({serviceWorkers:'block'});t.after(()=>context.close());
  const page=await context.newPage();t.after(()=>page.close());
  const calls=[],errors=[],blocked=[],served=[],ocrIndex={};let applications=0;
  page.on('pageerror',e=>errors.push(e.message));
  if(clock)await page.clock.install();
+ if(setup)await page.addInitScript(setup);
  if(signedIn)await page.addInitScript(()=>localStorage.setItem('evora_login_at',String(Date.now())));
  await context.route('**/*',async route=>{
   const req=route.request(),url=req.url();
@@ -249,7 +250,7 @@ test('Score levels: add, validate, persist, reload and delete; both graphs share
  await page.reload();
  await page.locator('button.row').filter({hasText:'Synthetic Levels'}).click();
  const social=page.getByRole('img',{name:/Social Score:.*Selezione test/});await social.waitFor();
- assert.equal(await social.locator('[data-score-level="good"]').evaluate(el=>el.style.backgroundColor),'rgb(18, 52, 86)');
+ assert.equal(await social.locator('.candidate-ring-fill').getAttribute('stroke'),'#123456');
  await page.getByRole('img',{name:/Coinvolgimento:.*Metrica test/}).waitFor();
  assert.match(await social.getAttribute('aria-label'),new RegExp(numeric.socialScore.toFixed(2)));
  await page.getByText('Punteggio registrato all\'invio con il modello precedente:',{exact:false}).waitFor();
@@ -1112,7 +1113,7 @@ test('Historical application: v2 score shown, the previous stored score is label
  const {page}=await pageFor(t,{admin:true,candidate});
  await page.locator('button.row').filter({hasText:'Synthetic Historic'}).click();
  await page.getByText(`Punteggio registrato all'invio con il modello precedente: ${candidate.socialScore}/100.`,{exact:false}).waitFor();
- await page.getByText('Interazioni / account raggiunti · non incide sul punteggio',{exact:true}).waitFor();
+ await page.locator('[data-indicator-b]').getByText('Non contribuisce allo Score V2. Non è un punteggio su 100.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
 });
 
@@ -1302,4 +1303,60 @@ test('Benchmark extreme values persist with stable Y and identical table/graph a
  await page.getByRole('button',{name:'Candidature',exact:true}).click();await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await input.waitFor();assert.equal(await input.inputValue(),'900');assert.equal(await svg.getAttribute('data-axis-max'),'2000');assert.deepEqual(await svg.locator('path[fill="none"]').evaluateAll(els=>els.map(el=>el.getAttribute('d'))),curve);
  await page.reload();await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await input.waitFor();assert.equal(await input.inputValue(),'900');assert.equal(await svg.getAttribute('data-axis-max'),'2000');assert.deepEqual(await svg.locator('path[fill="none"]').evaluateAll(els=>els.map(el=>el.getAttribute('d'))),curve);
  const row=page.locator('.benchmark-table tbody tr').nth(2);assert.ok((await row.innerText()).includes('900%'));assert.equal(calls.length,1);
+});
+
+async function openCandidateDetail(page,name){await page.locator('button.row').filter({hasText:name}).click();await page.locator('.candidate-quant-grid').waitFor();}
+async function ringProbe(page,value){await page.evaluate(value=>{
+ if(!window.scoreProbe){const el=document.createElement('div');el.id='score-probe';el.className='candidate-detail';el.style.cssText='position:absolute;top:12000px;left:30px;width:150px;height:150px';document.body.append(el);window.scoreProbe=ReactDOM.createRoot(el);}
+ ReactDOM.flushSync(()=>window.scoreProbe.render(React.createElement(CandidateScoreRing,{value,levels:CollectiveScoreLevels.defaults().social,label:'Animation probe'})));
+},value);return page.locator('#score-probe .candidate-score-ring');}
+
+test('Candidate score rings animate once on first visibility, retain completion and update without replay',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Animation'},{now:NOW});const {page}=await pageFor(t,{admin:true,candidate,clock:true});await openCandidateDetail(page,'Synthetic Animation');
+ const ring=await ringProbe(page,72);await page.clock.runFor(200);assert.equal(await ring.getAttribute('data-animation-state'),'waiting');assert.match(await ring.getAttribute('aria-label'),/72.00 su 100/);
+ await ring.scrollIntoViewIfNeeded();await page.clock.runFor(150);assert.equal(await ring.getAttribute('data-animation-state'),'running');const first=Number(await ring.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset'));assert.ok(first<100&&first>28);
+ await page.clock.runFor(1400);assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(Number(await ring.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset')),28);
+ await page.evaluate(()=>{window.probeRestarts=0;window.probeObserver=new MutationObserver(records=>{for(const r of records)if(r.attributeName==='data-animation-state'&&r.target.getAttribute(r.attributeName)==='running')window.probeRestarts++;});window.probeObserver.observe(document.querySelector('#score-probe'),{attributes:true,subtree:true});});
+ await page.evaluate(()=>scrollTo(0,0));await page.clock.runFor(100);await ring.scrollIntoViewIfNeeded();await page.clock.runFor(200);assert.equal(await ring.getAttribute('data-animation-state'),'complete');
+ await ringProbe(page,23);assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(Number(await ring.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset')),77);assert.match(await ring.getAttribute('aria-label'),/23.00/);
+ await ringProbe(page,null);assert.equal(await ring.getAttribute('data-animation-state'),'unavailable');assert.equal(await ring.locator('.candidate-ring-fill').count(),0);
+ await ringProbe(page,46);assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(await page.evaluate(()=>window.probeRestarts),0);assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+test('Candidate score changes during animation finish immediately; reduced motion and missing observer skip animation',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Updates'},{now:NOW});const {page}=await pageFor(t,{admin:true,candidate,clock:true});await openCandidateDetail(page,'Synthetic Updates');
+ const ring=await ringProbe(page,80);await ring.scrollIntoViewIfNeeded();await page.clock.runFor(180);assert.equal(await ring.getAttribute('data-animation-state'),'running');
+ await ringProbe(page,18);assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(Number(await ring.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset')),82);
+ await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>{window.scoreProbe.unmount();document.getElementById('score-probe').remove();window.scoreProbe=null;});const reduced=await ringProbe(page,67);assert.equal(await reduced.getAttribute('data-animation-state'),'complete');assert.equal(Number(await reduced.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset')),33);
+ await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>{window.scoreProbe.unmount();document.getElementById('score-probe').remove();window.scoreProbe=null;delete window.IntersectionObserver;});const fallback=await ringProbe(page,55);assert.equal(await fallback.getAttribute('data-animation-state'),'complete');
+});
+
+test('Candidate detail shows configured colors and raw B above 100%, responsive layout and intact management',{timeout:60000},async t=>{
+ const levels=scoreLevels.defaults();levels.social.forEach(l=>l.color='#A658F0');levels.metrics.forEach(l=>l.color='#28D8BD');
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Detail',views:24800,interactions:3000,accountsReached:100,threeWords:'Risposta originale tre parole',motivation:'Risposta originale motivazione',contentUrl1:'https://example.test/demo-content'},{now:NOW});candidate.notes='Nota esistente';candidate.creatorCode='DEMO';
+ const {page,calls}=await pageFor(t,{admin:true,candidate,levelsSeed:levels,allowWrites:true});await page.emulateMedia({reducedMotion:'reduce'});await openCandidateDetail(page,'Synthetic Detail');const expected=computeScore(candidate,null);
+ const social=page.locator('[data-score-label="Social Score"]');assert.equal(await social.getAttribute('data-score-value'),String(expected.socialScore));assert.equal(await social.locator('.candidate-ring-fill').getAttribute('stroke'),'#A658F0');
+ for(const [label,key] of [['Coinvolgimento','engagementScore'],['Visibilità','visibilityScore']]){const ring=page.locator(`[data-score-label="${label}"]`);assert.equal(await ring.getAttribute('data-score-value'),String(expected[key]));assert.equal(await ring.locator('.candidate-ring-fill').getAttribute('stroke'),'#28D8BD');}
+ const b=page.locator('[data-indicator-b]');assert.ok((await b.innerText()).includes((3000).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'));assert.equal(await b.locator('[data-score-value],.candidate-ring-fill').count(),0);assert.ok((await b.innerText()).includes('Non contribuisce allo Score V2'));
+ await page.getByText('Risposta originale tre parole',{exact:true}).waitFor();await page.getByText('Risposta originale motivazione',{exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:/example.test\/demo-content/}).getAttribute('href'),candidate.contentUrl1);
+ await page.setViewportSize({width:1440,height:1000});const layout=await page.locator('.candidate-quant-grid').evaluate(el=>{const [left,right]=el.children;return{left:left.getBoundingClientRect().x,right:right.getBoundingClientRect().x};});assert.ok(layout.right>layout.left);
+ if(process.env.EVORA_SCREENSHOT_DIR){const height=await page.locator('.candidate-quant-grid').evaluate(el=>Math.ceil(el.getBoundingClientRect().bottom+scrollY+30));await page.screenshot({path:process.env.EVORA_SCREENSHOT_DIR+'/admin-block3-desktop.png',fullPage:true,clip:{x:0,y:0,width:1440,height}});}
+ for(const width of [768,390,320]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);assert.equal(await page.locator('.candidate-quant-grid').evaluate(el=>Math.abs(el.children[0].getBoundingClientRect().x-el.children[1].getBoundingClientRect().x)<1),true);}
+ await page.setViewportSize({width:390,height:844});if(process.env.EVORA_SCREENSHOT_DIR){const height=await page.locator('.candidate-quant-grid').evaluate(el=>Math.ceil(el.getBoundingClientRect().bottom+scrollY+30));await page.screenshot({path:process.env.EVORA_SCREENSHOT_DIR+'/admin-block3-mobile.png',fullPage:true,clip:{x:0,y:0,width:390,height}});}
+ const notes=page.getByPlaceholder('Osservazioni, contatti effettuati, decisioni…',{exact:true});await notes.fill('Nota aggiornata');await page.getByRole('button',{name:'Salva note',exact:true}).click();await page.getByText('Note salvate',{exact:true}).waitFor();
+ const code=page.getByPlaceholder('ES. MARIO10',{exact:true});await code.fill('test10');await page.getByRole('button',{name:'Salva',exact:true}).click();await page.getByText('Codice salvato',{exact:true}).waitFor();
+ await page.getByRole('button',{name:/3 su 5/}).first().click();await page.getByRole('button',{name:'Salva valutazione',exact:true}).click();await page.getByText('Valutazione salvata',{exact:true}).waitFor();
+ const writes=await page.evaluate(()=>window.testWrites);assert.equal(writes[0].notes,'Nota aggiornata');assert.equal(writes[1].creatorCode,'TEST10');assert.ok(writes[2].evaluation);assert.equal(writes.some(w=>'socialScore'in w||'threeWords'in w||'motivation'in w),false);
+ assert.equal(calls.length,0);await page.getByText('Risposta originale motivazione',{exact:true}).waitFor();
+});
+
+test('Candidate rings distinguish invalid/missing values from zero and respect manager permissions',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Zero Metrics',interactions:0,accountsReached:100},{now:NOW});const {page,calls}=await pageFor(t,{admin:true,candidate,staffRole:'manager'});await page.emulateMedia({reducedMotion:'reduce'});await openCandidateDetail(page,'Synthetic Zero Metrics');
+ const ring=page.locator('[data-score-label="Coinvolgimento"]');assert.equal(await ring.getAttribute('data-score-value'),'0');assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.match(await ring.getAttribute('aria-label'),/0.00 su 100/);assert.equal(Number(await ring.locator('.candidate-ring-fill').getAttribute('stroke-dashoffset')),100);
+ assert.ok((await page.locator('[data-indicator-b]').innerText()).includes('0,00%'));assert.equal(await page.getByRole('button',{name:'Elimina candidatura',exact:true}).count(),0);
+ const probe=await ringProbe(page,null);
+ for(const key of ['null','undefined','NaN','Infinity','negative','tooHigh','string']){
+  await page.evaluate(key=>{const values={null:null,undefined:undefined,NaN:NaN,Infinity:Infinity,negative:-1,tooHigh:101,string:'50'};ReactDOM.flushSync(()=>window.scoreProbe.render(React.createElement(CandidateScoreRing,{value:values[key],levels:CollectiveScoreLevels.defaults().social,label:'Animation probe'})));},key);
+  assert.equal(await probe.getAttribute('data-animation-state'),'unavailable');assert.equal(await probe.locator('.candidate-ring-fill').count(),0);assert.equal(await probe.locator('.candidate-ring-center strong').innerText(),'—');
+ }
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);assert.equal(calls.length,0);
 });
