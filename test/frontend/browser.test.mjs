@@ -441,7 +441,7 @@ test('Admin Block 2: compact rows use saved per-metric curves and preserve V2 nu
  const row=page.locator('button.row').filter({hasText:'Synthetic Compact Row'});
  await row.waitFor();
  await row.locator('[data-metric="engagement"][data-level="scarso"]').waitFor();
- assert.equal(await page.locator('.candidate-list-head').innerText(),'Candidato\nStato\nFollower\nENG\nRE\nGR\nScore V2\nData');
+ assert.deepEqual(await page.locator('.candidate-list-head span').allTextContents(),['Candidato','Stato','Follower','ENG','RE','GR','Score V2','Data']);
  assert.equal(await row.locator('img,a').count(),0,'no profile picture or nested Instagram link in a clickable row');
  assert.equal(await row.locator('[data-metric="followers"]').innerText(),'5K');
  assert.equal(await row.locator('[data-metric="engagement"]').innerText(),'40,00%');
