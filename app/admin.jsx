@@ -1492,6 +1492,40 @@ function BenchmarkPanel({onAuthRequired}){
   </section>;
 }
 
+/* Configurazione Scoring: anteprima locale, mai collegata a candidature. */
+function ScoringWorkspace({scoring,scoreLevels,children}){
+  const [example,setExample]=useState({followers:'',views:'',interactions:'',accountsReached:'',netFollowers:''});
+  const data=Object.fromEntries(Object.entries(example).map(([key,value])=>[key,value.trim()===''||!Number.isSafeInteger(Number(value))||(key!=='netFollowers'&&Number(value)<0)?null:Number(value)]));
+  const result=computeWithConfig(data,scoring);
+  const growth=data.followers!==null&&data.netFollowers!==null&&data.followers-data.netFollowers>0?data.netFollowers/(data.followers-data.netFollowers)*100:null;
+  const reach=data.accountsReached!==null&&data.followers>0?data.accountsReached/data.followers*100:null;
+  const pct=value=>value===null?'Non disponibile':value.toLocaleString('it-IT',{maximumFractionDigits:2})+'%';
+  const grade=CollectiveScoreLevels.classify(result.socialScore,scoreLevels?.social);
+  return <div className="scoring-workspace">
+    <style>{SCORING_WORKSPACE_STYLES}</style><style>{CANDIDATE_DETAIL_STYLE}</style>
+    <header className="scoring-page-heading"><span className="label-xs">Configurazione Admin</span><h1>Configurazione Scoring</h1><p>Benchmark, parametri e classificazioni. Ogni editor mantiene il proprio salvataggio.</p></header>
+    <section className="scoring-preview" aria-label="Anteprima dimostrativa scoring">
+      <h2>Anteprima dimostrativa · dati locali</h2><p>Inserisci valori di esempio: non vengono salvati e non rappresentano candidature reali. Il calcolo usa i parametri salvati, non le modifiche ancora in bozza.</p>
+      <div className="scoring-example-fields">{[['followers','Follower'],['views','Visualizzazioni'],['interactions','Interazioni'],['accountsReached','Account raggiunti'],['netFollowers','Follower netti']].map(([key,label])=><label key={key}>{label}<input aria-label={'Esempio: '+label} type="number" step="1" min={key==='netFollowers'?undefined:'0'} value={example[key]} onChange={e=>setExample(p=>({...p,[key]:e.target.value}))}/></label>)}</div>
+      <div className="scoring-preview-grid"><div className="scoring-preview-stack">
+        <article className="scoring-preview-metric"><CandidateScoreRing value={result.engagementScore} levels={scoreLevels?.metrics} label="Engagement dimostrativo"/><div><h3>Engagement · Coinvolgimento</h3><strong>{pct(result.engagementRate)}</strong><p>Interazioni / visualizzazioni. Peso relativo: {pct(scoring.weights.engagement/(scoring.weights.engagement+scoring.weights.visibility)*100)}.</p></div></article>
+        <article className="scoring-preview-metric"><CandidateScoreRing value={result.visibilityScore} levels={scoreLevels?.metrics} label="Visibilità dimostrativa"/><div><h3>Visibilità e Reach</h3><strong>{data.views===null?'Visualizzazioni non disponibili':data.views.toLocaleString('it-IT')+' visualizzazioni'}</strong><p>Lo Score V2 usa il volume di visualizzazioni. Peso relativo: {pct(scoring.weights.visibility/(scoring.weights.engagement+scoring.weights.visibility)*100)}.</p><p>Reach / follower: {pct(reach)} · informativo, escluso dal punteggio.</p></div></article>
+        <article className="scoring-preview-metric"><div className="candidate-rate-ring" aria-hidden="true"><strong>G</strong><span>INFORMATIVO</span></div><div><h3>Growth · Crescita</h3><strong>{pct(growth)}</strong><p>Follower netti / follower iniziali, se riferiti allo stesso periodo. Non contribuisce allo Score V2; nessuna classificazione o score su 100.</p></div></article>
+      </div><article className="scoring-preview-final"><h2>Score V2</h2><CandidateScoreRing value={result.socialScore} levels={scoreLevels?.social} label="Score V2 dimostrativo" large/><strong style={{color:grade?.color||'var(--t3)'}}>{grade?.label||'Classificazione non disponibile'}</strong><p>Media pesata di coinvolgimento e visibilità, con i parametri salvati.</p>{!result.available&&<p role="status">Inserisci visualizzazioni maggiori di zero e interazioni valide per calcolare il punteggio.</p>}{result.lowBase&&<p>Base di osservazione ridotta: avviso informativo, senza penalizzazione.</p>}</article></div>
+    </section>{children}
+  </div>;
+}
+const SCORING_WORKSPACE_STYLES=`
+.scoring-workspace{width:100%;min-width:0;max-width:1240px;margin:0 auto;padding:28px 20px 70px;background:radial-gradient(ellipse at top right,rgba(169,25,38,.09),transparent 48%)}
+.scoring-page-heading{margin-bottom:24px}.scoring-page-heading h1{font-size:30px;margin:8px 0}.scoring-workspace p{line-height:1.65;color:var(--t3)}
+.scoring-preview,.scoring-workspace>details{border:1px solid var(--brd);border-radius:18px;background:linear-gradient(140deg,#17191e,#101114);padding:24px;margin-bottom:20px}
+.scoring-preview h2{font-size:20px;margin-bottom:8px}.scoring-example-fields{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:20px 0}.scoring-example-fields label{font-size:12px;color:var(--t2)}.scoring-example-fields input{margin-top:7px}
+.scoring-preview-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px}.scoring-preview-stack{display:grid;gap:12px}.scoring-preview-metric,.scoring-preview-final{min-width:0;border:1px solid var(--brd);border-radius:16px;padding:20px;background:#13161b}.scoring-preview-metric{display:flex;align-items:center;gap:20px}.scoring-preview-metric h3{font-size:15px;margin-bottom:8px}.scoring-preview-metric strong{font-size:20px}.scoring-preview-metric p,.scoring-preview-final p{font-size:12px;margin-top:8px}.scoring-preview-final{text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center}.scoring-preview-final>strong{font-size:20px}
+.scoring-workspace .panel,.scoring-workspace .benchmark-card{border-radius:16px}.scoring-workspace input,.scoring-workspace select,.scoring-workspace .btn{border-radius:8px}.scoring-workspace summary{cursor:pointer;font-size:16px;font-weight:600;padding:4px 0}.scoring-workspace>details>.wrap-panel,.scoring-workspace>details>div>.wrap-panel{padding:24px 0!important;max-width:none!important}.scoring-workspace>.benchmark-page{max-width:none}.scoring-workspace input{max-width:100%;min-width:0}.scoring-workspace .g2-gap{min-width:0}
+@media(max-width:860px){.scoring-preview-grid{grid-template-columns:1fr}.scoring-example-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.scoring-workspace{padding:18px 12px 60px}.scoring-preview,.scoring-workspace>details{padding:16px}.scoring-preview-metric{padding:14px;gap:12px}.scoring-preview-metric strong{font-size:17px}.scoring-page-heading h1{font-size:25px}}
+`;
+
 const SCORING_FIELDS = [
   {g:"weights",    k:"engagement",     l:"Coinvolgimento",            hint:"Interazioni / visualizzazioni", step:"1",   int:false},
   {g:"weights",    k:"visibility",     l:"Visibilità",                hint:"Volume delle visualizzazioni",  step:"1",   int:false},
@@ -1830,7 +1864,7 @@ function AdminPanel({onBack, onTestForm}){
 
       {levelsState.status==="error"&&<p role="alert">Classificazioni non disponibili: errore nella lettura dei livelli. I punteggi numerici restano disponibili.</p>}
       {tab==="apps"     && <ApplicationsPanel role={role} scoring={scoring} scoreLevels={levelsState.config}/>}
-      {tab==="scoring" && isAdmin && <><BenchmarkPanel onAuthRequired={requireLogin}/><details className="wrap-panel"><summary>Formule attuali e parametri numerici (invariati)</summary><ScoringPanel scoring={scoring} onSaved={setScoring} onAuthRequired={requireLogin}/></details><details className="wrap-panel"><summary>Livelli numerici e colori</summary><ScoreLevelsPanel state={levelsState} onSaved={config=>setLevelsState({status:"ready",config})} onRetry={()=>setLevelsReload(n=>n+1)} onAuthRequired={requireLogin}/></details></>}
+      {tab==="scoring" && isAdmin && <ScoringWorkspace scoring={scoring} scoreLevels={levelsState.config}><BenchmarkPanel onAuthRequired={requireLogin}/><details className="wrap-panel"><summary>Formule attuali e parametri numerici (invariati)</summary><ScoringPanel scoring={scoring} onSaved={setScoring} onAuthRequired={requireLogin}/></details><details className="wrap-panel"><summary>Livelli numerici e colori</summary><ScoreLevelsPanel state={levelsState} onSaved={config=>setLevelsState({status:"ready",config})} onRetry={()=>setLevelsReload(n=>n+1)} onAuthRequired={requireLogin}/></details></ScoringWorkspace>}
       {tab==="levels"&&isAdmin&&<ScoreLevelsPanel state={levelsState} onSaved={config=>setLevelsState({status:"ready",config})}
         onRetry={()=>setLevelsReload(n=>n+1)} onAuthRequired={requireLogin}/>}
       {tab==="settings" && isAdmin && <SettingsPanel/>}
