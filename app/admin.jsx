@@ -932,6 +932,84 @@ function ScoreBands({value,levels,label}){
   </div>;
 }
 
+/* candidate-display:start — pure presentation; never computes or persists scoring */
+const candidateScoreValue = value => typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=100 ? value : null;
+const candidateScoreText = value => candidateScoreValue(value)===null ? '—' : value.toLocaleString('it-IT',{maximumFractionDigits:2});
+/* candidate-display:end */
+
+function CandidateScoreRing({value,levels,label,large=false}){
+  const target=candidateScoreValue(value),classification=CollectiveScoreLevels.classify(target,levels);
+  const element=React.useRef(null),animation=React.useRef({started:false,done:false,frame:0}),previous=React.useRef(value);
+  const [progress,setProgress]=useState(0),[phase,setPhase]=useState('waiting');
+  const valid=target!==null;
+  useEffect(()=>{
+    const state=animation.current;
+    if(!Object.is(previous.current,value)&&(state.started||candidateScoreValue(value)===0)){cancelAnimationFrame(state.frame);state.observer?.disconnect();state.done=true;setProgress(1);setPhase('complete');}
+    previous.current=value;
+  },[value]);
+  useEffect(()=>{
+    const state=animation.current;
+    if(!valid)return;
+    const media=window.matchMedia('(prefers-reduced-motion: reduce)');let observer;
+    const finish=()=>{cancelAnimationFrame(state.frame);observer?.disconnect();state.done=true;setProgress(1);setPhase('complete');};
+    if(state.done||target===0||media.matches||typeof IntersectionObserver==='undefined'){finish();return;}
+    const start=()=>{
+      if(state.started||state.done)return;state.started=true;observer?.disconnect();setPhase('running');const began=performance.now();
+      const tick=now=>{if(state.done)return;const fraction=Math.min(1,(now-began)/1200);setProgress(1-Math.pow(1-fraction,3));if(fraction<1)state.frame=requestAnimationFrame(tick);else finish();};
+      state.frame=requestAnimationFrame(tick);
+    };
+    observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))start();},{threshold:0.15});state.observer=observer;observer.observe(element.current);
+    const reduce=event=>{if(event.matches)finish();};media.addEventListener?.('change',reduce);
+    return()=>{observer?.disconnect();cancelAnimationFrame(state.frame);media.removeEventListener?.('change',reduce);};
+  },[valid]);
+  const shown=valid?target*(animation.current.done?1:progress):null;
+  const color=classification?.color||'var(--t4)';
+  return <div ref={element} className={'candidate-score-ring'+(large?' candidate-score-ring-large':'')} role="img"
+    aria-label={`${label}: ${valid?target.toFixed(2)+' su 100'+(classification?', '+classification.label:'; classificazione non disponibile'):'punteggio non disponibile'}`}
+    data-score-label={label} data-score-value={target??''} data-animation-state={valid?phase:'unavailable'} style={{'--ring-color':color}}>
+    <svg viewBox="0 0 120 120" aria-hidden="true"><circle className="candidate-ring-track" cx="60" cy="60" r="49"/>
+      {valid&&<circle className="candidate-ring-fill" cx="60" cy="60" r="49" pathLength="100" strokeDasharray="100" strokeDashoffset={100-shown} stroke={color}/>}
+    </svg>
+    <div className="candidate-ring-center" aria-hidden="true"><strong>{candidateScoreText(shown)}</strong><span>{valid?'/ 100':'N/D'}</span></div>
+  </div>;
+}
+
+function CandidateMetricCard({label,score,levels,observed,description,weight}){
+  const grade=CollectiveScoreLevels.classify(score,levels);
+  return <article className="candidate-metric-card">
+    <CandidateScoreRing value={score} levels={levels} label={label}/>
+    <div className="candidate-metric-copy"><div className="candidate-metric-heading"><h3>{label}</h3><span className="candidate-weight">Peso {weight}%</span></div>
+      <strong className="candidate-observed">{observed}</strong><p>{description}</p>
+      <span className="candidate-grade" style={{color:grade?.color||'var(--t3)'}}>{candidateScoreValue(score)===null?'Punteggio non disponibile':grade?.label||'Classificazione non disponibile'}</span>
+    </div>
+  </article>;
+}
+
+const CANDIDATE_DETAIL_STYLE=`
+.candidate-detail{width:100%;min-width:0;flex:1;background:radial-gradient(ellipse at 90% 0,rgba(169,25,38,.10),transparent 45%)}
+.candidate-detail .candidate-detail-inner{max-width:1160px;padding:24px 20px 80px}
+.candidate-detail .candidate-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;padding:24px;border:1px solid var(--brd);border-radius:18px;background:linear-gradient(140deg,#17191e,#101114);margin-bottom:26px}
+.candidate-detail .candidate-header h1{font-size:clamp(24px,3vw,36px);letter-spacing:-.025em;overflow-wrap:anywhere}
+.candidate-detail .candidate-header .body-sm{overflow-wrap:anywhere}.candidate-header-summary{display:grid;gap:5px;color:var(--t3);font-size:12px}.candidate-header-summary strong{font-size:18px;color:var(--t1)}
+.candidate-detail .candidate-quant-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;align-items:stretch;margin:10px 0 18px}
+.candidate-metric-stack{display:grid;gap:12px;min-width:0}
+.candidate-detail .candidate-metric-card,.candidate-detail .candidate-final-card{border:1px solid #30343d;border-radius:18px;background:linear-gradient(140deg,#181b21,#111318);padding:20px;min-width:0}
+.candidate-detail .candidate-metric-card{display:flex;align-items:center;gap:20px}.candidate-metric-copy{min-width:0;flex:1}.candidate-metric-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.candidate-detail .candidate-metric-heading h3{margin:0;color:var(--t1);font-size:15px;font-weight:600}
+.candidate-weight{font-size:11px;white-space:nowrap;color:var(--t3);padding:4px 8px;border:1px solid var(--brd);border-radius:100px}
+.candidate-detail .candidate-observed{display:block;color:var(--t1);font-size:21px;margin:7px 0 3px;overflow-wrap:anywhere}.candidate-detail .candidate-metric-copy p{font-size:12px;color:var(--t3);line-height:1.55;margin:0 0 6px}.candidate-grade{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.candidate-score-ring{width:100px;height:100px;position:relative;flex-shrink:0;isolation:isolate}
+.candidate-score-ring::before{content:'';position:absolute;inset:12%;border-radius:50%;background:var(--ring-color);filter:blur(17px);opacity:.13;z-index:-1}
+.candidate-score-ring svg{width:100%;height:100%;overflow:visible;transform:rotate(-90deg)}.candidate-ring-track{fill:#101216;stroke:#282d36;stroke-width:4}.candidate-ring-fill{fill:none;stroke-width:4;stroke-linecap:round;filter:drop-shadow(0 0 3px var(--ring-color))}
+.candidate-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}.candidate-ring-center strong{color:var(--t1);font-family:var(--fh);font-size:25px;line-height:1;font-variant-numeric:tabular-nums}.candidate-ring-center span{font-size:10px;color:var(--t3);letter-spacing:.08em}
+.candidate-score-ring-large{width:244px;height:244px;max-width:100%;margin:22px auto}.candidate-score-ring-large .candidate-ring-center strong{font-size:58px}.candidate-score-ring-large .candidate-ring-center span{font-size:13px}.candidate-score-ring-large::before{filter:blur(30px);opacity:.18}
+.candidate-final-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px}.candidate-final-card h3{margin:0;font-size:20px;color:var(--t1)}.candidate-final-card>p{font-size:13px;line-height:1.65;color:var(--t3);max-width:290px;margin:6px auto}.candidate-final-card .candidate-grade{font-size:17px}
+.candidate-rate-ring{width:100px;height:100px;flex-shrink:0;border:2px solid #454b57;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,#20242c,#121419);color:var(--t2)}.candidate-rate-ring strong{font-size:29px;font-family:var(--fh)}.candidate-rate-ring span{font-size:9px;letter-spacing:.1em}
+.candidate-detail .panel,.candidate-detail .detail-block,.candidate-detail .kv{border-radius:12px}.candidate-detail .detail-block{padding:20px;margin-bottom:12px}.candidate-detail .detail-q{line-height:1.6}.candidate-detail .detail-a{font-size:14px;line-height:1.85}.candidate-detail input,.candidate-detail textarea,.candidate-detail .btn{border-radius:8px}.candidate-detail .status-box{border-radius:10px}.candidate-detail .rate-row{gap:12px;flex-wrap:wrap}
+@media(max-width:860px){.candidate-detail .candidate-quant-grid{grid-template-columns:minmax(0,1fr)}.candidate-final-card{padding:24px!important}.candidate-score-ring-large{width:210px;height:210px}}
+@media(max-width:480px){.candidate-detail .candidate-detail-inner{padding:16px 12px 64px}.candidate-detail .candidate-header{padding:18px;gap:16px}.candidate-detail .candidate-metric-card{padding:15px;gap:13px}.candidate-score-ring,.candidate-rate-ring{width:80px;height:80px}.candidate-score-ring .candidate-ring-center strong{font-size:21px}.candidate-score-ring-large{width:200px;height:200px}.candidate-score-ring-large .candidate-ring-center strong{font-size:48px}.candidate-detail .candidate-observed{font-size:19px}.candidate-detail .rate-btns{flex-wrap:wrap}}
+@media(prefers-reduced-motion:reduce){.candidate-detail *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+`;
+
 function ScorePart({label, value, sub, score, levels}){
   return (
     <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:15,minWidth:0}}>
@@ -973,12 +1051,13 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
   const links = [app.contentUrl1,app.contentUrl2,app.contentUrl3].filter(Boolean);
 
   return (
-    <div style={{flex:1,overflow:"auto"}}>
-      <div className="wrap-panel" style={{padding:"18px 16px 80px",maxWidth:940}}>
+    <div className="candidate-detail" style={{overflow:"auto"}}>
+      <style>{CANDIDATE_DETAIL_STYLE}</style>
+      <div className="wrap-panel candidate-detail-inner">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{marginBottom:18}}>← Elenco candidature</button>
 
         {/* HEADER */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:14,flexWrap:"wrap",marginBottom:20}}>
+        <div className="candidate-header">
           <div style={{minWidth:0,flex:"1 1 260px"}}>
             <h1 className="h-md" style={{marginBottom:6}}>{app.fullName||"—"}</h1>
             <div className="body-sm" style={{marginBottom:10}}>
@@ -989,15 +1068,12 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
               {s.lowBase && <Badge color="#E67E22">Base ridotta</Badge>}
             </div>
           </div>
-          <div style={{textAlign:"center"}}>
-            <ScoreRing value={s.socialScore} color={CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.color||SCORE_COLOR} size={76} label="SCORE"/>
-            <div className="label-xs" style={{marginTop:6,maxWidth:110,lineHeight:1.3}}>Punteggio quantitativo</div>
-          </div>
+          <div className="candidate-header-summary"><span>Punteggio quantitativo</span><strong>Scoring V2</strong><span>Ultimi 30 giorni · decisione finale del team</span></div>
         </div>
 
         {/* PUNTEGGIO QUANTITATIVO */}
         <Section title={<span>Punteggio quantitativo · scoring v2 (configurazione {s.scoringVersion})</span>}>
-          <ScoreBands value={s.socialScore} levels={scoreLevels?.social} label="Social Score"/>
+
           {!s.available && (
             <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:10}}>
               <div className="dot" style={{background:"var(--warn)",marginTop:6}}/>
@@ -1008,15 +1084,30 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
               </div>
             </div>
           )}
-          <div className="g3-keep" style={{marginBottom:10}}>
-            <ScorePart label={"Coinvolgimento · "+share("engagement")+"%"} value={fmtPct(s.engagementRate)}
-              score={s.engagementScore} levels={scoreLevels?.metrics}
-              sub={<>Interazioni / visualizzazioni{s.engagementScore!==null && <> · {Math.round(s.engagementScore)}/100</>}</>}/>
-            <ScorePart label={"Visibilità · "+share("visibility")+"%"} value={fmtMaybe(s.views)}
-              score={s.visibilityScore} levels={scoreLevels?.metrics}
-              sub={<>Visualizzazioni in 30 giorni{s.visibilityScore!==null && <> · {Math.round(s.visibilityScore)}/100</>}</>}/>
-            <ScorePart label="Indicatore B" value={fmtPct(s.reachEngagementRate)}
-              sub={s.reachEngagementRate===null ? "Interazioni / account raggiunti · non disponibile" : "Interazioni / account raggiunti · non incide sul punteggio"}/>
+          <div className="candidate-quant-grid">
+            <div className="candidate-metric-stack">
+              <CandidateMetricCard label="Coinvolgimento" score={s.engagementScore} levels={scoreLevels?.metrics} weight={share("engagement")}
+                observed={fmtPct(s.engagementRate)} description="Interazioni / visualizzazioni · tasso effettivo"/>
+              <CandidateMetricCard label="Visibilità" score={s.visibilityScore} levels={scoreLevels?.metrics} weight={share("visibility")}
+                observed={fmtMaybe(s.views)} description="Visualizzazioni degli ultimi 30 giorni"/>
+              <article className="candidate-metric-card" data-indicator-b>
+                <div className="candidate-rate-ring" aria-hidden="true"><strong>B</strong><span>RAPPORTO</span></div>
+                <div className="candidate-metric-copy"><div className="candidate-metric-heading"><h3>Indicatore B</h3><span className="candidate-weight">Fuori dallo score</span></div>
+                  <strong className="candidate-observed">{fmtPct(s.reachEngagementRate)}</strong>
+                  <p>Interazioni / account raggiunti{s.reachEngagementRate===null?' · non disponibile':''}</p>
+                  <p>Non contribuisce allo Score V2. Non è un punteggio su 100.</p>
+                </div>
+              </article>
+            </div>
+            <article className="candidate-final-card">
+              <h3>Score V2</h3>
+              <CandidateScoreRing value={s.socialScore} levels={scoreLevels?.social} label="Social Score" large/>
+              <span className="candidate-grade" style={{color:CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.color||'var(--t3)'}}>
+                {s.available?(CollectiveScoreLevels.classify(s.socialScore,scoreLevels?.social)?.label||'Classificazione non disponibile'):'Punteggio non disponibile'}
+              </span>
+              <p>Coinvolgimento {share("engagement")}% · Visibilità {share("visibility")}%. Componenti normalizzate secondo la configurazione attuale.</p>
+              <p>Valutazione quantitativa; selezione finale affidata al team.</p>
+            </article>
           </div>
           {s.lowBase && (
             <div className="status-box" role="status" style={{borderColor:"rgba(230,126,34,.45)",marginBottom:10}}>
