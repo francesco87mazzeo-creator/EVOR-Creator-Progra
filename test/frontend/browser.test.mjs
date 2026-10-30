@@ -393,7 +393,7 @@ test('Admin Block 1: exactly five clickable counters, historical statuses remain
  await stats.filter({hasText:'Totali'}).click();
  assert.equal(await page.locator('button.row').count(),9,'Totali includes all historical statuses');
  await page.getByRole('button',{name:/Filtri/}).click();
- assert.equal(await page.getByText('Stato',{exact:true}).count(),0,'state selector duplicates the counters');
+ assert.equal(await page.locator('.g3-gap').getByText('Stato',{exact:true}).count(),0,'advanced filters contain no duplicate status selector');
  assert.equal(await page.getByRole('combobox').count()>0,true,'other filters and sort remain');
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
 });
@@ -429,6 +429,87 @@ test('Admin Block 1: CSV is available only in the secondary menu and still expor
  assert.ok(download.suggestedFilename().startsWith('evora_collective_'));
  assert.ok(download.suggestedFilename().endsWith('.csv'));
  assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'export remains read-only');
+});
+
+test('Admin Block 2: compact rows use saved per-metric curves and preserve V2 numeric scoring',{timeout:60000},async t=>{
+ const data={...await publicFixture(),fullName:'Synthetic Compact Row',followers:5000,views:15000,accountsReached:5000,interactions:2000,netFollowers:25,instagram:'synthetic_compact'};
+ const candidate=prepareApplication(data,{now:NOW});
+ const custom=scoreLevels.benchmarks.defaults();
+ custom.engagement[1]=[50,60,70]; // 40% ENG becomes Scarso ONLY through the saved config.
+ const seed=scoreLevels.benchmarks.toDocument(custom);
+ const {page}=await pageFor(t,{admin:true,candidate,benchmarksSeed:seed});
+ const row=page.locator('button.row').filter({hasText:'Synthetic Compact Row'});
+ await row.waitFor();
+ await row.locator('[data-metric="engagement"][data-level="scarso"]').waitFor();
+ assert.deepEqual(await page.locator('.candidate-list-head span').allTextContents(),['Candidato','Stato','Follower','ENG','RE','GR','Score V2','Data']);
+ assert.equal(await row.locator('img,a').count(),0,'no profile picture or nested Instagram link in a clickable row');
+ assert.equal(await row.locator('[data-metric="followers"]').innerText(),'5K');
+ assert.equal(await row.locator('[data-metric="engagement"]').innerText(),'40,00%');
+ assert.equal(await row.locator('[data-metric="reach"]').innerText(),'100,00%');
+ assert.equal(await row.locator('[data-metric="growth"]').innerText(),'0,50%');
+ assert.equal(await row.locator('[data-metric="engagement"]').getAttribute('data-level'),'scarso');
+ assert.equal(await row.locator('[data-metric="reach"]').getAttribute('data-level'),'buono');
+ assert.equal(await row.locator('[data-metric="growth"]').getAttribute('data-level'),'medio');
+ const colors=await row.locator('.candidate-metric .candidate-value').evaluateAll(els=>els.map(el=>getComputedStyle(el).color));
+ assert.deepEqual(colors,['rgb(255, 80, 102)','rgb(52, 229, 138)','rgb(255, 183, 68)']);
+ const score=computeScore(candidate).socialScore;
+ assert.equal(await row.locator('[data-metric="socialScore"]').innerText(),score+'/100','numerical scoring V2 is not replaced by ENG/RE/GR');
+ assert.deepEqual(await page.evaluate(()=>window.testBenchmarkReads),['server']);
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+ await row.click();
+ await page.getByText('Punteggio quantitativo',{exact:true}).first().waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'opening the detail writes nothing');
+});
+
+test('Admin Block 2: missing and zero observations are not invented or colored',{timeout:60000},async t=>{
+ const base=prepareApplication({...await publicFixture(),fullName:'Synthetic Empty Metrics',followers:5000,views:12000,interactions:100},{now:NOW});
+ const missing={...base,accountsReached:null,netFollowers:null};
+ const zero={...base,fullName:'Synthetic Zero Metrics',accountsReached:5000,interactions:0,netFollowers:0};
+ const {page}=await pageFor(t,{admin:true,candidate:[missing,zero]});
+ const missingRow=page.locator('button.row').filter({hasText:'Synthetic Empty Metrics'});
+ await missingRow.waitFor();
+ for(const key of ['engagement','reach','growth']){
+   const cell=missingRow.locator('[data-metric="'+key+'"]');
+   assert.equal(await cell.innerText(),'—',key+' must remain unavailable');
+   assert.equal(await cell.getAttribute('data-level'),null,'missing '+key+' must have no classification');
+ }
+ const realZero=page.locator('button.row').filter({hasText:'Synthetic Zero Metrics'});
+ await realZero.locator('[data-metric="engagement"][data-level="scarso"]').waitFor();
+ assert.equal(await realZero.locator('[data-metric="engagement"]').innerText(),'0,00%');
+ assert.equal(await realZero.locator('[data-metric="reach"]').innerText(),'100,00%');
+ assert.equal(await realZero.locator('[data-metric="growth"]').innerText(),'0,00%');
+ assert.equal(await realZero.locator('[data-metric="growth"]').getAttribute('data-level'),'scarso');
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+test('Admin Block 2: failed benchmark read keeps real percentages neutral and retryable',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Neutral Metrics',followers:5000,accountsReached:5000,interactions:900,netFollowers:25},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate,benchmarksReadError:true});
+ const warning=page.getByRole('alert').filter({hasText:'Classificazioni ENG, RE e GR non disponibili'});
+ await warning.waitFor();
+ const row=page.locator('button.row').filter({hasText:'Synthetic Neutral Metrics'});
+ assert.equal(await row.locator('[data-metric="engagement"]').innerText(),'18,00%');
+ for(const key of ['engagement','reach','growth'])
+   assert.equal(await row.locator('[data-metric="'+key+'"]').getAttribute('data-level'),null,'no fallback colors when Firestore read fails');
+ await warning.getByRole('button',{name:'Riprova'}).click();
+ await warning.waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
+});
+
+test('Admin Block 2: mobile list remains inside viewport and keyboard opens the detail',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Responsive',followers:5000,accountsReached:5000,interactions:900,netFollowers:25},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.setViewportSize({width:390,height:844});
+ const row=page.locator('button.row').filter({hasText:'Synthetic Responsive'});
+ await row.waitFor();
+ assert.equal(await page.locator('.candidate-list-head').isVisible(),false);
+ const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
+ assert.equal(overflow,false,'mobile page must not require horizontal scrolling');
+ assert.equal(await row.locator('[data-metric]').count(),5,'four observed fields and numeric score');
+ await row.focus();
+ await page.keyboard.press('Enter');
+ await page.getByText('Punteggio quantitativo',{exact:true}).first().waitFor();
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0);
 });
 
 test('Management input limits accept boundary-length values without altering save behavior',{timeout:60000},async t=>{
@@ -998,7 +1079,7 @@ test('Admin shows the v2 score, indicator B and low observation base; a correcti
  const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Score',views:400,interactions:6,accountsReached:null},{now:NOW});
  const {page}=await pageFor(t,{admin:true,candidate,allowWrites:true});
  const row=page.locator('button.row').filter({hasText:'Synthetic Score'});
- await row.getByText('Base ridotta',{exact:false}).waitFor();
+ await row.locator('[data-metric="socialScore"][title*="Base di osservazione ridotta"]').waitFor();
  await row.click();
  await page.getByText('Punteggio quantitativo',{exact:true}).first().waitFor();
  await page.getByText('Interazioni / account raggiunti · non disponibile',{exact:true}).waitFor();
@@ -1204,7 +1285,7 @@ for(const mode of ['fail','missing','mismatch'])test(`Benchmark save read-back $
  const {page,calls}=await pageFor(t,{admin:true});await page.getByRole('button',{name:'Configurazione Scoring',exact:true}).click();await page.getByLabel('Valore benchmark',{exact:true}).fill('7');
  await page.evaluate(mode=>window.testBenchmarkReadMode=mode,mode);await page.getByRole('button',{name:'Salva benchmark',exact:true}).click();await page.locator('.benchmark-page [role="alert"]').waitFor();
  assert.equal(await page.getByText('Benchmark salvati e verificati sul server. Punteggi numerici invariati.',{exact:true}).count(),0);
- assert.equal(await page.getByLabel('Valore benchmark',{exact:true}).inputValue(),'7');assert.equal(calls.length,1);assert.deepEqual(await page.evaluate(()=>window.testBenchmarkReads),['server','server']);
+ assert.equal(await page.getByLabel('Valore benchmark',{exact:true}).inputValue(),'7');assert.equal(calls.length,1);assert.deepEqual(await page.evaluate(()=>window.testBenchmarkReads),['server','server','server']);
 });
 test('Benchmark extreme values persist with stable Y and identical table/graph after reopen and reload',{timeout:60000},async t=>{
  const legacy=scoreLevels.benchmarks.toDocument({...scoreLevels.benchmarks.defaults(),interpolation:'log-smoothstep-v1'});
