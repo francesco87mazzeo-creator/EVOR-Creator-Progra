@@ -1656,7 +1656,6 @@ function AdminPanel({onBack, onTestForm}){
         <div className="wrap-panel" style={{display:"flex",padding:0}}>
           <button className={"tab"+(tab==="apps"?" tab-on":"")} onClick={()=>setTab("apps")}>Candidature</button>
           {isAdmin && <button className={"tab"+(tab==="scoring"?" tab-on":"")} onClick={()=>setTab("scoring")}>Configurazione Scoring</button>}
-          {isAdmin && <button className={"tab"+(tab==="levels"?" tab-on":"")} onClick={()=>setTab("scoring")}>Livelli e colori</button>}
           {isAdmin && <button className={"tab"+(tab==="settings"?" tab-on":"")} onClick={()=>setTab("settings")}>Impostazioni</button>}
         </div>
       </div>
