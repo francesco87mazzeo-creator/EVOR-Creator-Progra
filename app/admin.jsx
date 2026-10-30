@@ -26,6 +26,11 @@ const FB = {
     const doc = await db.collection("settings").doc("scoreLevels").get();
     return doc.exists ? CollectiveScoreLevels.validateConfig(doc.data()) : null;
   },
+  // Lettura autorevole delle curve Instagram: nessuna scrittura e nessun fallback su errore.
+  async getBenchmarks(){
+    const doc = await db.collection("settings").doc("instagramBenchmarks").get({source:"server"});
+    return doc.exists ? CollectiveScoreLevels.benchmarks.fromDocument(doc.data()) : CollectiveScoreLevels.benchmarks.defaults();
+  },
   async saveScoreLevels(config){
     await CollectiveAdminScoring.saveScoreLevels({endpoint:WORKER_BASE+"/admin/score-levels",auth,config});
   }
@@ -326,6 +331,30 @@ const adminStatusMeta = value => {
   };
 };
 
+// Metriche osservate, indipendenti dallo Scoring V2 (65/35).
+// I campi assenti rimangono null; le percentuali non diventano sottopunteggi.
+const benchmarkRatesOf = score => {
+  const followers=score.followers, reached=score.accountsReached, net=score.netFollowers;
+  const startingFollowers=followers!==null&&net!==null ? followers-net : null;
+  return {
+    engagement:score.reachEngagementRate,
+    reach:reached!==null&&followers!==null&&followers>0 ? reached/followers*100 : null,
+    growth:startingFollowers!==null&&startingFollowers>0 ? net/startingFollowers*100 : null
+  };
+};
+const benchmarkGrade = (rate,metric,followers,config) => {
+  if(rate===null||!Number.isFinite(rate)||!config||followers===null||followers<=0)return null;
+  const limits=CollectiveScoreLevels.benchmarks.thresholds(config,metric,followers);
+  if(!limits||limits.some(n=>!Number.isFinite(n)))return null;
+  const index=rate<limits[0]?0:rate<limits[1]?1:rate<limits[2]?2:3;
+  return [
+    {id:"scarso",label:"Scarso"},
+    {id:"medio",label:"Medio"},
+    {id:"buono",label:"Buono"},
+    {id:"eccellente",label:"Eccellente"}
+  ][index];
+};
+
 function ApplicationsPanel({role, scoring, scoreLevels}){
   const [apps,setApps]       = useState([]);
   const [sel,setSel]         = useState(null);
@@ -343,6 +372,17 @@ function ApplicationsPanel({role, scoring, scoreLevels}){
   const [sort,setSort]       = useState("date");
   const [page,setPage]       = useState(1);
   const [openFilters,setOpenFilters] = useState(false);
+  const [benchmarkState,setBenchmarkState] = useState({status:"loading",config:null});
+  const [benchmarkRetry,setBenchmarkRetry] = useState(0);
+
+  useEffect(()=>{
+    let active=true;
+    setBenchmarkState({status:"loading",config:null});
+    FB.getBenchmarks()
+      .then(config=>{if(active)setBenchmarkState({status:"ready",config});})
+      .catch(()=>{if(active)setBenchmarkState({status:"error",config:null});});
+    return ()=>{active=false;};
+  },[benchmarkRetry]);
 
   const load = useCallback(()=>{
     setLoading(true);
