@@ -50,6 +50,12 @@ suo limite di 8 ore, finché il nuovo accesso non è verificato.
 `node --test worker/test/hub-sso.test.mjs test/hub/client.test.mjs` più le suite esistenti
 (Worker 204, frontend 234, browser 103, server 310, contratti 21, repository 11).
 
+## Rilascio (31 ottobre 2026)
+
+Collaudo reale superato: Francesco (Admin) e Federica (Manager) entrano dall'HUB senza secondo login.
+Worker `d708d22f-5822-4268-aa70-48ba00243aaf`, frontend `main` `877eff4`, HUB `18881ca0-8dc8-414e-a1e5-4c85a51a6ad2`.
+Riepilogo completo: `docs/hub-auth/26-hub-collective-release.md` nel repo `evora-social-analytics`.
+
 ## Backup e rollback
 
 - Backup dati in sola lettura: `tools/backup-firestore-readonly.py` in Cloud Shell (solo conteggi a schermo).
