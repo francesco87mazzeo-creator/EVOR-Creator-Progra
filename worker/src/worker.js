@@ -37,7 +37,7 @@ import { computeScore, validateScoringConfig } from "../../server/collective/sco
 import { createFirestoreClient, FirestoreError } from "./firestore.mjs";
 import { b64url, importPrivateKey } from "./google-auth.mjs";
 import { verifyFirebaseIdToken, IdTokenError } from "./firebase-id-token.mjs";
-import { authorizeHubToken, proxyHubSso } from "./hub-sso.mjs";
+import { HubError, exchangeHubCode, checkHubClaims, logoutHub, hubClaims, revokeFirebaseSessions } from "./hub-sso.mjs";
 import scoreLevels from "../../public/score-levels.js";
 
 /* ---------- Limiti ---------- */
@@ -51,6 +51,9 @@ const LIMITS = {
   adminPerIp: { max: 30, windowMs: 10 * 60 * 1000 },
   adminPerIsolate: { max: 120, windowMs: 60 * 60 * 1000 },
   adminSessionS: 8 * 3600,      // come SESSION_HOURS del pannello, ma imposto dal server
+  hubPerIp: { max: 120, windowMs: 10 * 60 * 1000 },     // stato HUB ogni 60 s per scheda aperta
+  hubPerIsolate: { max: 600, windowMs: 60 * 60 * 1000 },
+  hubBodyBytes: 2_000,
   ocrBodyBytes: 1_000_000,      // il frontend comprime a ≤ 700.000 caratteri di base64
   ocrImageChars: 700_000,
   ocrPromptChars: 8_000,
@@ -588,10 +591,8 @@ async function handleAdminScoring(request, env, levels = false) {
   // HUB tokens: persistent Firebase identity, checked by the private authority.
   // No 8-hour cap for HUB. The existing cap remains ONLY for emergency legacy login.
   if (claims.evoraHub === true) {
-    try {
-      const principal = await authorizeHubToken(env, m[1]);
-      if (principal.user.uid !== claims.sub || principal.user.role !== claims.role) return deny(403, "FORBIDDEN", "hub_identity");
-    } catch (e) { return deny(e.status === 401 || e.status === 403 ? e.status : 503, "HUB_ACCESS_DENIED", "hub"); }
+    try { await checkHubClaims(env, claims); }
+    catch (e) { return deny(e instanceof HubError && e.status === 403 ? 403 : 503, "HUB_ACCESS_DENIED", "hub"); }
   } else if (Math.floor(Date.now()/1000) - claims.auth_time > LIMITS.adminSessionS) {
     return deny(401, "AUTH_INVALID", "legacy_session");
   }
@@ -697,11 +698,67 @@ async function handleAuth(request, env, headers) {
   }
 }
 
+/* ---------- EVORΛ HUB SSO ---------- */
+/**
+ * exchange: one-time HUB code + PKCE verifier -> evora-athletes custom token for that individual UID.
+ * status/logout: Bearer evora-athletes ID token of a HUB identity, re-checked against the HUB.
+ * A denied HUB identity also loses its evora-athletes refresh tokens.
+ */
+async function handleHubSso(request, env, path) {
+  const g = await guard(env, request, {
+    binding: "ADMIN_LIMITER", scope: "hub", perIp: LIMITS.hubPerIp, perIsolate: LIMITS.hubPerIsolate, turnstile: false
+  });
+  if (g.response) return g.response;
+  const headers = g.headers;
+  const out = (status, data) => json(data, status, headers);
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return out(503, { ok: false, error: "HUB_NOT_CONFIGURED" });
+  let sa;
+  try { sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT); } catch (e) { return out(503, { ok: false, error: "HUB_NOT_CONFIGURED" }); }
+  const projectId = env.FIRESTORE_PROJECT_ID || sa.project_id;
+  const fromHub = e => {
+    const status = e instanceof HubError ? e.status : 503;
+    console.warn(JSON.stringify({ evt: "hub_sso_denied", path, code: e instanceof HubError ? e.code : "ERROR" }));
+    return out(status, { ok: false, error: status === 503 ? "HUB_UNAVAILABLE" : "HUB_ACCESS_DENIED" });
+  };
+
+  if (path === "/hub-sso/exchange") {
+    const parsed = await readJson(request, LIMITS.hubBodyBytes);
+    if (parsed.error || !hasExactKeys(parsed.value, ["code", "verifier"])) return out(400, { ok: false, error: "HUB_SSO_INVALID" });
+    let user;
+    try { user = await exchangeHubCode(env, parsed.value.code, parsed.value.verifier); } catch (e) { return fromHub(e); }
+    try {
+      const token = await mintCustomToken(sa, user.uid, hubClaims(user));
+      console.log(JSON.stringify({ evt: "hub_sso_exchange", uid: user.uid, role: user.role }));
+      return out(200, { ok: true, customToken: token, user: { uid: user.uid, role: user.role, displayName: user.displayName } });
+    } catch (e) { return out(503, { ok: false, error: "HUB_UNAVAILABLE" }); }
+  }
+
+  const m = /^Bearer ([A-Za-z0-9_.-]{1,4096})$/.exec(request.headers.get("Authorization") || "");
+  if (!m) return out(401, { ok: false, error: "AUTH_REQUIRED" });
+  let claims;
+  try { claims = await verifyFirebaseIdToken(m[1], { projectId }); }
+  catch (e) { return out(e instanceof IdTokenError && e.reason === "invalid" ? 401 : 503, { ok: false, error: "AUTH_INVALID" }); }
+  if (claims.evoraHub !== true) return out(403, { ok: false, error: "NOT_HUB" });
+
+  if (path === "/hub-sso/status") {
+    try {
+      const user = await checkHubClaims(env, claims);
+      return out(200, { ok: true, user: { uid: user.uid, role: user.role, displayName: user.displayName } });
+    } catch (e) {
+      if (e instanceof HubError && e.status === 403) await revokeFirebaseSessions(sa, projectId, claims.sub);
+      return fromHub(e);
+    }
+  }
+  // logout: global HUB revocation, then this person's evora-athletes sessions.
+  try { await logoutHub(env, claims); } catch (e) { if (!(e instanceof HubError && e.status === 403)) return fromHub(e); }
+  const firebaseRevoked = await revokeFirebaseSessions(sa, projectId, claims.sub);
+  return out(200, { ok: true, firebaseRevoked });
+}
+
 /* ---------- Handler ---------- */
 export default {
   async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname.replace(/\/+$/, "");
-    if (path.startsWith("/admin/hub-sso/")) return proxyHubSso(request, env);
     const isAuth = path === "/auth";
     const headers = isAuth ? legacyCors(env, request) : strictCors(env, request);
 
@@ -718,6 +775,7 @@ export default {
     if (path === "/admin/benchmarks") return handleAdminScoring(request, env, "benchmarks");
     if (path === "/admin/score-levels") return handleAdminScoring(request, env, true);
     if (path === "/notify") return handleNotify(request, env);
+    if (path === "/hub-sso/exchange" || path === "/hub-sso/status" || path === "/hub-sso/logout") return handleHubSso(request, env, path);
     if (path === "" || path === "/ocr") return handleOcr(request, env);
     return json({ ok: false, error: "Endpoint non trovato" }, 404, headers);
   }
