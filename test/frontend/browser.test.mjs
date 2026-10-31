@@ -26,6 +26,7 @@ const mockWorker='https://throbbing-feather-957f.francesco87-mazzeo.workers.dev'
 const mockOrigin='https://synthetic.collective.test';
 const client=await readFile(new URL('../../public/applications-client.js',import.meta.url),'utf8');
 const scoreLevelsModule=await readFile(new URL('../../public/score-levels.js',import.meta.url),'utf8');
+const hubSsoClient=await readFile(new URL('../../public/hub-sso-client.js',import.meta.url),'utf8');
 const adminScoringClient=await readFile(new URL('../../public/admin-scoring-client.js',import.meta.url),'utf8');
 const js={
  'https://unpkg.com/react@18.3.1/umd/react.production.min.js':await readFile(`${assets}/node_modules/react/umd/react.production.min.js`),
@@ -70,6 +71,7 @@ async function pageFor(t,{admin=false,applicationResponse,applicationResponses,a
   if(req.method()==='OPTIONS')return route.fulfill({status:204,headers:cors});
   if(url===mockOrigin+'/public/worker-config.js')return route.fulfill({contentType:'text/javascript',body:configuration});
   if(url===mockOrigin+'/public/applications-client.js')return route.fulfill({contentType:'text/javascript',body:client});
+  if(new URL(url).origin===mockOrigin&&new URL(url).pathname==='/public/hub-sso-client.js')return route.fulfill({contentType:'text/javascript',body:hubSsoClient});
   if(new URL(url).origin===mockOrigin&&new URL(url).pathname==='/public/admin-scoring-client.js')return route.fulfill({contentType:'text/javascript',body:legacyStaffAssets&&new URL(url).search===''?adminScoringClient.replace('saveScoring,saveScoreLevels,ScoringSaveError','saveScoring,ScoringSaveError'):adminScoringClient});
   if(url.startsWith(mockOrigin+'/')){
    const path=new URL(url).pathname,file=sitePath[path]||(path.startsWith('/app/')&&site[path.slice(1)]!==undefined?path.slice(1):null);

@@ -64,7 +64,9 @@ test('Every module registers itself on its last line; routers render only with a
   assert.equal(last,`CollectiveModules.add("${name}");`,name);
  }
  assert.match(modules['app/public-main.jsx'],/const REQUIRED_MODULES = \["app\/shared\.jsx","app\/public-form\.jsx"\];\nif \(REQUIRED_MODULES\.every\(m => CollectiveModules\.has\(m\)\)\) ReactDOM\.createRoot/);
- assert.match(modules['app/admin-main.jsx'],/const REQUIRED_MODULES = \["app\/shared\.jsx","app\/public-form\.jsx","app\/admin\.jsx"\];\nif \(REQUIRED_MODULES\.every\(m => CollectiveModules\.has\(m\)\)\) ReactDOM\.createRoot/);
+ assert.match(modules['app/admin-main.jsx'],/const REQUIRED_MODULES = \["app\/shared\.jsx","app\/public-form\.jsx","app\/admin\.jsx"\];/);
+ assert.match(modules['app/admin-main.jsx'],/if \(REQUIRED_MODULES\.every\(m => CollectiveModules\.has\(m\)\)\) HUB_READY\.then\(\(\)=>ReactDOM\.createRoot/);
+ assert.match(modules['app/admin-main.jsx'],/auth\.signOut\(\)\.then/,'missing HUB bootstrap cannot reuse a previous identity during SSO');
  for(const page of [publicPage,adminPage].filter(p=>p.includes('const environment =')))
   assert.ok(page.indexOf('const CollectiveModules = new Set();')<page.indexOf('const environment ='));
 });
@@ -87,7 +89,10 @@ test('The single-page rollback can always be generated from the current modules'
  assert.ok(staff.includes(`public/admin-scoring-client.js?v=${assetVersion('public/admin-scoring-client.js')}`));
  assert.ok(staff.includes(`public/score-levels.js?v=${assetVersion('public/score-levels.js')}`));
  for(const m of SINGLE_PAGE_MODULES)assert.ok(staff.includes(modules[m].trimEnd()));
- assert.ok(staff.includes(SINGLE_PAGE_ROUTER));assert.match(SINGLE_PAGE_ROUTER,/const onAdminPath = /);
+ assert.ok(staff.includes(SINGLE_PAGE_ROUTER.slice(0,SINGLE_PAGE_ROUTER.lastIndexOf('ReactDOM.createRoot'))),'routing unchanged; only final mount waits for HUB');
+ assert.match(staff,/CollectiveHub\.ready\.then\(\(\)=>ReactDOM\.createRoot/,'rollback admin must also wait for identity handoff');
+ assert.ok(staff.includes(`public/hub-sso-client.js?v=${assetVersion('public/hub-sso-client.js')}`));
+ assert.match(SINGLE_PAGE_ROUTER,/const onAdminPath = /);
 });
 
 test('No page of the rollback redirects: /#admin and /admin/ cannot bounce between versions',()=>{

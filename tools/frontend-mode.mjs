@@ -48,7 +48,7 @@ const firebaseConfig = environment.firebase;
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
-// La sessione non sopravvive alla chiusura della scheda.
+// Firebase LOCAL mantiene l’identità anche dopo la chiusura del browser.
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 </script>`;
 
@@ -106,6 +106,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);`;
 export function buildSinglePage({ admin = false } = {}) {
   const modules = SINGLE_PAGE_MODULES.map(m => read(m).trimEnd()).join('\n\n');
   const base = admin ? '../' : '';
+  const hubScript = admin ? `<script src="../public/hub-sso-client.js?v=${assetVersion('public/hub-sso-client.js')}"></script>` : '';
+  const router = admin ? SINGLE_PAGE_ROUTER.replace('ReactDOM.createRoot(document.getElementById("root")).render(<App/>);', 'CollectiveHub.ready.then(()=>ReactDOM.createRoot(document.getElementById("root")).render(<App/>)).catch(()=>{document.getElementById("root").textContent="Accesso HUB non completato.";});') : SINGLE_PAGE_ROUTER;
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
@@ -129,11 +131,12 @@ ${read('app/styles.css').trimEnd()}
 ${REGISTRY_SCRIPT}
 
 ${FIREBASE_BOOTSTRAP}
+${hubScript}
 
 <script type="text/babel">
 ${modules}
 
-${SINGLE_PAGE_ROUTER}
+${router}
 </script>
 </body>
 </html>

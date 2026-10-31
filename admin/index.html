@@ -38,13 +38,14 @@ const firebaseConfig = environment.firebase;
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
-// La sessione non sopravvive alla chiusura della scheda.
+// Firebase LOCAL mantiene l’identità anche dopo la chiusura del browser.
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 </script>
 
+<script src="../public/hub-sso-client.js?v=5e1ba70460ea8d58"></script>
 <script type="text/babel" src="../app/shared.jsx?v=10e53c7f4338ea32"></script>
 <script type="text/babel" src="../app/public-form.jsx?v=f34f0d0f7a6abaef"></script>
-<script type="text/babel" src="../app/admin.jsx?v=18e1ff35fee46274"></script>
-<script type="text/babel" src="../app/admin-main.jsx?v=6f11956aa84e3bd0"></script>
+<script type="text/babel" src="../app/admin.jsx?v=9c519c471ebf8da8"></script>
+<script type="text/babel" src="../app/admin-main.jsx?v=f90c9e9be2a81fd3"></script>
 </body>
 </html>

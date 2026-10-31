@@ -81,6 +81,14 @@ const AUTH = {
   async currentRole(){
     const u = auth.currentUser;
     if(!u) return null;
+    // HUB never uses the legacy local timer or cached role fallback.
+    try {
+      const t = await u.getIdTokenResult();
+      if (t.claims.evoraHub === true) {
+        const principal = await CollectiveHub.verify(u);
+        return principal.role;
+      }
+    } catch (e) { return null; }
     const started = parseInt(localStorage.getItem("evora_login_at")||"0",10);
     if(!started || Date.now()-started > SESSION_HOURS*3600*1000){
       await AUTH.logout();
@@ -98,6 +106,15 @@ const AUTH = {
   },
 
   async logout(){
+    if (typeof CollectiveHub !== "undefined" && CollectiveHub.isHub(auth.currentUser)) {
+      try { await CollectiveHub.logout(auth.currentUser); }
+      finally {
+        localStorage.removeItem("evora_login_at");
+        sessionStorage.removeItem("evora_last_role");
+        await auth.signOut();
+      }
+      return;
+    }
     localStorage.removeItem("evora_login_at");
     sessionStorage.removeItem("evora_last_role");
     try{ await auth.signOut(); }catch(e){}
@@ -1774,7 +1791,10 @@ function AdminPanel({onBack, onTestForm}){
   useEffect(()=>{
     let alive = true;
     const stop = auth.onAuthStateChanged(async ()=>{
+      setRole(null); setTab("apps");
+      const uid = auth.currentUser && auth.currentUser.uid;
       const r = await AUTH.currentRole();
+      if ((auth.currentUser && auth.currentUser.uid) !== uid) return;
       if(!alive) return;
       setRole(r); setReady(true);
     });

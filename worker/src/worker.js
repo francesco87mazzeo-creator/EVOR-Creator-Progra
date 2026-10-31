@@ -37,6 +37,7 @@ import { computeScore, validateScoringConfig } from "../../server/collective/sco
 import { createFirestoreClient, FirestoreError } from "./firestore.mjs";
 import { b64url, importPrivateKey } from "./google-auth.mjs";
 import { verifyFirebaseIdToken, IdTokenError } from "./firebase-id-token.mjs";
+import { authorizeHubToken, proxyHubSso } from "./hub-sso.mjs";
 import scoreLevels from "../../public/score-levels.js";
 
 /* ---------- Limiti ---------- */
@@ -578,12 +579,23 @@ async function handleAdminScoring(request, env, levels = false) {
   let claims;
   try {
     claims = await verifyFirebaseIdToken(m[1], {
-      projectId: env.FIRESTORE_PROJECT_ID || sa.project_id, maxAuthAgeS: LIMITS.adminSessionS
+      projectId: env.FIRESTORE_PROJECT_ID || sa.project_id
     });
   } catch (e) {
     if (e instanceof IdTokenError && e.reason === "invalid") return deny(401, "AUTH_INVALID", e.detail);
     return fail(503, { code: "SERVICE_UNAVAILABLE", path: "$" });
   }
+  // HUB tokens: persistent Firebase identity, checked by the private authority.
+  // No 8-hour cap for HUB. The existing cap remains ONLY for emergency legacy login.
+  if (claims.evoraHub === true) {
+    try {
+      const principal = await authorizeHubToken(env, m[1]);
+      if (principal.user.uid !== claims.sub || principal.user.role !== claims.role) return deny(403, "FORBIDDEN", "hub_identity");
+    } catch (e) { return deny(e.status === 401 || e.status === 403 ? e.status : 503, "HUB_ACCESS_DENIED", "hub"); }
+  } else if (Math.floor(Date.now()/1000) - claims.auth_time > LIMITS.adminSessionS) {
+    return deny(401, "AUTH_INVALID", "legacy_session");
+  }
+
   // Il ruolo arriva solo da /auth (token personalizzato firmato dal service account).
   const provider = claims.firebase && claims.firebase.sign_in_provider;
   if (claims.role !== "admin" || provider !== "custom") return deny(403, "FORBIDDEN", "ruolo");
@@ -689,6 +701,7 @@ async function handleAuth(request, env, headers) {
 export default {
   async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname.replace(/\/+$/, "");
+    if (path.startsWith("/admin/hub-sso/")) return proxyHubSso(request, env);
     const isAuth = path === "/auth";
     const headers = isAuth ? legacyCors(env, request) : strictCors(env, request);
 
