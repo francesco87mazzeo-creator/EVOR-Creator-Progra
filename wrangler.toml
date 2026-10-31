@@ -12,3 +12,10 @@ workers_dev = true
 [vars]
 ALLOWED_ORIGIN = "https://collective.evorafitness.it"
 FIRESTORE_PROJECT_ID = "evora-athletes"
+
+# EVORΛ HUB: private service binding only (no public endpoint). The HUB Worker answers
+# /internal/collective/{exchange,check,logout}; this Worker mints the evora-athletes token.
+[[services]]
+binding = "HUB_IDENTITY"
+service = "evora-hub-auth-test"
+entrypoint = "HubIdentityService"

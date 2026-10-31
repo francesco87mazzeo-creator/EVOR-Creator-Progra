@@ -1,53 +1,59 @@
-# Adattamento opzionale EVORΛ HUB — nessun rilascio eseguito
+# EVORΛ HUB → COLLECTIVE reale
 
-Ramo `implementation/hub-passkey-sso`, baseline COLLECTIVE `eb21bb6b81d2b99007dfc0a7fc6620741b7c2bde`.
-Controparte Social Analytics: ramo `implementation/hub-passkey-firebase`, report `docs/hub-auth/18-persistent-firebase-hub-first-block.md`.
+Ramo `implementation/hub-passkey-sso`, baseline `main` `eb21bb6b81d2b99007dfc0a7fc6620741b7c2bde`.
+Controparte HUB: `evora-social-analytics`, ramo `implementation/hub-passkey-firebase`.
+Decisione del founder (31 ottobre 2026): l'HUB attuale
+(`evora-hub-auth-test.francesco87-mazzeo.workers.dev`, stesse passkey) diventa l'autorità di accesso.
 
-## Modifiche
+## Perché non le route `/admin/hub-sso/*` sul dominio
 
-- `src/hub-sso.mjs`: proxy same-origin limitato a `/admin/hub-sso/{start,callback,complete,status,logout}` e verifica privata dell'identità HUB.
-- `src/worker.js`: conserva firma/provider/ruolo dei JWT e permessi amministrativi; per `evoraHub: true` verifica sempre account/versione/ruolo nel servizio privato. Nessun ripiego legacy se il servizio manca o nega l'accesso. Il vecchio login di emergenza mantiene il comportamento e limite temporale preesistente.
-- `../public/hub-sso-client.js`: Firebase LOCAL, scambio same-origin senza token nell'URL, signOut dell'identità precedente PRIMA del nuovo SSO, UID/ruolo verificati prima del montaggio. Controllo server al focus e ogni 60 secondi, senza timeout di inattività.
-- `../admin/index.html`, `../app/admin-main.jsx`, `../app/admin.jsx`: bootstrap amministrativo attende la verifica; cambio utente pulisce il precedente ruolo/pannello. Compatibilità vecchi asset e login legacy conservata. Generatore rollback `tools/frontend-mode.mjs` aggiornato per non perdere la guardia.
-- Nessuna modifica a modulo pubblico, candidature, configurazione Firebase, Rules, wrangler, Secrets o dati.
+`collective.evorafitness.it` è servito direttamente da GitHub Pages (DNS sugli IP GitHub, `Server: GitHub.com`):
+nessuna route Cloudflare è possibile senza cambiare il DNS. Inoltre l'HUB usa il progetto Firebase
+`evora-hub-auth-test`, mentre il gestionale usa `evora-athletes`: un custom token dell'HUB non vale qui.
 
-## Configurazione futura, solo previa autorizzazione
+## Flusso
 
-Sul Worker COLLECTIVE servono due Service Binding (nessun fallback a endpoint pubblico):
+1. HUB → «COLLECTIVE» apre `https://collective.evorafitness.it/admin/?hub=start`.
+2. `public/hub-sso-client.js` genera `state` e `verifier` PKCE, li tiene solo nel `sessionStorage` della scheda
+   e va su `HUB/authorize?client=collective-real&state&challenge`.
+3. L'HUB (utente con passkey/sessione persistente) crea un codice monouso di 60 s legato a utente,
+   versione e challenge, e torna a `https://collective.evorafitness.it/admin/#hub_code=…&hub_state=…`.
+   Il frammento non arriva mai a GitHub Pages, CDN o Referer; la pagina lo cancella subito.
+4. La pagina verifica `state` (stessa scheda, massimo 5 minuti) e invia `code`+`verifier` al Worker
+   `POST /hub-sso/exchange` (CORS solo `collective.evorafitness.it`, nessun cookie).
+5. Il Worker riscatta il codice tramite il service binding privato `HUB_IDENTITY`
+   (`/internal/collective/exchange`) e conia con il **proprio** service account un custom token
+   `evora-athletes` per l'UID personale HUB: claim `role` (admin/manager), `evoraHub: true`, `evoraVersion`.
+6. La pagina fa `signInWithCustomToken`: Rules e funzioni esistenti leggono `role` come oggi.
 
-```toml
-[[services]]
-binding = "HUB_IDENTITY"
-service = "NOME_WORKER_HUB_DA_APPROVARE"
-entrypoint = "HubIdentityService"
+Controlli continui: `POST /hub-sso/status` (al focus e ogni 60 s) e gli endpoint `/admin/*` verificano
+la firma `evora-athletes` e poi chiedono all'HUB se lo stesso UID/ruolo/versione è ancora attivo.
+Diniego esplicito → logout locale e invalidazione dei refresh token `evora-athletes` di quella persona.
+Errore di rete → nessuna estensione, nuovo controllo più tardi. `POST /hub-sso/logout` → revoca
+globale nell'HUB e invalidazione Firebase.
 
-[[services]]
-binding = "HUB_COLLECTIVE"
-service = "NOME_WORKER_HUB_DA_APPROVARE"
-entrypoint = "HubCollectiveService"
-```
+## Invariato
 
-Occorre instradare SOLO `https://collective.evorafitness.it/admin/hub-sso/*` al Worker COLLECTIVE: GET start/callback, POST complete/status/logout. Verificare DNS/proxy/hosting attuale prima di scegliere la route. Non cambiare routing del modulo pubblico né l'endpoint Worker esistente. Registrare in Firebase i due UID individuali Admin/Manager; niente UID legacy condivisi e nessuna modifica alle candidature. Configurazione/provisioning nel report HUB, non ancora eseguiti.
+Modulo pubblico, `/applications`, OCR, notifiche, candidature, impostazioni, scoring, Rules, Secrets.
+**Login con codice (`/auth`, UID `staff-admin`/`staff-manager`) resta la procedura di recupero**, con il
+suo limite di 8 ore, finché il nuovo accesso non è verificato.
 
-Il percorso metadati privati HUB `__evoraHub/registry` deve risultare negato ai client dalle Rules effettivamente pubblicate prima di usarlo. Non applicare B1, Rules sperimentali o correzioni Insights durante questo collegamento.
+## Limiti
 
-## Verifiche eseguite
+- Le Rules non verificano la revoca: un ID token già emesso può restare valido fino a circa 1 ora.
+- L'invalidazione Firebase richiede che il service account possa aggiornare gli account
+  (`accounts:update`); se non può, il logout HUB funziona comunque e la risposta riporta `firebaseRevoked: false`.
+- Al primo accesso Firebase crea in `evora-athletes` gli utenti con gli UID HUB personali.
 
-- 204 test Worker/nuove integrazioni: superati.
-- 567 test contratti/repository: superati, 2 esclusioni preesistenti.
-- 103 test browser COLLECTIVE: superati, modulo pubblico incluso; rete Firebase simulata nella suite esistente.
-- Nella controparte HUB: 435 test automatici e 13 browser superati; 1 duplicazione mobile esclusa. Auth Emulator reale e autenticatore WebAuthn virtuale; non Firebase o passkey fisiche di produzione.
+## Test
 
-Test nuove integrazioni:
+`node --test worker/test/hub-sso.test.mjs test/hub/client.test.mjs` più le suite esistenti
+(Worker 204, frontend 234, browser 103, server 310, contratti 21, repository 11).
 
-```sh
-node --test worker/test/hub-sso.test.mjs test/hub/client.test.mjs
-```
+## Backup e rollback
 
-Prima del rilascio provare entrambe le identità, cambio Admin→Manager sul medesimo browser, Manager negato a impostazioni e endpoint Admin, replay, errore binding, sessione persistente, revoca, login d'emergenza e form pubblico. Verificare dispositivi/HTTPS e quote reali. Non eseguiti emulatori Firestore né verifica delle Rules pubblicate.
-
-## Limiti e rollback
-
-La revoca è verificata live dal Worker e dalle API HUB. **Non è istantanea per richieste dirette Firestore con ID token già emesso**: può servire la scadenza tecnica (~1 ora); listener già aperti e dati scaricati hanno ulteriori limiti. Il polling client non sostituisce controlli server. F1 e problemi Insights restano backlog separato.
-
-Rollback: ripristinare bundle admin e Worker della baseline, preservare login legacy e candidature. Revocare le nuove identità tramite procedura autorizzata; ripristinare il codice da solo non revoca ID token già emessi. Nessuna cancellazione automatica dei dati o degli utenti.
+- Backup dati in sola lettura: `tools/backup-firestore-readonly.py` in Cloud Shell (solo conteggi a schermo).
+- Worker: versione attiva prima del rilascio `51156046-b575-4175-b28c-9ad6c15c3bb9` → `wrangler rollback`.
+- Frontend: revert del merge su `main` (GitHub Pages ripubblica la versione precedente).
+- HUB: versione precedente `33daff63-3d0b-4c70-8f8c-5e3aab6a2c2f`.
+- Il rollback del codice non revoca sessioni già emesse: revocare dall'HUB (Admin) se necessario.
