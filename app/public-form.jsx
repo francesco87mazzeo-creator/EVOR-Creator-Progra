@@ -311,8 +311,8 @@ function Landing({onApply}){
         <div className="wrap" style={{padding:"72px 20px 76px",textAlign:"center",animation:"fadeUp .7s ease both"}}>
           <div className="eyebrow" style={{marginBottom:18}}>{BRAND.program}</div>
           <h1 className="h-xl" style={{maxWidth:820,margin:"0 auto 22px"}}>
-            Non cerchiamo semplicemente ambassadors.<br/>
-            <span style={{color:"var(--red)"}}>Cerchiamo persone capaci di rappresentare EVORΛ.</span>
+            Selezioniamo creator, coach e atleti<br/>
+            <span style={{color:"var(--red)"}}>capaci di rappresentare davvero EVORΛ.</span>
           </h1>
           <p className="body" style={{maxWidth:620,margin:"0 auto 34px"}}>
             EVORΛ Collective è il programma dedicato a creator, coach e personalità del mondo fitness
@@ -1528,12 +1528,11 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
               {testMode ? "Modalità prova: nessuna candidatura è stata salvata e nessuna notifica è stata inviata." : "Grazie per aver presentato la tua candidatura a "+BRAND.program+"."}
             </p>
             {!testMode && <p className="body-sm" style={{marginBottom:32,maxWidth:520,marginLeft:"auto",marginRight:"auto"}}>
-              Il nostro team analizzerà il tuo profilo, i dati e le risposte fornite.
-              L'invio della candidatura non garantisce l'accesso al programma.
-              Se riterremo che esistano le condizioni per costruire una collaborazione,
-              ti contatteremo utilizzando l'indirizzo email indicato.
+              Il nostro team analizzerà personalmente il tuo profilo, i dati e le risposte fornite.
+              Se riterremo che ci siano le condizioni per costruire una collaborazione con EVORΛ,
+              ti contatteremo all'indirizzo email indicato.
             </p>}
-            <a className="btn btn-ghost" href={BRAND.siteUrl}>Torna a EVORΛ</a>
+            <a className="btn btn-ghost" href={BRAND.siteUrl}>TORNA AL SITO EVORΛ</a>
           </div>
         </div>
       </div>
