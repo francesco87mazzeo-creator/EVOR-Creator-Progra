@@ -1529,8 +1529,7 @@ function ApplicationForm({onBack, testMode=false, precheckData=null}){
             </p>
             {!testMode && <p className="body-sm" style={{marginBottom:32,maxWidth:520,marginLeft:"auto",marginRight:"auto"}}>
               Il nostro team analizzerà personalmente il tuo profilo, i dati e le risposte fornite.
-              Se riterremo che ci siano le condizioni per costruire una collaborazione con EVORΛ,
-              ti contatteremo all'indirizzo email indicato.
+              Ti comunicheremo l'esito della tua candidatura direttamente tramite messaggio su Instagram.
             </p>}
             <a className="btn btn-ghost" href={BRAND.siteUrl}>TORNA AL SITO EVORΛ</a>
           </div>
