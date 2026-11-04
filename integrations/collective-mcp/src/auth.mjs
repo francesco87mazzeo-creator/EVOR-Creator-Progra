@@ -57,6 +57,6 @@ export function authorizer({config, keySet, oauthAuthority, hubIdentity, now = D
     const state = await privateJson(hubIdentity, 'https://hub.internal/internal/collective/check', {uid:claims.sub, role:'admin', version:claims.hub_version});
     const user = state?.user;
     if (!user || user.uid !== config.founderUid || user.role !== 'admin' || user.version !== claims.hub_version) throw new AccessError(403, 'founder_required');
-    return Object.freeze({uid:claims.sub, scope:READ_SCOPE});
+    return Object.freeze({uid:claims.sub, role:claims.role, version:claims.hub_version, scope:READ_SCOPE});
   };
 }
