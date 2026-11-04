@@ -93,3 +93,22 @@ jobs:
           node node_modules/firebase-tools/lib/bin/firebase.js emulators:exec
           --project demo-evora-security --only firestore --config firebase.migration.json
           "node --test --test-concurrency=1 ../../worker/test/emulator-scoring.mjs"
+
+  mcp-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - name: Install MCP test-only dependencies
+        working-directory: integrations/collective-mcp
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: MCP read-only and private binding tests
+        working-directory: integrations/collective-mcp
+        run: npm test
+      - name: Build existing public Worker with private service export (no deploy)
+        run: npx --yes wrangler@4.149.0 deploy --config wrangler.toml --dry-run --outdir /tmp/collective-mcp-build

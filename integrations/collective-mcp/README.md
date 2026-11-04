@@ -1,5 +1,8 @@
 # EVORΛ COLLECTIVE — MCP privato, prototipo isolato
 
+> **Aggiornamento — branch `feature/collective-mcp-private-read`:** il blocco di sola lettura e il servizio privato Cloudflare sono stati sviluppati e pubblicati **solo su questo branch**. Il testo che segue documenta l'audit iniziale del 4 novembre, prima della consultazione del codice HUB. Nessun componente è stato distribuito in produzione e nessun dato reale è stato letto. Attivazione subordinata ai test incrociati con il branch HUB `feature/hub-collective-mcp-oauth`.
+
+
 **Stato al 4 novembre 2026: strumenti verificati con dati simulati; collegamento reale BLOCCATO.**
 
 Branch locale `feature/collective-private-mcp`, base COLLECTIVE `9f38d871c00c90b3146cf103d808b098d8dd9146`.
@@ -181,3 +184,42 @@ Nessuna app ChatGPT creata, nessuna sessione Google avviata e nessun test live e
 - Diff dei file preesistenti rispetto alla base: **vuoto**. Nessun test browser o Emulator ufficiale eseguito: non ci sono UI/Rules nuove e Firestore è simulato.
 
 **Non verificati:** sorgenti e deployment HUB, OAuth reale (PKCE/consenso/codici/refresh/registrazione client), UID Founder effettivo, revoca reale, permessi dell'account ChatGPT, accesso Firestore reale, configurazioni online e comportamento end-to-end in produzione. Il prototipo non va attivato finché questi punti non vengono risolti.
+
+
+## Aggiornamento: integrazione privata su branch separato (non attiva)
+
+### Confini
+
+- Il Worker COLLECTIVE pubblico rimane esattamente quello esistente: `worker/src/worker.js` non è stato modificato.
+- `worker/src/worker-with-mcp.mjs` riesporta il Worker pubblico originale e aggiunge unicamente l'entrypoint `CollectiveMcpReadService` per i **service binding Cloudflare**. Il `wrangler.toml` di questo branch usa il wrapper; non è stato usato per un deploy.
+- Il facade usa il service account Firestore **già custodito** nel Worker COLLECTIVE e non ne crea una copia nel Worker MCP.
+- Ogni lettura privata richiede un secret condiviso (custodito in Cloudflare, non nel repository), l'UID Founder esatto, ruolo admin, versione valida e verifica corrente mediante il binding `HUB_IDENTITY`.
+- Il facade ammette solo tre operazioni strutturate: elenco di 1–20 candidature, dettaglio numerico di una candidatura, tre documenti fissi di configurazione. La lista dei campi è unica in `server/collective/mcp-read-policy.mjs` ed è usata da entrambi i lati.
+- Nessun endpoint pubblico, funzione di scrittura, fallback HTTP a COLLECTIVE, modifica di Firestore Rules o dato reale.
+- Il Worker MCP rimane HTTP **503** a meno che `MCP_ENABLED=1` sia espressamente configurato insieme a OAuth e ai binding richiesti.
+
+### Configurazione necessaria, NON applicata
+
+Sul Worker COLLECTIVE, come **secret Cloudflare**: `MCP_PRIVATE_SHARED_KEY` (43–128 caratteri casuali URL-safe) e `MCP_FOUNDER_UID` (UID personale). Restano obbligatori anche i binding `HUB_IDENTITY`, `FIRESTORE_SERVICE_ACCOUNT` e `FIRESTORE_PROJECT_ID` già presenti.
+
+Sul nuovo Worker MCP, come secret/var (nessun valore attualmente caricato):
+- `MCP_ENABLED`, da lasciare disattivato fino al collaudo.
+- `MCP_RESOURCE`: URL HTTPS definitivo terminante in `/mcp`.
+- `MCP_ISSUER`: issuer HTTPS effettivo del Worker HUB.
+- `MCP_JWKS_URL`: URL JWKS esatto del Worker HUB, medesima origin dell'issuer.
+- `MCP_FOUNDER_UID`: medesimo UID Founder;
+- `MCP_PRIVATE_SHARED_KEY`: medesimo secret dei service binding COLLECTIVE;
+- `FIRESTORE_PROJECT_ID`: `evora-athletes`;
+- binding `MCP_OAUTH_AUTHORITY` → entrypoint privato `HubMcpOAuthService` del Worker HUB;
+- binding `HUB_IDENTITY` → entrypoint privato `HubIdentityService` del Worker HUB;
+- binding `COLLECTIVE_MCP_READ` → entrypoint privato `CollectiveMcpReadService` del Worker COLLECTIVE.
+
+Le credenziali Firebase restano esclusivamente nel Worker COLLECTIVE e HUB dove già si trovano; il Worker MCP possiede solo un accesso per singole letture strettamente autorizzate.
+
+### Prove ancora obbligatorie prima della messa in servizio
+
+1. Test CI di COLLECTIVE e HUB completamente verdi, compresi browser, rules, typecheck, segreti e build Wrangler con `--dry-run`.
+2. Test di negazione end-to-end su Cloudflare **isolato**, senza usare il database reale: Manager, altro admin, secret mancante, token alterato, chiave errata, revoca, issuer e audience errati, risposta Firestore e HUB indisponibili.
+3. Verifica dei dati storici reali **solo dopo** autorizzazione specifica alla lettura, mantenendo la privacy e i limiti di query.
+4. Test reale di aggiunta del server MCP privato nel workspace ChatGPT, registrazione CIMD e OAuth con consenso e PKCE.
+5. Approvazione separata prima di distribuire una nuova versione dei Worker COLLECTIVE e HUB esistenti, creare il Worker MCP pubblico o cambiare Secret.

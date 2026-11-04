@@ -31,7 +31,7 @@ export function createMcpServer(reader) {
   }))}));
   return server;
 }
-export function createHandler({config,authorize,reader}) {
+export function createHandler({config,authorize,reader,readerFactory}) {
   const metadataPath='/.well-known/oauth-protected-resource/mcp';
   const metadataUrl=config.origin+metadataPath;
   return async request=>{
@@ -42,7 +42,8 @@ export function createHandler({config,authorize,reader}) {
     if (request.method==='OPTIONS') return new Response(null,{status:204,headers:{...cors,'access-control-allow-methods':'GET, POST, OPTIONS','access-control-allow-headers':'Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id','access-control-expose-headers':'WWW-Authenticate, MCP-Session-Id','cache-control':'no-store'}});
     if ([metadataPath,'/.well-known/oauth-protected-resource'].includes(url.pathname)&&request.method==='GET') return json({resource:config.resource,authorization_servers:[config.issuer],scopes_supported:[READ_SCOPE],bearer_methods_supported:['header']},200,cors);
     if (url.pathname!=='/mcp' || url.search) return json({error:'not_found'},404,cors);
-    try { await authorize(request); }
+    let principal;
+    try { principal = await authorize(request); }
     catch(error) {
       const status=error instanceof AccessError?error.status:503,code=error instanceof AccessError?error.code:'authority_unavailable';
       return json({error:code},status,{...cors,...([401,403].includes(status)?{'www-authenticate':`Bearer resource_metadata="${metadataUrl}", scope="${READ_SCOPE}", error="${status===403?'insufficient_scope':'invalid_token'}"`}:{})});
@@ -51,7 +52,10 @@ export function createHandler({config,authorize,reader}) {
     if (!/^application\/json(?:;|$)/i.test(request.headers.get('content-type')||'')) return json({error:'unsupported_media_type'},415,cors);
     let body;
     try { body=await boundedText(request,16384); } catch(error) { return json({error:error instanceof BodyLimitError?'request_too_large':'invalid_request'},error instanceof BodyLimitError?413:400,cors); }
-    const server=createMcpServer(reader),transport=new WebStandardStreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
+    let selectedReader;
+    try { selectedReader = readerFactory ? readerFactory(principal) : reader; }
+    catch { return json({error:'private_reader_unavailable'},503,cors); }
+    const server=createMcpServer(selectedReader),transport=new WebStandardStreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
     try {
       await server.connect(transport);
       const response=await transport.handleRequest(new Request(request.url,{method:'POST',headers:request.headers,body}));
