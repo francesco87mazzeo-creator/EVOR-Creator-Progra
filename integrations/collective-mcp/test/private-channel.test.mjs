@@ -25,7 +25,7 @@ test('Reject mass read, different project, unrestricted masks and write methods'
   new Request(root+'/settings/scoring',{method:'POST'}),
   new Request(root.replace(projectId,'other-project')+'/settings/scoring'),
   new Request(root+':runQuery',{method:'POST',body:JSON.stringify({structuredQuery:{from:[{collectionId:'candidature'}],limit:100}})})
- ])await assert.rejects(()=>privateReadOperation(r,projectId));
+ ])await assert.rejects(async()=>privateReadOperation(r,projectId));
 });
 test('Reader generated application and recent reads use the same fixed data policy',async()=>{
  const root='https://firestore.googleapis.com/v1/projects/'+projectId+'/databases/(default)/documents';
