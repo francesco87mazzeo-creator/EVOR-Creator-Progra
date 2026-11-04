@@ -1,12 +1,9 @@
 import {boundedText} from './bounded.mjs';
 export const MAX_RECENT = 20;
-export const METRICS = ['followers','views','interactions','accountsReached','netFollowers'];
-const SCORE_FIELDS = ['scoringVersion','socialScore','engagementRate','engagementScore','visibilityScore','reachEngagementRate','lowBase','erRate','reachRate','growthRate'];
-export const RECENT_FIELDS = ['date','status','schemaVersion',...METRICS,...SCORE_FIELDS];
-export const DETAIL_FIELDS = [...RECENT_FIELDS,'updatedAt','ocrInsights.merged','ocrInsights.readAt','ocrInsights.conflicts',
-  ...['screenshot1','screenshot2'].flatMap(screen=>['screenType',...METRICS.filter(k=>k!=='followers')].map(key=>`ocrInsights.${screen}.${key}`)),
-  'ocrProfile.result.followers','ocrProfile.readAt','insightsCorrection.correctedAt','insightsCorrection.previousValues','insightsCorrection.newValues'];
-export const validId = id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id);
+import {METRICS, RECENT_FIELDS, DETAIL_FIELDS, validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
+export {METRICS, RECENT_FIELDS, DETAIL_FIELDS};
+export const MAX_RECENT = 20;
+export const validId = validMcpDocumentId;
 export class DataError extends Error { constructor(code='DATA_UNAVAILABLE') { super(code); this.code=code; } }
 const allowedSettings = new Set(['scoring','instagramBenchmarks','scoreLevels']);
 // Decodes only Firestore REST values; unsupported types fail closed, never echoed to callers.
