@@ -35,7 +35,7 @@ test('End-to-end synthetic Founder: private service binding exposes only approve
  const scoring=await tools.get_scoring_configuration();
  assert.equal(detail.recalculated.scoringVersion,3);
  assert.equal(scoring.scoring.source,'stored_document');
- assert.equal(checked,5); // list + detail + scoring and levels + all three configuration documents
+ assert.equal(checked,7); // one list, one detail, two detail configs and three complete configs
  assert.equal(reads,checked);
  const returned=JSON.stringify({list,detail,scoring});
  for(const privateValue of ['PRIVATE_NAME_SHOULD_NOT_LEAK','private@example.invalid','PRIVATE_NOTES_SHOULD_NOT_LEAK',
