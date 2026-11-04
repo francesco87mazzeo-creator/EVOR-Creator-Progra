@@ -57,7 +57,7 @@ function isLoopback(base) {
 }
 
 const tokenCache = new Map();
-async function accessToken(sa, now) {
+export async function accessToken(sa, now) {
   const cached = tokenCache.get(sa.client_email);
   if (cached && cached.expiresAt - 60_000 > now()) return cached.token;
   const iat = Math.floor(now() / 1000);
