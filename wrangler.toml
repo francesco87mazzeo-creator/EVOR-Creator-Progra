@@ -5,7 +5,8 @@
 # Nessun secret in questo file: ADMIN_CODE, MANAGER_CODE, FIREBASE_SERVICE_ACCOUNT, TG_TOKEN, TG_CHAT, ANTHROPIC_KEY restano su Cloudflare.
 # Pubblicare solo con autorizzazione esplicita; verifica senza pubblicare: wrangler deploy --dry-run --outdir <cartella esterna>
 name = "throbbing-feather-957f"
-main = "worker/src/worker.js"
+# Existing public fetch entrypoint is unchanged; wrapper adds only the private MCP service class.
+main = "worker/src/worker-with-mcp.mjs"
 compatibility_date = "2026-10-01"
 workers_dev = true
 
