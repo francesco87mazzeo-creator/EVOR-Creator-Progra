@@ -1,0 +1,9 @@
+{
+  "name": "evora-collective-private-mcp-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24"},
+  "scripts": {"test": "node --test --test-concurrency=1 test/*.test.mjs", "start": "node src/local.mjs"},
+  "dependencies": {"@modelcontextprotocol/sdk": "1.32.2", "jose": "6.2.15", "zod": "4.6.7"}
+}

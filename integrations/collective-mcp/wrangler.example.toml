@@ -1,0 +1,7 @@
+# UNPUBLISHED prototype. No production Worker name, routes, credentials or bindings.
+# The default entrypoint ALWAYS returns 503 until the HUB review is completed.
+name = "evora-collective-mcp-unpublished"
+main = "src/worker.mjs"
+compatibility_date = "2026-10-01"
+workers_dev = false
+preview_urls = false
