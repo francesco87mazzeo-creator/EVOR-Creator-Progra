@@ -1,5 +1,4 @@
 import {boundedText} from './bounded.mjs';
-export const MAX_RECENT = 20;
 import {METRICS, RECENT_FIELDS, DETAIL_FIELDS, validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
 export {METRICS, RECENT_FIELDS, DETAIL_FIELDS};
 export const MAX_RECENT = 20;
