@@ -1052,6 +1052,13 @@ function ScorePart({label, value, sub, score, levels}){
   );
 }
 
+// Screenshot che una candidatura può contenere, nell'ordine del modulo; quelli vuoti non vengono mostrati.
+const CANDIDATE_SCREENSHOTS = [
+  ["profileScreenshotData","Screenshot profilo"],
+  ["screenshotData","Screenshot Insight 1"],
+  ["screenshotData2","Screenshot Insight 2"]
+];
+
 function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDelete}){
   const s  = computeScore(app, scoring);
   const cfg = scoring || DEFAULT_SCORING;
@@ -1064,6 +1071,14 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
   const [busy,setBusy]     = useState("");
   const [msg,setMsg]       = useState("");
   const [msgError,setMsgError] = useState(false);
+  // Screenshot ingrandito per il controllo dei dati; Esc o un clic lo chiudono.
+  const [zoom,setZoom]     = useState(null);
+  useEffect(()=>{
+    if(!zoom) return;
+    const onKey = e => { if(e.key==="Escape") setZoom(null); };
+    document.addEventListener("keydown", onKey);
+    return ()=>document.removeEventListener("keydown", onKey);
+  },[zoom]);
 
   const flash = (t,error=false) => { setMsg(t); setMsgError(error); setTimeout(()=>setMsg(""),2200); };
 
@@ -1231,10 +1246,20 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
             </div>
           )}
 
-          {app.screenshotData && (
-            <div style={{marginTop:12,border:"1px solid var(--brd)",background:"var(--bg-2)",padding:12}}>
-              <div className="label-xs" style={{marginBottom:10}}>Screenshot Insights</div>
-              <img src={app.screenshotData} alt="Screenshot Insights del candidato" style={{width:"100%",maxHeight:400,objectFit:"contain"}}/>
+          {/* Tutti gli screenshot salvati, nell'ordine in cui il candidato li carica: profilo, poi Insight. */}
+          {CANDIDATE_SCREENSHOTS.filter(([k])=>app[k]).map(([k,label])=>(
+            <div key={k} style={{marginTop:12,border:"1px solid var(--brd)",background:"var(--bg-2)",padding:12}}>
+              <div className="label-xs" style={{marginBottom:10}}>{label}</div>
+              <button type="button" onClick={()=>setZoom({src:app[k],label})} aria-label={"Ingrandisci "+label}
+                style={{display:"block",width:"100%",padding:0,border:0,background:"none",cursor:"zoom-in"}}>
+                <img src={app[k]} alt={label+" del candidato"} style={{width:"100%",maxHeight:400,objectFit:"contain"}}/>
+              </button>
+            </div>
+          ))}
+          {zoom && (
+            <div className="lightbox-overlay" role="dialog" aria-modal="true" aria-label={zoom.label} onClick={()=>setZoom(null)}>
+              <button type="button" className="lightbox-close" onClick={()=>setZoom(null)} aria-label="Chiudi">×</button>
+              <img src={zoom.src} alt={zoom.label+" ingrandito"} onClick={e=>e.stopPropagation()}/>
             </div>
           )}
         </Section>

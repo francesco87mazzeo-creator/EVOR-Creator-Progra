@@ -1440,3 +1440,32 @@ test('Admin Block 5: corrected candidate updates the cached ring without animati
  await page.emulateMedia({reducedMotion:'no-preference'});await page.getByRole('button',{name:'← Elenco candidature',exact:true}).click();await ring.waitFor();
  assert.equal(await ring.getAttribute('data-score-value'),String(computeScore({...candidate,interactions:3000}).socialScore));assert.equal(await ring.getAttribute('data-animation-state'),'complete');assert.equal(await page.evaluate(()=>window.testCounters.writes),1);assert.equal(calls.length,0);
 });
+
+/* ---------- Admin: tutti gli screenshot salvati visibili per il controllo dei dati ---------- */
+test('Admin detail shows every saved screenshot (profile, Insight 1, Insight 2) and enlarges them',{timeout:60000},async t=>{
+ const img=seed=>'data:image/jpeg;base64,/9j/'+seed+'2Q==';
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Photos',
+  profileScreenshotData:img('AAAA'),screenshotData:img('BBBB'),screenshotData2:img('CCCC')},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic Photos'}).click();
+ for(const [label,src] of [['Screenshot profilo',img('AAAA')],['Screenshot Insight 1',img('BBBB')],['Screenshot Insight 2',img('CCCC')]]) {
+  const shot=page.getByAltText(label+' del candidato',{exact:true});
+  await shot.waitFor();assert.equal(await shot.getAttribute('src'),src,label);
+ }
+ // Ordine del modulo: prima il profilo, poi gli Insight.
+ const order=await page.locator('img[alt$=" del candidato"]').evaluateAll(list=>list.map(i=>i.alt));
+ assert.deepEqual(order,['Screenshot profilo del candidato','Screenshot Insight 1 del candidato','Screenshot Insight 2 del candidato']);
+ await page.getByRole('button',{name:'Ingrandisci Screenshot profilo',exact:true}).click();
+ await page.getByRole('dialog',{name:'Screenshot profilo'}).waitFor();
+ assert.equal(await page.getByAltText('Screenshot profilo ingrandito',{exact:true}).getAttribute('src'),img('AAAA'));
+ await page.keyboard.press('Escape');
+ assert.equal(await page.getByRole('dialog',{name:'Screenshot profilo'}).count(),0);
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'viewing never writes');
+});
+test('Admin detail hides screenshots that were not uploaded',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic One Photo',profileScreenshotData:'',screenshotData2:''},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic One Photo'}).click();
+ await page.getByAltText('Screenshot Insight 1 del candidato',{exact:true}).waitFor();
+ assert.equal(await page.locator('img[alt$=" del candidato"]').count(),1);
+});
