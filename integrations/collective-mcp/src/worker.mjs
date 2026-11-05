@@ -1,4 +1,4 @@
-import {stageEnvironment}from'../../../server/collective/mcp-staging.mjs';
+import {deploymentProfile}from'../../../server/collective/mcp-profiles.mjs';
 import {verifyStageHub}from'./staging.mjs';
 import {createHandler} from './server.mjs';
 import {configuration,authorizer,remoteKeySet} from './auth.mjs';
@@ -14,7 +14,7 @@ export function createPrototypeWorker(dependencies) {
 // explicitly provided after the combined HUB/COLLECTIVE security review.
 const handlers=new WeakMap();
 export function createConfiguredMcpWorker(env) {
-  const staging=stageEnvironment(env,'mcp');
+  const profile=deploymentProfile(env,'mcp');
   const required=['MCP_RESOURCE','MCP_ISSUER','MCP_JWKS_URL','MCP_FOUNDER_UID',
     'MCP_PRIVATE_SHARED_KEY','FIRESTORE_PROJECT_ID'];
   if(required.some(key=>typeof env?.[key]!=='string'||!env[key]))throw Error('MCP_CONFIG_REQUIRED');
@@ -29,12 +29,12 @@ export function createConfiguredMcpWorker(env) {
     projectId:env.FIRESTORE_PROJECT_ID,
     channel:createPrivateCollectiveChannel({
       binding:env.COLLECTIVE_MCP_READ,secret:env.MCP_PRIVATE_SHARED_KEY,
-      projectId:env.FIRESTORE_PROJECT_ID,identity,staging
+      projectId:env.FIRESTORE_PROJECT_ID,identity,profile
     })
   });
   const handler=createHandler({config,authorize,readerFactory});
   return Object.freeze({async fetch(request){
-    if(staging){try{await verifyStageHub(env);}catch{return new Response(JSON.stringify({error:'STAGING_PEER_UNAVAILABLE'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});}}
+    if(profile){try{await verifyStageHub(env,profile);}catch{return new Response(JSON.stringify({error:'STAGING_PEER_UNAVAILABLE'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});}}
     return handler(request);
   }});
 }

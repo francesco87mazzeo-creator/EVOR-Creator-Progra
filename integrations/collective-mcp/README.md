@@ -191,7 +191,7 @@ Nessuna app ChatGPT creata, nessuna sessione Google avviata e nessun test live e
 ### Confini
 
 - Il Worker COLLECTIVE pubblico rimane esattamente quello esistente: `worker/src/worker.js` non è stato modificato.
-- `worker/src/worker-with-mcp.mjs` riesporta il Worker pubblico originale e aggiunge unicamente l'entrypoint `CollectiveMcpReadService` per i **service binding Cloudflare**. Il `wrangler.toml` di questo branch usa il wrapper; non è stato usato per un deploy.
+- `worker/src/worker-with-mcp.mjs` riesporta il Worker pubblico originale e aggiunge unicamente l'entrypoint `CollectiveMcpReadService` per i **service binding Cloudflare**. Il percorso pilota di produzione (`PRODUCTION.md`) **non** usa il wrapper: `wrangler.toml` resta quello di `main` e il facade è un Worker separato con un account di sola lettura.
 - Il facade usa il service account Firestore **già custodito** nel Worker COLLECTIVE e non ne crea una copia nel Worker MCP.
 - Ogni lettura privata richiede un secret condiviso (custodito in Cloudflare, non nel repository), l'UID Founder esatto, ruolo admin, versione valida e verifica corrente mediante il binding `HUB_IDENTITY`.
 - Il facade ammette solo tre operazioni strutturate: elenco di 1–20 candidature, dettaglio numerico di una candidatura, tre documenti fissi di configurazione. La lista dei campi è unica in `server/collective/mcp-read-policy.mjs` ed è usata da entrambi i lati.

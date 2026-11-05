@@ -1,5 +1,5 @@
 import {verifyStagePeer}from'./staging.mjs';
-import {MCP_STAGE_PROJECT}from'../../../server/collective/mcp-staging.mjs';
+import {MCP_PROFILES}from'../../../server/collective/mcp-profiles.mjs';
 // Adapter from the existing strictly bounded MCP reader to the private COLLECTIVE
 // Worker service binding. There is NO public HTTP or Google API fallback.
 import {RECENT_FIELDS,DETAIL_FIELDS,SETTING_FIELDS,validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
@@ -39,18 +39,18 @@ export function privateReadOperation(request,projectId){
  }
  throw new DataError('PRIVATE_READ_DENIED');
 }
-export function createPrivateCollectiveChannel({binding,secret,projectId,identity,staging=false}){
+export function createPrivateCollectiveChannel({binding,secret,projectId,identity,staging=false,profile=staging?MCP_PROFILES.staging:null}){
  if(!binding||typeof binding.fetch!=='function'||typeof secret!=='string'||!/^[A-Za-z0-9_-]{43,128}$/.test(secret)
    ||typeof projectId!=='string'||!identity||typeof identity.uid!=='string'
    ||identity.role!=='admin'||!Number.isSafeInteger(identity.version)||identity.version<1)
    throw new DataError('PRIVATE_CHANNEL_UNAVAILABLE');
- if(staging&&projectId!==MCP_STAGE_PROJECT)throw new DataError('STAGING_PROJECT_MISMATCH');
+ if(profile&&projectId!==profile.dataProject)throw new DataError('STAGING_PROJECT_MISMATCH');
  let ready;
  return Object.freeze({async fetch(request){
-   if(staging)await(ready??=verifyStagePeer(binding,'https://collective-mcp.internal/internal/mcp/stage-info',{profile:'staging',projectId:MCP_STAGE_PROJECT},{'x-evora-mcp-private-key':secret}));
+   if(profile)await(ready??=verifyStagePeer(binding,'https://collective-mcp.internal/internal/mcp/stage-info',{profile:profile.name,projectId:profile.dataProject},{'x-evora-mcp-private-key':secret}));
    const {operation,argument}=await privateReadOperation(request,projectId);
    return binding.fetch(new Request(PRIVATE_URL,{
-     method:'POST',headers:{'content-type':'application/json','x-evora-mcp-private-key':secret,...(staging?{'x-evora-mcp-stage-project':MCP_STAGE_PROJECT}:{})},
+     method:'POST',headers:{'content-type':'application/json','x-evora-mcp-private-key':secret,...(profile?{'x-evora-mcp-stage-project':profile.dataProject,'x-evora-mcp-profile':profile.name}:{})},
      body:JSON.stringify({operation,argument,principal:{uid:identity.uid,role:identity.role,version:identity.version}}),
      signal:AbortSignal.timeout(6000)
    }));

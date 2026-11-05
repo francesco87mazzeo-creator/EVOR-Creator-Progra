@@ -54,8 +54,8 @@ export function createPrivateMcpHandler({secret, founderUid,verifyFounder,readFi
       ||typeof verifyFounder!=='function'||typeof readFirestore!=='function') return json({error:'not_configured'},503);
     if(!constantTimeEqual(request.headers.get('x-evora-mcp-private-key'),secret)) return json({error:'forbidden'},403);
     if(url.pathname==='/internal/mcp/stage-info')return deployment?json(deployment):json({error:'not_configured'},503);
-    const stageProject=request.headers.get('x-evora-mcp-stage-project');
-    if(stageProject&&(deployment?.profile!=='staging'||deployment.projectId!==stageProject))return json({error:'staging_isolation'},403);
+    const stageProject=request.headers.get('x-evora-mcp-stage-project'),stageProfile=request.headers.get('x-evora-mcp-profile')||'staging';
+    if(stageProject&&(deployment?.profile!==stageProfile||deployment.projectId!==stageProject))return json({error:'staging_isolation'},403);
     if(!/^application\/json(?:;|$)/i.test(request.headers.get('content-type')||'')) return json({error:'unsupported_media_type'},415);
     let payload;
     try{payload=await boundedBody(request);}catch{return json({error:'invalid_request'},400);}

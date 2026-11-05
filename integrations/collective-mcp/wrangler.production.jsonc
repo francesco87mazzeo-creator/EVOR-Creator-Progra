@@ -1,0 +1,38 @@
+{
+  "name": "evora-collective-mcp",
+  "main": "src/production-worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "global_fetch_strictly_public"
+  ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "MCP_ENABLED": "1",
+    "MCP_DEPLOYMENT_PROFILE": "production",
+    "MCP_RESOURCE": "https://evora-collective-mcp.francesco87-mazzeo.workers.dev/mcp",
+    "MCP_ISSUER": "https://evora-hub-mcp.francesco87-mazzeo.workers.dev",
+    "MCP_JWKS_URL": "https://evora-hub-mcp.francesco87-mazzeo.workers.dev/.well-known/jwks.json",
+    "FIRESTORE_PROJECT_ID": "evora-athletes"
+  },
+  "services": [
+    {
+      "binding": "MCP_OAUTH_AUTHORITY",
+      "service": "evora-hub-mcp",
+      "entrypoint": "HubMcpOAuthService"
+    },
+    {
+      "binding": "HUB_IDENTITY",
+      "service": "evora-hub-mcp",
+      "entrypoint": "HubIdentityService"
+    },
+    {
+      "binding": "COLLECTIVE_MCP_READ",
+      "service": "evora-collective-mcp-read",
+      "entrypoint": "CollectiveMcpReadService"
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}

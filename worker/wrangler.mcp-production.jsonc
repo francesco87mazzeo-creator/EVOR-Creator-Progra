@@ -1,0 +1,21 @@
+{
+  "name": "evora-collective-mcp-read",
+  "main": "src/mcp-production-worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "MCP_DEPLOYMENT_PROFILE": "production",
+    "FIRESTORE_PROJECT_ID": "evora-athletes"
+  },
+  "services": [
+    {
+      "binding": "HUB_IDENTITY",
+      "service": "evora-hub-mcp",
+      "entrypoint": "HubIdentityService"
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}
