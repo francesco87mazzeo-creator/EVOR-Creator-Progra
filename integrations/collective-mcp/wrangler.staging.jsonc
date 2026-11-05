@@ -5,7 +5,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "vars": {
-    "MCP_ENABLED": "0",
+    "MCP_ENABLED": "1",
     "MCP_DEPLOYMENT_PROFILE": "staging",
     "MCP_RESOURCE": "https://evora-collective-mcp-staging.francesco87-mazzeo.workers.dev/mcp",
     "MCP_ISSUER": "https://evora-hub-mcp-staging.francesco87-mazzeo.workers.dev",

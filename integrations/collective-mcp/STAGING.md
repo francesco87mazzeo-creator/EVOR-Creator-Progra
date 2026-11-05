@@ -2,7 +2,7 @@
 
 ## Stato e confini
 
-Preparazione del codice, non autorizzazione al deploy. Nessun servizio o dato online è stato modificato. Gli esiti locali non certificano binding, IAM, quote o disponibilità ChatGPT reali.
+Stato al 2026-11-05: prerequisiti completati sul solo progetto `evora-mcp-staging` (identità HUB di test, 8 candidature sintetiche e configurazione scoring v3 caricate con `scripts/seed-staging.mjs`), `MCP_ENABLED=1` nel solo file staging, deploy dei tre Worker staging autorizzato. Nessun servizio di produzione modificato. Gli esiti locali non certificano binding, IAM, quote o disponibilità ChatGPT reali.
 
 Il profilo dedicato usa esclusivamente il progetto `evora-mcp-staging`. Non riutilizzare `evora-athletes`, il vecchio HUB test (collegato a servizi attivi), credenziali di produzione o copie di candidature reali. Riutilizzare account Cloudflare/Firebase esistenti è possibile; verificare prima disponibilità, quote gratuite e policy. Nessun servizio a pagamento viene attivato da questi file.
 
