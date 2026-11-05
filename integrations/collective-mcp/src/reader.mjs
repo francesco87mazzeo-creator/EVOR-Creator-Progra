@@ -13,6 +13,7 @@ function value(v) {
   if ('booleanValue' in v) return v.booleanValue;
   if ('integerValue' in v) { const n=Number(v.integerValue); if (!Number.isSafeInteger(n)) throw new DataError(); return n; }
   if ('doubleValue' in v) { if (!Number.isFinite(v.doubleValue)) throw new DataError(); return v.doubleValue; }
+  if ('timestampValue' in v) { if (typeof v.timestampValue!=='string' || !Number.isFinite(Date.parse(v.timestampValue))) throw new DataError(); return v.timestampValue; }
   if ('mapValue' in v) return fields(v.mapValue.fields || {});
   if ('arrayValue' in v) return (v.arrayValue.values || []).map(value);
   throw new DataError();

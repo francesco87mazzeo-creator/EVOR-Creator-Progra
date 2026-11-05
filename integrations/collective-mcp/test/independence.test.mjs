@@ -4,7 +4,10 @@ import{createTools}from'../src/tools.mjs';
 import{createAiTools}from'../src/ai-tools.mjs';
 import{createProposals}from'../src/ai-channel.mjs';
 import{EVALUATION_FIELDS,NOT_FOR_EVALUATION,NEVER_REQUESTED,QUESTIONNAIRE}from'../../../server/collective/mcp-candidate-policy.mjs';
-import{RUBRICS,validateEvaluation}from'../../../server/collective/mcp-ai-policy.mjs';
+import{RUBRICS,validateEvaluation,RUBRIC_V1_AREAS,bandFor}from'../../../server/collective/mcp-ai-policy.mjs';
+const v1=(score=72,extra={})=>({score,summary:'Profilo coerente con il brand, metriche solide ma base ridotta.',rubricVersion:'rubric-v1',
+ criteria:RUBRIC_V1_AREAS.map((a,i)=>({name:a.name,score:55+i*5,note:'Analisi motivata sintetica di prova per questa area.'})),
+ strengths:['Risposte argomentate'],concerns:['Base di audience ridotta'],potential:'Potenziale per contenuti tecnici sintetici.',roles:['Creator UGC'],limitations:['Link non esaminati'],...extra});
 
 const SECRET='s'.repeat(43),UID='synthetic_founder_0001',APP='synthetic-ind-01';
 const principal={uid:UID,role:'admin',version:1,scopes:['collective:read','collective:evaluate']};
@@ -30,7 +33,7 @@ test('the evaluation projection never requests a score, judgement, status, previ
  assert.deepEqual(EVALUATION_FIELDS.filter(p=>p.startsWith('ocr')||p.startsWith('insights')),['ocrInsights.merged','ocrProfile.result.followers','insightsCorrection.newValues']);
 });
 test('dedicated read: no site score, staff evaluation, status or previous AI evaluation reaches the output',async()=>{
- const {ai,requests}=setup(),r=await ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-test-1'});
+ const {ai,requests}=setup(),r=await ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-v1'});
  // The random signed ticket is excluded from the scan: its characters can match a marker by chance.
  const {inputTicket,ticketExpiresAt,...data}=r;assert.ok(inputTicket&&ticketExpiresAt);
  const text=JSON.stringify(data);
@@ -43,7 +46,7 @@ test('dedicated read: no site score, staff evaluation, status or previous AI eva
  assert.ok(r.excludedByServer.includes('valutazioni AI precedenti'));assert.ok(r.instructions.some(i=>/non usare punteggi/.test(i)));
 });
 test('metrics carry their source: screenshot read, candidate changed, staff correction, candidate entered or missing',async()=>{
- const {ai}=setup(),r=await ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-test-0'});
+ const {ai}=setup(),r=await ai.get_application_for_ai_evaluation({applicationId:APP});
  const source=Object.fromEntries(r.instagram.metrics.map(m=>[m.key,m.source]));
  assert.deepEqual(source,{followers:'screenshot_read',views:'screenshot_read',interactions:'candidate_changed',accountsReached:'candidate_entered',netFollowers:'staff_correction'});
  assert.match(r.instagram.verification,/nessuna verifica indipendente/);
@@ -56,34 +59,55 @@ test('the administrative detail tool is unchanged and still shows scoring and st
 });
 test('a proposal requires the ticket of the dedicated read, for the same application and rubric',async()=>{
  const {ai,proposals}=setup();
- const evaluation={score:70,summary:'Valutazione sintetica indipendente di prova.',rubricVersion:'rubric-test-0'};
+ const evaluation=v1(70);
  await assert.rejects(()=>ai.propose_ai_evaluation({applicationId:APP,...evaluation}),{code:'INPUT_TICKET_INVALID'});
- const read=await ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-test-0'});
+ await assert.rejects(()=>ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-test-0'}),{code:'RUBRIC_NOT_ACTIVE'});
+ const read=await ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-v1'});
  await assert.rejects(()=>ai.propose_ai_evaluation({applicationId:'synthetic-ind-02',...evaluation,inputTicket:read.inputTicket}),{code:'INPUT_TICKET_OTHER_APPLICATION'});
- await assert.rejects(()=>ai.propose_ai_evaluation({applicationId:APP,...evaluation,rubricVersion:'rubric-test-1',inputTicket:read.inputTicket}),{code:'CRITERIA_NOT_MATCHING_RUBRIC'});
+ await assert.rejects(()=>proposals.verifyInput(read.inputTicket,{uid:UID,applicationId:APP,rubricVersion:'rubric-test-1'}),{code:'INPUT_TICKET_OTHER_RUBRIC'});
  const proposal=await ai.propose_ai_evaluation({applicationId:APP,...evaluation,inputTicket:read.inputTicket});
  // Typed tokens: a proposal is not an input ticket and an input ticket is not a proposal.
  await assert.rejects(()=>ai.propose_ai_evaluation({applicationId:APP,...evaluation,inputTicket:proposal.proposalToken}),{code:'INPUT_TICKET_INVALID'});
  await assert.rejects(()=>proposals.verify(read.inputTicket,{uid:UID,applicationId:APP,content:validateEvaluation(evaluation)}),{code:'PROPOSAL_INVALID'});
  const expired=createProposals({secret:SECRET,now:()=>Date.now()-31*60_000});
- const old=await expired.issueInput({uid:UID,applicationId:APP,rubricVersion:'rubric-test-0'});
+ const old=await expired.issueInput({uid:UID,applicationId:APP,rubricVersion:'rubric-v1'});
  await assert.rejects(()=>ai.propose_ai_evaluation({applicationId:APP,...evaluation,inputTicket:old.ticket}),{code:'INPUT_TICKET_EXPIRED'});
 });
 test('the proposal says whether a previous AI evaluation exists but never shows its score',async()=>{
- const {ai}=setup(),read=await ai.get_application_for_ai_evaluation({applicationId:APP,rubricVersion:'rubric-test-0'});
- const p=await ai.propose_ai_evaluation({applicationId:APP,score:70,summary:'Valutazione sintetica indipendente di prova.',rubricVersion:'rubric-test-0',inputTicket:read.inputTicket});
+ const {ai}=setup(),read=await ai.get_application_for_ai_evaluation({applicationId:APP});
+ const p=await ai.propose_ai_evaluation({applicationId:APP,...v1(70),inputTicket:read.inputTicket});
+ assert.equal(p.band,'Buono con riserve');
  assert.equal(p.previousEvaluationExists,true);assert.equal(p.previousEvaluationsInHistory,1);
- assert.equal(JSON.stringify(p).includes('55'),false);assert.equal('existingEvaluation' in p,false);
+ // Exact keys: no field can carry the previous score (55); the proposal itself is the new content only.
+ assert.deepEqual(Object.keys(p).sort(),['applicationId','band','candidate','expiresAt','nextStep','notice','previousEvaluationExists','previousEvaluationsInHistory','proposal','proposalToken','rubric','status']);
+ assert.deepEqual(Object.keys(p.candidate).sort(),['fullName','instagramHandle']);assert.deepEqual(Object.keys(p.rubric).sort(),['label','version']);
 });
-test('rubric-test-1: all six criteria in order, structured fields, overall score equal to the weighted mean',()=>{
- const rubric=RUBRICS['rubric-test-1'];assert.equal(rubric.criteria.reduce((a,c)=>a+c.weight,0),100);assert.equal(rubric.test,true);
- const scores=[80,60,70,75,65,50];
- const weighted=Math.round(rubric.criteria.reduce((a,c,i)=>a+c.weight*scores[i],0)/100);
- const ok={score:weighted,summary:'Valutazione strutturata sintetica di prova.',rubricVersion:'rubric-test-1',criteria:rubric.criteria.map((c,i)=>({name:c.name,score:scores[i],note:'Motivazione sintetica'})),
-  strengths:['Risposte argomentate'],concerns:['Base di audience ridotta'],potential:'Potenziale per contenuti tecnici.',limitations:['Link non esaminati']};
- assert.equal(validateEvaluation(ok).score,weighted);
- for(const [bad,code] of [[{...ok,score:weighted+1},'SCORE_NOT_WEIGHTED_MEAN'],[{...ok,criteria:ok.criteria.slice(1)},'CRITERIA_NOT_MATCHING_RUBRIC'],
-  [{...ok,criteria:[ok.criteria[1],ok.criteria[0],...ok.criteria.slice(2)]},'CRITERIA_NOT_MATCHING_RUBRIC'],[{...ok,limitations:undefined},'STRUCTURED_FIELDS_REQUIRED'],
-  [{...ok,strengths:Array(9).fill('Punto ripetuto')},'INVALID_STRENGTHS'],[{...ok,potential:'breve'},'INVALID_POTENTIAL']])
+test('rubric-v1: six areas in order with motivated analysis, no fixed weights, all structured fields required',()=>{
+ const rubric=RUBRICS['rubric-v1'];assert.equal(rubric.active,true);assert.equal(rubric.areas.length,6);assert.equal('weight' in rubric.areas[0],false);
+ // Any overall score is accepted with the same area scores: it is the evaluator's judgement, not a mean.
+ for(const score of [10,72,95])assert.equal(validateEvaluation(v1(score)).score,score);
+ assert.deepEqual(validateEvaluation(v1(72,{roles:[]})).roles,[]);
+ const base=v1();
+ for(const [bad,code] of [[{...base,criteria:base.criteria.slice(1)},'CRITERIA_NOT_MATCHING_RUBRIC'],[{...base,criteria:[base.criteria[1],base.criteria[0],...base.criteria.slice(2)]},'CRITERIA_NOT_MATCHING_RUBRIC'],
+  [{...base,criteria:base.criteria.map(c=>({name:c.name,score:c.score}))},'AREA_ANALYSIS_REQUIRED'],[{...base,criteria:base.criteria.map(c=>({...c,note:'breve'}))},'AREA_ANALYSIS_REQUIRED'],
+  [{...base,roles:undefined},'STRUCTURED_FIELDS_REQUIRED'],[{...base,limitations:undefined},'STRUCTURED_FIELDS_REQUIRED'],[{...base,roles:Array(7).fill('Ruolo ripetuto')},'INVALID_ROLES'],
+  [{...base,rubricVersion:'rubric-test-1'},'RUBRIC_NOT_ACTIVE']])
   assert.throws(()=>validateEvaluation(Object.fromEntries(Object.entries(bad).filter(([,v])=>v!==undefined))),{code},code);
+});
+test('common scale: qualitative bands cover 0-100 without gaps',()=>{
+ assert.deepEqual([0,19,20,39,40,59,60,74,75,89,90,100].map(s=>bandFor(s).label),['Non idoneo','Non idoneo','Debole','Debole','Incerto','Incerto','Buono con riserve','Buono con riserve','Molto buono','Molto buono','Eccezionale','Eccezionale']);
+ assert.equal(bandFor(null),null);
+});
+test('the dedicated read presents the six areas, the scale and the independence rules, never weights',async()=>{
+ const {ai}=setup(),r=await ai.get_application_for_ai_evaluation({applicationId:APP});
+ assert.equal(r.rubric.version,'rubric-v1');assert.equal(r.rubric.areas.length,6);assert.equal(r.rubric.scale.length,6);
+ assert.match(r.rubric.weighting,/Nessun peso fisso/);assert.match(r.rubric.scope,/non per una campagna/);
+ assert.equal(JSON.stringify(r.rubric).includes('"weight"'),false);
+ assert.ok(r.instructions.some(i=>/strumenti amministrativi/.test(i)));assert.ok(r.instructions.some(i=>/non hai esaminato/.test(i)));
+});
+test('administrative detail lets ChatGPT consult saved AI evaluations of any rubric, unconverted',async()=>{
+ const {admin}=setup(),d=await admin.get_application_details({applicationId:APP});
+ assert.equal(d.aiEvaluations.current.score,55);assert.equal(d.aiEvaluations.current.rubricVersion,'rubric-test-0');assert.equal(d.aiEvaluations.current.test,true);
+ assert.equal(d.aiEvaluations.history.length,1);assert.equal(d.aiEvaluations.history[0].score,44);assert.match(d.aiEvaluations.note,/non vanno usate/);
+ assert.equal(d.status.value,'approved');assert.equal(typeof d.scoring.saved.socialScore,'number');
 });

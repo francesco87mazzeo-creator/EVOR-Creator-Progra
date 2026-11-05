@@ -3,7 +3,7 @@ import{generateKeyPairSync}from'node:crypto';
 registerHooks({resolve(s,c,n){if(s==='cloudflare:workers')return{url:'data:text/javascript,export class WorkerEntrypoint {constructor(ctx,env){this.env=env;this.ctx=ctx;}}',shortCircuit:true};return n(s,c);}});
 import{Client}from'@modelcontextprotocol/sdk/client/index.js';
 import{InMemoryTransport}from'@modelcontextprotocol/sdk/inMemory.js';
-import{validateEvaluation,nextHistory,MAX_HISTORY}from'../../../server/collective/mcp-ai-policy.mjs';
+import{validateEvaluation,nextHistory,MAX_HISTORY,RUBRIC_V1_AREAS}from'../../../server/collective/mcp-ai-policy.mjs';
 import{createProposals}from'../src/ai-channel.mjs';
 import{createAiTools}from'../src/ai-tools.mjs';
 import{createMcpServer}from'../src/server.mjs';
@@ -13,15 +13,19 @@ import{__resetTokenCacheForTests}from'../../../worker/src/firestore.mjs';
 
 const SECRET='s'.repeat(43),UID='synthetic_founder_0001',APP='synthetic-ai-01';
 const principal={uid:UID,role:'admin',version:1,scopes:['collective:read','collective:evaluate']};
-const good={score:72,summary:'Profilo coerente con il brand, metriche solide ma base ridotta.',rubricVersion:'rubric-test-0'};
-const ticket=async(app=APP,rubricVersion='rubric-test-0')=>(await createProposals({secret:SECRET}).issueInput({uid:UID,applicationId:app,rubricVersion})).ticket;
+const v1=(score=72,extra={})=>({score,summary:'Profilo coerente con il brand, metriche solide ma base ridotta.',rubricVersion:'rubric-v1',
+ criteria:RUBRIC_V1_AREAS.map((a,i)=>({name:a.name,score:55+i*5,note:'Analisi motivata sintetica di prova per questa area.'})),
+ strengths:['Risposte argomentate'],concerns:['Base di audience ridotta'],potential:'Potenziale per contenuti tecnici sintetici.',roles:['Creator UGC'],limitations:['Link non esaminati'],...extra});
+const good=v1();
+const ticket=async(app=APP,rubricVersion='rubric-v1')=>(await createProposals({secret:SECRET}).issueInput({uid:UID,applicationId:app,rubricVersion})).ticket;
 
 test('evaluation content: strict shape, bounded text, known TEST rubric only',()=>{
  assert.deepEqual(validateEvaluation(good),good);
- assert.deepEqual(validateEvaluation({...good,criteria:[{name:'Brand fit',score:80,note:'Coerente'}]}).criteria,[{name:'Brand fit',score:80,note:'Coerente'}]);
+ // Saved TEST rubrics stay readable but accept no new evaluation.
+ for(const rubricVersion of ['rubric-test-0','rubric-test-1'])assert.throws(()=>validateEvaluation({...good,rubricVersion}),{code:'RUBRIC_NOT_ACTIVE'});
  for(const bad of [{...good,score:101},{...good,score:-1},{...good,score:7.5},{...good,score:'70'},{...good,summary:'troppo breve'},{...good,summary:'x'.repeat(4001)},
   {...good,summary:'Testo con carattere di controllo \u0007 dentro'},{...good,rubricVersion:'rubric-prod-1'},{...good,status:'approved'},{...good,socialScore:99},
-  {...good,criteria:Array.from({length:13},(_,i)=>({name:'c'+i,score:1}))},{...good,criteria:[{name:'A',score:1},{name:'a',score:2}]},{...good,criteria:[{name:'A',score:1,extra:1}]}])
+  {...good,criteria:Array.from({length:13},(_,i)=>({name:'c'+i,score:1}))},{...good,criteria:[{name:'A',score:1},{name:'a',score:2}]},{...good,criteria:[{name:'A',score:1,extra:1}]},{...good,rubricVersion:'rubric-test-0'}])
   assert.throws(()=>validateEvaluation(bad),undefined,JSON.stringify(bad).slice(0,60));
 });
 test('history: previous evaluation appended, at most twenty kept',()=>{
@@ -48,7 +52,7 @@ function fakeAi(state={exists:true,version:'2026-11-05T09:00:00.123456Z',fullNam
 test('propose never writes and returns a signed proposal with the candidate identity for confirmation',async()=>{
  const {ai,calls}=fakeAi(),tools=createAiTools({ai,proposals:createProposals({secret:SECRET}),principal});
  const p=await tools.propose_ai_evaluation({applicationId:APP,...good,inputTicket:await ticket()});
- assert.equal(p.status,'proposta_pronta_non_salvata');assert.equal(p.candidate.fullName,'Giulia Prova');assert.equal(p.rubric.test,true);
+ assert.equal(p.status,'proposta_pronta_non_salvata');assert.equal(p.candidate.fullName,'Giulia Prova');assert.equal(p.rubric.version,'rubric-v1');assert.equal(p.band,'Buono con riserve');
  assert.match(p.nextStep,/conferma esplicita/);assert.deepEqual(calls.map(c=>c[0]),['state']);
 });
 test('save requires confirmation, the same content and the same application',async()=>{
@@ -115,7 +119,7 @@ function backend(){
  const store=createAiFirestoreStore({serviceAccount:sa,projectId:'demo-evora-mcp',writer:{email:'ai-writer@example.invalid',password:'synthetic-password',apiKey:'AIza'+'x'.repeat(35)},transport});
  return {store,log,doc:()=>doc,updateTime,signIns:()=>signIns,failCommit:e=>{commitError=e;}};
 }
-const ev=(score,proposalId)=>({id:APP,evaluation:validateEvaluation({...good,score}),proposalId});
+const ev=(score,proposalId)=>({id:APP,evaluation:validateEvaluation(v1(score)),proposalId});
 test('facade writes ONLY the AI fields, with the aiwriter ID token, a server timestamp and a version precondition',async()=>{
  const b=backend(),s=await b.store.state(APP);assert.equal(s.exists,true);assert.equal(s.current,null);
  const r=await b.store.save({...ev(72,'p'.repeat(24)),basedOnVersion:s.version});assert.equal(r.status,'saved');

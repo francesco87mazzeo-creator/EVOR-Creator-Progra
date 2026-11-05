@@ -1,13 +1,13 @@
 # Valutazione AI da ChatGPT
 
-Stato: attiva **solo sullo staging**, con candidature sintetiche e criteri provvisori `rubric-test-0`. In produzione la scrittura è spenta: il facade di produzione non ha l'identità `aiwriter`, e la regola AI non è nelle Rules di produzione.
+Stato: attiva **solo sullo staging**, con candidature sintetiche e la rubrica definitiva `rubric-v1`. In produzione la scrittura è spenta: il facade di produzione non ha l'identità `aiwriter`, e la regola AI non è nelle Rules di produzione.
 
 ## Strumenti MCP
 
 | Strumento | Scope | Effetto |
 |---|---|---|
 | `search_applications` | `collective:read` | Ricerca per nome, cognome, username Instagram o ID; in caso di omonimie elenca e chiede quale scegliere |
-| `get_application_details` | `collective:read` | Una candidatura nei soli campi autorizzati (`server/collective/mcp-candidate-policy.mjs`), con domande e risposte oscurate |
+| `get_application_details` | `collective:read` | Vista amministrativa nei soli campi autorizzati (`server/collective/mcp-candidate-policy.mjs`): risposte oscurate, scoring, valutazione dello staff, stato e valutazioni AI salvate. Non va usata per generare un nuovo AI Score |
 | `get_application_for_ai_evaluation` | `collective:read` | Solo dati originali per la valutazione indipendente, senza punteggi, giudizi, stato o valutazioni AI precedenti; rilascia l'`inputTicket` |
 | `propose_ai_evaluation` | `collective:read collective:evaluate` | Richiede l'`inputTicket`; valida punteggio (0–100), motivazione, criteri e campi strutturati, e restituisce una proposta firmata valida 10 minuti. Non scrive nulla |
 | `save_ai_evaluation` | `collective:read collective:evaluate` | Salva solo la proposta confermata: stessi valori, `proposalToken`, `confirmed: true` |
@@ -27,21 +27,47 @@ Stato: attiva **solo sullo staging**, con candidature sintetiche e criteri provv
 - **Collegamento tra lettura e proposta:** `propose_ai_evaluation` richiede l'`inputTicket` rilasciato dalla lettura dedicata, valido 30 minuti e legato a candidatura e rubrica. La proposta dice solo se esiste una valutazione AI precedente, senza mostrarne il punteggio.
 - **Strumento amministrativo:** `get_application_details` resta invariato (con scoring e valutazione dello staff), ma la sua descrizione lo esclude dall'uso per la valutazione AI.
 
-## Proposta di criteri `rubric-test-1` (TEST, da approvare)
+## Rubrica definitiva `rubric-v1`
 
-| Criterio | Peso | Fonti |
-|---|---|---|
-| Allineamento con EVORΛ | 25 | motivazione, cosa apprezza, cosa significa rappresentare un brand, immagine, integrazione nei contenuti |
-| Audience e performance Instagram | 20 | follower, visualizzazioni, interazioni, account raggiunti, follower netti (con provenienza) |
-| Qualità della comunicazione | 15 | tre parole, tipo di contenuti, cosa trasmette, perché lo seguono, come racconterebbe EVORΛ |
-| Mentalità professionale | 15 | scenario brand e performance, reazione ai risultati, analisi, periodo di prova, linee guida |
-| Affidabilità e capacità produttiva | 15 | contenuti al mese, costanza, disponibilità (eventi, shooting, UGC, file originali) |
-| Valore aggiunto e potenziale | 10 | valore oltre i contenuti, collaborazioni, categorie, prodotti, miglioramenti, altro |
+Sei aree di analisi, **senza pesi fissi**. ChatGPT decide quanto conta ogni area per il profilo specifico e lo spiega nella motivazione. L'AI Score è il suo giudizio complessivo, non una media, e il server non lo ricalcola.
 
-- **Regole del punteggio:**
-  - ogni criterio vale da 0 a 100;
-  - l'AI Score è la media pesata dei criteri, arrotondata, e il server rifiuta un punteggio diverso;
-  - sono obbligatori: tutti i criteri nell'ordine indicato, punti di forza, criticità, potenziale per EVORΛ, dati mancanti e limiti.
+| Area | Su cosa si basa |
+|---|---|
+| Allineamento con EVORΛ | motivazione, cosa apprezza, cosa significa rappresentare un brand, immagine, integrazione nei contenuti |
+| Audience e performance Instagram | follower, visualizzazioni, interazioni, account raggiunti, follower netti, con la loro provenienza |
+| Qualità della comunicazione | tre parole, tipo di contenuti, cosa trasmette, perché lo seguono, come racconterebbe EVORΛ |
+| Mentalità professionale | scenario brand e performance, reazione ai risultati, analisi, periodo di prova, linee guida |
+| Affidabilità e capacità produttiva | contenuti al mese, costanza, disponibilità per eventi, shooting, UGC e file originali |
+| Valore aggiunto e potenziale | valore oltre i contenuti, collaborazioni, categorie, prodotti, miglioramenti, altro |
+
+**Scala comune 0–100**, con fasce descritte per la confrontabilità (`SCORE_BANDS` in `server/collective/mcp-ai-policy.mjs`):
+
+| Fascia | Punteggio |
+|---|---|
+| Eccezionale | 90–100 |
+| Molto buono | 75–89 |
+| Buono con riserve | 60–74 |
+| Incerto | 40–59 |
+| Debole | 20–39 |
+| Non idoneo | 0–19 |
+
+**Risultato obbligatorio:**
+- AI Score complessivo;
+- motivazione complessiva;
+- le sei aree nell'ordine indicato, ciascuna con un punteggio 0–100 e un'analisi motivata di almeno 20 caratteri;
+- punti di forza;
+- criticità;
+- potenziale per EVORΛ;
+- possibili ruoli, anche nessuno;
+- dati mancanti e limiti della valutazione.
+
+**Regole di valutazione:**
+- è una valutazione generale della candidatura, non per una campagna specifica;
+- non giudica la qualità di contenuti che non ha esaminato e non inventa metriche.
+
+**Rubriche precedenti:** `rubric-test-0` e `rubric-test-1` restano leggibili nello storico e nell'Admin, marcate TEST e mai convertite, ma non accettano nuove valutazioni.
+
+**Consultazione amministrativa:** `get_application_details` mostra Social Score, valutazione dello staff, stato e le valutazioni AI già salvate (corrente e storico, di qualunque rubrica), per rispondere alle domande del Founder o confrontare valutazioni. Questi dati non entrano nella lettura indipendente.
 
 ## Garanzie
 

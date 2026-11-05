@@ -55,7 +55,7 @@ export const STATUS_LABELS=Object.freeze({new:'Nuova',review:'In valutazione',sh
 export const STAFF_CRITERIA=Object.freeze([['brandFit','Brand Fit'],['contentQuality','Qualità dei contenuti'],['credibility','Credibilità'],['reliability','Affidabilità'],['potential','Potenziale'],['strategicValue','Valore strategico']]);
 export const CONTENT_LINKS=Object.freeze(['contentUrl1','contentUrl2','contentUrl3']);
 export const CANDIDATE_FIELDS=Object.freeze(['fullName','instagramHandle','status','date','updatedAt','schemaVersion','isAdult','profileCategories','otherProfileCategory',
- ...QUESTIONNAIRE.map(q=>q.key),...CONTENT_LINKS,...METRICS,...SCORES,'evaluation']);
+ ...QUESTIONNAIRE.map(q=>q.key),...CONTENT_LINKS,...METRICS,...SCORES,'evaluation','aiEvaluation','aiEvaluationHistory']);
 /** Fields that must never be requested by any candidate tool (checked by tests). */
 export const NEVER_REQUESTED=Object.freeze(['email','age','city','country','tiktok','tiktokFollowers','instagram','instagramUrl','tiktokHandle','tiktokUrl','screenshotData','screenshotData2',
  'profileScreenshotData','screenshotName','screenshotName2','ocrInsights','ocrProfile','notes','creatorCode','privacyConsent','insightsHistory','insightsCorrection']);

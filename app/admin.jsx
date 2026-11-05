@@ -1061,6 +1061,9 @@ const CANDIDATE_SCREENSHOTS = [
 
 // Valutazione AI salvata da ChatGPT (solo lettura qui): distinta dallo scoring automatico e dalla valutazione dello staff.
 const aiDate = v => v && typeof v.toDate === "function" ? v.toDate() : v;
+// Fasce della scala comune 0-100 (rubric-v1), solo per la lettura del punteggio.
+const AI_BANDS = [[90,"Eccezionale"],[75,"Molto buono"],[60,"Buono con riserve"],[40,"Incerto"],[20,"Debole"],[0,"Non idoneo"]];
+const aiBand = s => Number.isInteger(s) ? (AI_BANDS.find(([min])=>s>=min)||[])[1] : null;
 function AiEvaluationEntry({ev, compact}){
   const test = typeof ev.rubricVersion === "string" && ev.rubricVersion.startsWith("rubric-test");
   return (
@@ -1070,11 +1073,11 @@ function AiEvaluationEntry({ev, compact}){
           {Number.isInteger(ev.score) ? ev.score : "—"}<span className="label-xs" style={{marginLeft:6}}>/ 100</span>
         </div>
         <span className="label-xs">
-          {fmtDateTime(aiDate(ev.evaluatedAt))} · criteri {ev.rubricVersion || "—"}{test ? " · TEST" : ""}
+          {aiBand(ev.score) ? aiBand(ev.score) + " · " : ""}{fmtDateTime(aiDate(ev.evaluatedAt))} · criteri {ev.rubricVersion || "—"}{test ? " · TEST" : ""}
         </span>
       </div>
       {typeof ev.summary === "string" && <p className="body-sm" style={{marginTop:10,whiteSpace:"pre-wrap"}}>{ev.summary}</p>}
-      {!compact && [['strengths','Punti di forza'],['concerns','Criticità'],['limitations','Dati mancanti e limiti']].map(([k,l])=>Array.isArray(ev[k]) && ev[k].length > 0 && (
+      {!compact && [['strengths','Punti di forza'],['concerns','Criticità'],['roles','Possibili ruoli per EVORΛ'],['limitations','Dati mancanti e limiti']].map(([k,l])=>Array.isArray(ev[k]) && ev[k].length > 0 && (
         <div key={k} style={{marginTop:10}}>
           <div className="label-xs">{l}</div>
           <ul className="body-sm" style={{margin:'4px 0 0 18px'}}>{ev[k].map((x,i)=><li key={i}>{x}</li>)}</ul>
