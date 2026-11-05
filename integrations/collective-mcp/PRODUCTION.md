@@ -1,6 +1,6 @@
 # MCP: percorso pilota di produzione (dati reali, sola lettura)
 
-Stato: codice e configurazioni pronti sul branch `feature/mcp-production`. Nessuna risorsa cloud creata, nessun deploy.
+Stato al 2026-11-05: pubblicato su autorizzazione. Progetto `evora-hub-mcp` creato, account `evora-mcp-read@evora-athletes` di sola lettura (scansione e prove di scrittura superate), Worker `evora-hub-mcp` (b56b2b53), `evora-collective-mcp-read` (36f9b19c), `evora-collective-mcp` (f8413d3b). Nessun documento di `evora-athletes` modificato, `throbbing-feather-957f` invariato.
 
 Stessa logica OAuth e MCP già verificata su EVORΛ COLLECTIVE — TEST; cambiano solo nomi, progetti e il profilo `production`. Lo staging resta invariato (`STAGING.md`).
 
