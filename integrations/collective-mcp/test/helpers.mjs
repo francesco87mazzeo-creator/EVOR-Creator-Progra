@@ -14,7 +14,7 @@ export const BASE={schemaVersion:5,date:'2026-11-04T09:00:00.000Z',updatedAt:'20
 const secretFields={fullName:'PRIVATE_NAME_SHOULD_NOT_LEAK',email:'private@example.invalid',notes:'PRIVATE_NOTES_SHOULD_NOT_LEAK',screenshotData:'PRIVATE_SCREENSHOT_SHOULD_NOT_LEAK',creatorCode:'PRIVATE_CREATOR_CODE_SHOULD_NOT_LEAK'};
 function pathValue(object,path){return path.split('.').reduce((value,key)=>value?.[key],object);}
 function setPath(object,path,value){const keys=path.split('.'),last=keys.pop();let parent=object;for(const key of keys)parent=parent[key]??={};parent[last]=structuredClone(value);}
-export function dataFixture({applications=null,settings=null}={}) {
+export function dataFixture({applications=null,settings=null,projectId=PROJECT}={}) {
  const app={...BASE,...scoreDocumentFields(computeScore(BASE)),...secretFields,
   ocrInsights:{readAt:BASE.date,merged:{views:1206,interactions:54,accountsReached:250,netFollowers:-1},screenshot1:{screenType:'insights_ok',accountsReached:{value:250,visibility:'complete'}}},
   insightsCorrection:{correctedAt:BASE.date,previousValues:{views:1000},newValues:{views:1206},note:'PRIVATE_CORRECTION_NOTE'},
@@ -22,7 +22,7 @@ export function dataFixture({applications=null,settings=null}={}) {
  const documents=new Map(Object.entries(applications||{application_b:app,application_a:{...app,date:'2026-11-03T09:00:00.000Z'}}));
  const configurationDocs=settings===null?{scoring:structuredClone(DEFAULT_SCORING),scoreLevels:scoreLevels.defaults(),instagramBenchmarks:scoreLevels.benchmarks.toDocument(scoreLevels.benchmarks.defaults())}:settings;
  const requests=[];
- const project=`projects/${PROJECT}/databases/(default)/documents/`;
+ const project=`projects/${projectId}/databases/(default)/documents/`;
  function encode(name,data,mask=null){const filtered={};if(mask)for(const path of mask){const v=pathValue(data,path);if(v!==undefined)setPath(filtered,path,v);}else Object.assign(filtered,data);return{name:project+name,fields:toFirestoreDocument(filtered).fields};}
  const channel={async fetch(request){
   requests.push(request.clone());const url=new URL(request.url);

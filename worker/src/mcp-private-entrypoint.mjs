@@ -1,11 +1,14 @@
+import {stageEnvironment,MCP_STAGE_PROJECT,MCP_STAGE_HUB}from'../../server/collective/mcp-staging.mjs';
+import {verifyStagePeer}from'../../integrations/collective-mcp/src/staging.mjs';
 // Named Cloudflare service-only entrypoint. Never add a public HTTP route for this class.
 import {WorkerEntrypoint} from 'cloudflare:workers';
 import {createPrivateMcpHandler,createPrivateFirestoreAccess} from './mcp-private-read.mjs';
 
 function unavailable(){return new Response(JSON.stringify({error:'not_configured'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});}
-function founderVerifier(env) {
+function founderVerifier(env,staging) {
   return async principal => {
     if(!env.HUB_IDENTITY||typeof env.HUB_IDENTITY.fetch!=='function')return false;
+    if(staging)await verifyStagePeer(env.HUB_IDENTITY,'https://hub.internal/internal/mcp/stage-info',{profile:'mcp-staging',projectId:MCP_STAGE_PROJECT,origin:MCP_STAGE_HUB});
     const req=new Request('https://hub.internal/internal/collective/check',{
       method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({uid:principal.uid,role:principal.role,version:principal.version}),
@@ -21,15 +24,17 @@ export class CollectiveMcpReadService extends WorkerEntrypoint {
   async fetch(request) {
     try {
       const env=this.env;
-      if(!env?.MCP_PRIVATE_SHARED_KEY||!env?.MCP_FOUNDER_UID||!env?.FIRESTORE_SERVICE_ACCOUNT||!env?.FIRESTORE_PROJECT_ID)
+      const staging=stageEnvironment(env,'bridge');
+      if(!env?.MCP_PRIVATE_SHARED_KEY||!env?.MCP_FOUNDER_UID||!env?.FIREBASE_SERVICE_ACCOUNT||!env?.FIRESTORE_PROJECT_ID)
         return unavailable();
-      const account=JSON.parse(env.FIRESTORE_SERVICE_ACCOUNT);
+      const account=JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
       if(!account?.private_key||!account?.client_email||account.project_id!==env.FIRESTORE_PROJECT_ID)
         return unavailable();
       const readFirestore=createPrivateFirestoreAccess({serviceAccount:account,projectId:env.FIRESTORE_PROJECT_ID});
       const handler=createPrivateMcpHandler({
         secret:env.MCP_PRIVATE_SHARED_KEY,founderUid:env.MCP_FOUNDER_UID,
-        verifyFounder:founderVerifier(env),readFirestore
+        deployment:{profile:staging?'staging':'production',projectId:env.FIRESTORE_PROJECT_ID},
+        verifyFounder:founderVerifier(env,staging),readFirestore
       });
       return handler(request);
     }catch{return unavailable();}

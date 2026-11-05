@@ -200,7 +200,7 @@ Nessuna app ChatGPT creata, nessuna sessione Google avviata e nessun test live e
 
 ### Configurazione necessaria, NON applicata
 
-Sul Worker COLLECTIVE, come **secret Cloudflare**: `MCP_PRIVATE_SHARED_KEY` (43–128 caratteri casuali URL-safe) e `MCP_FOUNDER_UID` (UID personale). Restano obbligatori anche i binding `HUB_IDENTITY`, `FIRESTORE_SERVICE_ACCOUNT` e `FIRESTORE_PROJECT_ID` già presenti.
+Sul Worker COLLECTIVE, come **secret Cloudflare**: `MCP_PRIVATE_SHARED_KEY` (43–128 caratteri casuali URL-safe) e `MCP_FOUNDER_UID` (UID personale). Restano obbligatori anche i binding `HUB_IDENTITY`, `FIREBASE_SERVICE_ACCOUNT` e `FIRESTORE_PROJECT_ID` già presenti.
 
 Sul nuovo Worker MCP, come secret/var (nessun valore attualmente caricato):
 - `MCP_ENABLED`, da lasciare disattivato fino al collaudo.
@@ -223,3 +223,7 @@ Le credenziali Firebase restano esclusivamente nel Worker COLLECTIVE e HUB dove 
 3. Verifica dei dati storici reali **solo dopo** autorizzazione specifica alla lettura, mantenendo la privacy e i limiti di query.
 4. Test reale di aggiunta del server MCP privato nel workspace ChatGPT, registrazione CIMD e OAuth con consenso e PKCE.
 5. Approvazione separata prima di distribuire una nuova versione dei Worker COLLECTIVE e HUB esistenti, creare il Worker MCP pubblico o cambiare Secret.
+
+## Collaudo Cloudflare isolato
+
+Vedere [STAGING.md](STAGING.md) per configurazioni dedicate, Secret gestiti, prerequisiti e collaudo ChatGPT. Non riutilizzare il HUB test già collegato ai servizi online.

@@ -1,10 +1,12 @@
+import {stageEnvironment}from'../../../server/collective/mcp-staging.mjs';
+import {verifyStageHub}from'./staging.mjs';
 import {createHandler} from './server.mjs';
 import {configuration,authorizer,remoteKeySet} from './auth.mjs';
 import {createReader} from './reader.mjs';
 import {createPrivateCollectiveChannel} from './private-channel.mjs';
 
 // Factory for local tests with explicitly supplied test authorities/data channels.
-// No production wiring: the HUB repository is inaccessible with the current connection.
+// No ambient credentials or HTTP data fallback; use explicit private bindings only.
 export function createPrototypeWorker(dependencies) {
   return Object.freeze({fetch:createHandler(dependencies)});
 }
@@ -12,6 +14,7 @@ export function createPrototypeWorker(dependencies) {
 // explicitly provided after the combined HUB/COLLECTIVE security review.
 const handlers=new WeakMap();
 export function createConfiguredMcpWorker(env) {
+  const staging=stageEnvironment(env,'mcp');
   const required=['MCP_RESOURCE','MCP_ISSUER','MCP_JWKS_URL','MCP_FOUNDER_UID',
     'MCP_PRIVATE_SHARED_KEY','FIRESTORE_PROJECT_ID'];
   if(required.some(key=>typeof env?.[key]!=='string'||!env[key]))throw Error('MCP_CONFIG_REQUIRED');
@@ -26,10 +29,14 @@ export function createConfiguredMcpWorker(env) {
     projectId:env.FIRESTORE_PROJECT_ID,
     channel:createPrivateCollectiveChannel({
       binding:env.COLLECTIVE_MCP_READ,secret:env.MCP_PRIVATE_SHARED_KEY,
-      projectId:env.FIRESTORE_PROJECT_ID,identity
+      projectId:env.FIRESTORE_PROJECT_ID,identity,staging
     })
   });
-  return Object.freeze({fetch:createHandler({config,authorize,readerFactory})});
+  const handler=createHandler({config,authorize,readerFactory});
+  return Object.freeze({async fetch(request){
+    if(staging){try{await verifyStageHub(env);}catch{return new Response(JSON.stringify({error:'STAGING_PEER_UNAVAILABLE'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});}}
+    return handler(request);
+  }});
 }
 export default {
   async fetch(request,env) {

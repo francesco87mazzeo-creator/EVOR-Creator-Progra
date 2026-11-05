@@ -1,0 +1,35 @@
+{
+  "name": "evora-collective-mcp-staging",
+  "main": "src/staging-worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "MCP_ENABLED": "0",
+    "MCP_DEPLOYMENT_PROFILE": "staging",
+    "MCP_RESOURCE": "https://evora-collective-mcp-staging.francesco87-mazzeo.workers.dev/mcp",
+    "MCP_ISSUER": "https://evora-hub-mcp-staging.francesco87-mazzeo.workers.dev",
+    "MCP_JWKS_URL": "https://evora-hub-mcp-staging.francesco87-mazzeo.workers.dev/.well-known/jwks.json",
+    "FIRESTORE_PROJECT_ID": "evora-mcp-staging"
+  },
+  "services": [
+    {
+      "binding": "MCP_OAUTH_AUTHORITY",
+      "service": "evora-hub-mcp-staging",
+      "entrypoint": "HubMcpOAuthService"
+    },
+    {
+      "binding": "HUB_IDENTITY",
+      "service": "evora-hub-mcp-staging",
+      "entrypoint": "HubIdentityService"
+    },
+    {
+      "binding": "COLLECTIVE_MCP_READ",
+      "service": "evora-collective-mcp-read-staging",
+      "entrypoint": "CollectiveMcpReadService"
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}

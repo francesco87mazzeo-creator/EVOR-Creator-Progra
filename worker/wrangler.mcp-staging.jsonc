@@ -1,0 +1,21 @@
+{
+  "name": "evora-collective-mcp-read-staging",
+  "main": "src/mcp-staging-worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "MCP_DEPLOYMENT_PROFILE": "staging",
+    "FIRESTORE_PROJECT_ID": "evora-mcp-staging"
+  },
+  "services": [
+    {
+      "binding": "HUB_IDENTITY",
+      "service": "evora-hub-mcp-staging",
+      "entrypoint": "HubIdentityService"
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}

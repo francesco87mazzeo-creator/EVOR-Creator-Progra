@@ -6,7 +6,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main, feature/configurable-score-levels, feature/instagram-benchmark-editor, fix/benchmark-persistence-curves, design/admin-candidate-block-3, design/admin-scoring-block-4, design/admin-list-block-5]
+    branches: [main, feature/configurable-score-levels, feature/instagram-benchmark-editor, fix/benchmark-persistence-curves, design/admin-candidate-block-3, design/admin-scoring-block-4, design/admin-list-block-5, fix/mcp-staging-read-isolation]
 
 permissions:
   contents: read
@@ -112,3 +112,12 @@ jobs:
         run: npm test
       - name: Build existing public Worker with private service export (no deploy)
         run: npx --yes wrangler@4.149.0 deploy --config wrangler.toml --dry-run --outdir /tmp/collective-mcp-build
+
+      - name: Validate closed staging configuration
+        run: node integrations/collective-mcp/scripts/check-staging.mjs
+      - name: Compile isolated private facade and MCP resource (no deploy)
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npx --yes wrangler@4.149.0 deploy --config worker/wrangler.mcp-staging.jsonc --dry-run --outdir /tmp/mcp-stage-private
+          npx --yes wrangler@4.149.0 deploy --config integrations/collective-mcp/wrangler.staging.jsonc --dry-run --outdir /tmp/mcp-stage-resource
