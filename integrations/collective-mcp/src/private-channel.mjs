@@ -3,6 +3,7 @@ import {MCP_PROFILES}from'../../../server/collective/mcp-profiles.mjs';
 // Adapter from the existing strictly bounded MCP reader to the private COLLECTIVE
 // Worker service binding. There is NO public HTTP or Google API fallback.
 import {RECENT_FIELDS,DETAIL_FIELDS,SETTING_FIELDS,validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
+import {INDEX_FIELDS,CANDIDATE_FIELDS,MAX_INDEX} from '../../../server/collective/mcp-candidate-policy.mjs';
 import {DataError} from './reader.mjs';
 
 const PRIVATE_URL='https://collective-mcp.internal/internal/mcp/read';
@@ -19,18 +20,21 @@ export function privateReadOperation(request,projectId){
      const fields=q?.select?.fields?.map(f=>f?.fieldPath);
      const ordering=q?.orderBy;
      if(!sameFields(b,['structuredQuery'])||!sameFields(q,['select','from','orderBy','limit'])
-       ||!sameFields(q.select,['fields'])||!sameList(fields,RECENT_FIELDS)
+       ||!sameFields(q.select,['fields'])
        ||JSON.stringify(q.from)!==JSON.stringify([{collectionId:'candidature'}])
-       ||JSON.stringify(ordering)!==JSON.stringify([{field:{fieldPath:'date'},direction:'DESCENDING'},{field:{fieldPath:'__name__'},direction:'DESCENDING'}])
-       ||!Number.isInteger(q.limit)||q.limit<1||q.limit>20)throw new DataError('PRIVATE_READ_DENIED');
+       ||JSON.stringify(ordering)!==JSON.stringify([{field:{fieldPath:'date'},direction:'DESCENDING'},{field:{fieldPath:'__name__'},direction:'DESCENDING'}]))throw new DataError('PRIVATE_READ_DENIED');
+     if(sameList(fields,INDEX_FIELDS)&&q.limit===MAX_INDEX)return {operation:'index',argument:{}};
+     if(!sameList(fields,RECENT_FIELDS)||!Number.isInteger(q.limit)||q.limit<1||q.limit>20)throw new DataError('PRIVATE_READ_DENIED');
      return {operation:'recent',argument:{limit:q.limit}};
    });
  }
  if(request.method==='GET'&&u.pathname.startsWith(root+'/candidature/')){
    const id=u.pathname.slice((root+'/candidature/').length);
-   if(!validMcpDocumentId(id)||!sameList(u.searchParams.getAll('mask.fieldPaths'),DETAIL_FIELDS)
-     ||Array.from(u.searchParams.keys()).some(key=>key!=='mask.fieldPaths'))throw new DataError('PRIVATE_READ_DENIED');
-   return Promise.resolve({operation:'application',argument:{id}});
+   const mask=u.searchParams.getAll('mask.fieldPaths');
+   if(!validMcpDocumentId(id)||Array.from(u.searchParams.keys()).some(key=>key!=='mask.fieldPaths'))throw new DataError('PRIVATE_READ_DENIED');
+   if(sameList(mask,DETAIL_FIELDS))return Promise.resolve({operation:'application',argument:{id}});
+   if(sameList(mask,CANDIDATE_FIELDS))return Promise.resolve({operation:'candidate',argument:{id}});
+   throw new DataError('PRIVATE_READ_DENIED');
  }
  if(request.method==='GET'&&u.pathname.startsWith(root+'/settings/')&&!u.search){
    const id=u.pathname.slice((root+'/settings/').length);

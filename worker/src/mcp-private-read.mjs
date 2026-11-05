@@ -1,6 +1,7 @@
 // Private read-only facade. This module has no public route and no mutation operation.
 // It must be exposed ONLY as a Cloudflare WorkerEntrypoint through a service binding.
 import {RECENT_FIELDS, DETAIL_FIELDS, SETTING_FIELDS, validMcpDocumentId} from '../../server/collective/mcp-read-policy.mjs';
+import {INDEX_FIELDS, CANDIDATE_FIELDS, MAX_INDEX} from '../../server/collective/mcp-candidate-policy.mjs';
 import {accessToken} from './firestore.mjs';
 
 const PRIVATE_ORIGIN = 'https://collective-mcp.internal';
@@ -43,6 +44,8 @@ export function validPrivateOperation(payload) {
   if(payload.operation==='application') return exactKeys(payload.argument,['id'])&&validMcpDocumentId(payload.argument.id);
   if(payload.operation==='setting') return exactKeys(payload.argument,['id'])
     && Object.hasOwn(SETTING_FIELDS,payload.argument.id);
+  if(payload.operation==='index') return exactKeys(payload.argument,[]);
+  if(payload.operation==='candidate') return exactKeys(payload.argument,['id'])&&validMcpDocumentId(payload.argument.id);
   return false;
 }
 export function createPrivateMcpHandler({secret, founderUid,verifyFounder,readFirestore,deployment=null}) {
@@ -94,6 +97,17 @@ export function buildPrivateFirestoreRequest(projectId,operation,argument,bearer
   if(operation==='setting'&&exactKeys(argument,['id'])&&Object.hasOwn(SETTING_FIELDS,argument.id)) {
     const url=scopedUrl(projectId,'/settings/'+argument.id);
     for(const field of SETTING_FIELDS[argument.id])url.searchParams.append('mask.fieldPaths',field);
+    return new Request(url,{method:'GET',headers,signal:AbortSignal.timeout(5000)});
+  }
+  // Search index: names, handles, status and date only; the MCP server matches the query.
+  if(operation==='index'&&exactKeys(argument,[])) {
+    const url=scopedUrl(projectId+'',':runQuery');
+    const body={structuredQuery:{select:{fields:fieldsQuery(INDEX_FIELDS)},from:[{collectionId:'candidature'}],orderBy:[{field:{fieldPath:'date'},direction:'DESCENDING'},{field:{fieldPath:'__name__'},direction:'DESCENDING'}],limit:MAX_INDEX}};
+    return new Request(url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(5000)});
+  }
+  if(operation==='candidate'&&exactKeys(argument,['id'])&&validMcpDocumentId(argument.id)) {
+    const url=scopedUrl(projectId,'/candidature/'+argument.id);
+    for(const field of CANDIDATE_FIELDS)url.searchParams.append('mask.fieldPaths',field);
     return new Request(url,{method:'GET',headers,signal:AbortSignal.timeout(5000)});
   }
   throw Error('OPERATION_DENIED');

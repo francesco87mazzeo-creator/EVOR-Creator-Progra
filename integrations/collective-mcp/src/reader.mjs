@@ -1,5 +1,6 @@
 import {boundedText} from './bounded.mjs';
 import {METRICS, RECENT_FIELDS, DETAIL_FIELDS, validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
+import {INDEX_FIELDS, CANDIDATE_FIELDS, MAX_INDEX} from '../../../server/collective/mcp-candidate-policy.mjs';
 export {METRICS, RECENT_FIELDS, DETAIL_FIELDS};
 export const MAX_RECENT = 20;
 export const validId = validMcpDocumentId;
@@ -62,6 +63,18 @@ export function createReader({channel, projectId}) {
     async application(id) {
       if (!validId(id)) throw new DataError('INVALID_ID');
       const url=new URL(root+'/candidature/'+id);DETAIL_FIELDS.forEach(path=>url.searchParams.append('mask.fieldPaths',path));
+      const doc=await read(url);if (doc===null) return null;
+      const result=document(doc);if (result.id!==id) throw new DataError();return result;
+    },
+    /** Names, handles, status and date of at most MAX_INDEX recent applications, for in-server matching. */
+    async index() {
+      const rows=await read(root+':runQuery',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({structuredQuery:{select:{fields:INDEX_FIELDS.map(fieldPath=>({fieldPath}))},from:[{collectionId:'candidature'}],orderBy:[{field:{fieldPath:'date'},direction:'DESCENDING'},{field:{fieldPath:'__name__'},direction:'DESCENDING'}],limit:MAX_INDEX}})});
+      if (!Array.isArray(rows) || rows.length>MAX_INDEX+1) throw new DataError();
+      return rows.filter(row=>row.document).map(row=>document(row.document));
+    },
+    async candidate(id) {
+      if (!validId(id)) throw new DataError('INVALID_ID');
+      const url=new URL(root+'/candidature/'+id);CANDIDATE_FIELDS.forEach(path=>url.searchParams.append('mask.fieldPaths',path));
       const doc=await read(url);if (doc===null) return null;
       const result=document(doc);if (result.id!==id) throw new DataError();return result;
     },

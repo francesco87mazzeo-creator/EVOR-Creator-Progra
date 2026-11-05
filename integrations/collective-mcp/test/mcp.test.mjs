@@ -16,9 +16,9 @@ async function fixture(t,options={}){
  t.after(()=>client.close());await client.connect(transport);
  return{...data,...auth,worker,client,accessToken};
 }
-test('official SDK client initializes, discovers exactly three protected read-only tools and calls all three',async t=>{
+test('official SDK client initializes, discovers exactly five protected read-only tools and calls the original three',async t=>{
  const f=await fixture(t);const catalog=await f.client.listTools();
- assert.deepEqual(catalog.tools.map(t=>t.name),['list_recent_applications','get_application_metrics','get_scoring_configuration']);
+ assert.deepEqual(catalog.tools.map(t=>t.name),['list_recent_applications','get_application_metrics','get_scoring_configuration','search_applications','get_application_details']);
  for(const tool of catalog.tools){assert.equal(tool.annotations.readOnlyHint,true);assert.equal(tool.annotations.destructiveHint,false);assert.equal(tool.annotations.openWorldHint,false);assert.deepEqual(tool._meta.securitySchemes,[{type:'oauth2',scopes:[READ_SCOPE]}]);}
  const wireResponse=await f.worker.fetch(bearer(f.accessToken,config.resource,{method:'POST',headers:{'content-type':'application/json','accept':'application/json, text/event-stream','mcp-protocol-version':'2025-11-25'},body:JSON.stringify({jsonrpc:'2.0',id:100,method:'tools/list',params:{}})}));
  const wire=await wireResponse.json();for(const tool of wire.result.tools)assert.deepEqual(tool.securitySchemes,tool._meta.securitySchemes,'OAuth schemes must be present on the wire; the generic SDK client strips this custom descriptor field');
