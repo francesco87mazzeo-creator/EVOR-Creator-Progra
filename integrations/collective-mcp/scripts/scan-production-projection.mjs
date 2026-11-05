@@ -13,7 +13,8 @@ if (account.project_id !== PROJECT || !account.client_email.startsWith('evora-mc
 const bearer = await accessToken(account, Date.now);
 
 // Every string the projection may legitimately return; anything else is reported.
-const ENUMS = {status: /^(new|review|approved|rejected)$/, screenType: /^[a-z_]{1,32}$/, key: /^(followers|views|interactions|accountsReached|netFollowers)$/};
+const TOKEN = /^[a-z][a-z0-9_-]{0,31}$/;
+const ENUMS = {status: /^(new|review|approved|rejected)$/, screenType: TOKEN, visibility: TOKEN, interpolation: TOKEN, storageFormat: TOKEN, key: /^(followers|views|interactions|accountsReached|netFollowers)$/};
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const PERSONAL = [/@/, /https?:\/\//i, /instagram|tiktok/i, /data:image|base64/i, /\+?\d[\d\s]{8,}/];
 const stats = {documents: 0, fields: {}, unexpectedStrings: 0, personalHits: 0, longStrings: 0};
@@ -46,6 +47,9 @@ const want = ['datastore.entities.get', 'datastore.entities.list', 'datastore.en
   'firebaseauth.users.get', 'firebaseauth.users.update', 'resourcemanager.projects.setIamPolicy', 'firebaserules.releases.update'];
 const perms = await (await fetch(`https://cloudresourcemanager.googleapis.com/v1/projects/${PROJECT}:testIamPermissions`, {method: 'POST',
   headers: {authorization: 'Bearer ' + bearer, 'content-type': 'application/json'}, body: JSON.stringify({permissions: want})})).json();
-console.log(JSON.stringify({documents: stats.documents, ids: ids.length, idsLookRandom: ids.every(id => /^[A-Za-z0-9_-]{16,40}$/.test(id) && !/@/.test(id)),
+// ID shape only: length and character classes, never the value.
+const idShapes = {};
+for (const id of ids) { const shape = id.length + ':' + [/[a-z]/, /[A-Z]/, /\d/, /[_-]/].map(p => p.test(id) ? 1 : 0).join('') + (/^[a-z]+(-[a-z]+)+/.test(id) ? ':parole' : '') + (/^k[0-9a-f]{31}$/.test(id) ? ':hash' : '') + (/^\d{13}$/.test(id) ? ':timestamp-ms' : ''); idShapes[shape] = (idShapes[shape] || 0) + 1; }
+console.log(JSON.stringify({documents: stats.documents, ids: ids.length, idShapes, idsLookRandom: ids.every(id => /^[A-Za-z0-9_-]{16,40}$/.test(id) && !/@/.test(id)),
   personalHits: stats.personalHits, longStrings: stats.longStrings, unexpectedStrings: stats.unexpectedStrings,
   fieldTypes: stats.fields, permissions: perms.permissions || [], permissionsStatus: perms.error?.status || 'OK'}, null, 1));
