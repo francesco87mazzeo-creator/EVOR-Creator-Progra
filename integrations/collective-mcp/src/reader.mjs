@@ -1,6 +1,6 @@
 import {boundedText} from './bounded.mjs';
 import {METRICS, RECENT_FIELDS, DETAIL_FIELDS, validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
-import {INDEX_FIELDS, CANDIDATE_FIELDS, MAX_INDEX} from '../../../server/collective/mcp-candidate-policy.mjs';
+import {INDEX_FIELDS, CANDIDATE_FIELDS, EVALUATION_FIELDS, MAX_INDEX} from '../../../server/collective/mcp-candidate-policy.mjs';
 export {METRICS, RECENT_FIELDS, DETAIL_FIELDS};
 export const MAX_RECENT = 20;
 export const validId = validMcpDocumentId;
@@ -75,6 +75,13 @@ export function createReader({channel, projectId}) {
     async candidate(id) {
       if (!validId(id)) throw new DataError('INVALID_ID');
       const url=new URL(root+'/candidature/'+id);CANDIDATE_FIELDS.forEach(path=>url.searchParams.append('mask.fieldPaths',path));
+      const doc=await read(url);if (doc===null) return null;
+      const result=document(doc);if (result.id!==id) throw new DataError();return result;
+    },
+    /** Original data for an independent AI evaluation; see EVALUATION_FIELDS. */
+    async evaluationInput(id) {
+      if (!validId(id)) throw new DataError('INVALID_ID');
+      const url=new URL(root+'/candidature/'+id);EVALUATION_FIELDS.forEach(path=>url.searchParams.append('mask.fieldPaths',path));
       const doc=await read(url);if (doc===null) return null;
       const result=document(doc);if (result.id!==id) throw new DataError();return result;
     },

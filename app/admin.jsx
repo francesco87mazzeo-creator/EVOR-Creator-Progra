@@ -1074,6 +1074,15 @@ function AiEvaluationEntry({ev, compact}){
         </span>
       </div>
       {typeof ev.summary === "string" && <p className="body-sm" style={{marginTop:10,whiteSpace:"pre-wrap"}}>{ev.summary}</p>}
+      {!compact && [['strengths','Punti di forza'],['concerns','Criticità'],['limitations','Dati mancanti e limiti']].map(([k,l])=>Array.isArray(ev[k]) && ev[k].length > 0 && (
+        <div key={k} style={{marginTop:10}}>
+          <div className="label-xs">{l}</div>
+          <ul className="body-sm" style={{margin:'4px 0 0 18px'}}>{ev[k].map((x,i)=><li key={i}>{x}</li>)}</ul>
+        </div>
+      ))}
+      {!compact && typeof ev.potential === "string" && (
+        <div style={{marginTop:10}}><div className="label-xs">Potenziale per EVORΛ</div><p className="body-sm" style={{marginTop:4}}>{ev.potential}</p></div>
+      )}
       {Array.isArray(ev.criteria) && ev.criteria.length > 0 && !compact && (
         <div style={{marginTop:10}}>
           {ev.criteria.map((c,i)=>(

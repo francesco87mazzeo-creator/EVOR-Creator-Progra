@@ -1,13 +1,16 @@
-// AI evaluation: private channel to the facade and signed, short-lived proposals.
+// AI evaluation: private channel to the facade, signed short-lived proposals and evaluation-input tickets.
 // A proposal binds the Founder, the application, the exact content and the document version it was based on.
-// It is stateless (HMAC), so it cannot be forged or edited; reuse is stopped by the facade (same proposalId
-// already saved, or document version changed by the first save).
+// An input ticket proves the evaluation started from the dedicated independent read (no scores or judgements).
+// Both are stateless (HMAC) and typed, so one can never be used as the other; reuse of a proposal is stopped by
+// the facade (same proposalId already saved, or document version changed by the first save).
 import {validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
 import {validateEvaluation,canonicalJson,PROPOSAL_TTL_MS} from '../../../server/collective/mcp-ai-policy.mjs';
 import {boundedText} from './bounded.mjs';
 import {DataError} from './reader.mjs';
 
+export const INPUT_TTL_MS=30*60_000;
 const AI_URL='https://collective-mcp.internal/internal/mcp/ai';
+const TOKEN=/^([A-Za-z0-9_-]{20,600})\.([A-Za-z0-9_-]{43})$/;
 const b64=bytes=>btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const unb64=text=>Uint8Array.from(atob(text.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
 const sha256=async text=>b64(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)));
@@ -20,25 +23,40 @@ async function proposalKey(secret){
 export function createProposals({secret,now=Date.now}){
  if(typeof secret!=='string'||!/^[A-Za-z0-9_-]{43,128}$/.test(secret))throw new DataError('AI_NOT_CONFIGURED');
  const key=proposalKey(secret);
+ const sign=async claims=>{const body=b64(new TextEncoder().encode(JSON.stringify(claims)));return body+'.'+b64(await crypto.subtle.sign('HMAC',await key,new TextEncoder().encode(body)));};
+ // Signature and version only; each caller then checks the token type and its bindings.
+ const open=async(token,code)=>{
+  const m=TOKEN.exec(typeof token==='string'?token:'');
+  if(!m||!await crypto.subtle.verify('HMAC',await key,unb64(m[2]),new TextEncoder().encode(m[1])))throw new DataError(code);
+  let claims;try{claims=JSON.parse(new TextDecoder().decode(unb64(m[1])));}catch{throw new DataError(code);}
+  if(claims?.v!==1)throw new DataError(code);
+  return claims;
+ };
  return Object.freeze({
   async issue({uid,applicationId,content,basedOnVersion}){
    const nonce=b64(crypto.getRandomValues(new Uint8Array(18)));
-   const claims={v:1,sub:uid,app:applicationId,h:await sha256(canonicalJson(content)),base:basedOnVersion,exp:now()+PROPOSAL_TTL_MS,n:nonce};
-   const body=b64(new TextEncoder().encode(JSON.stringify(claims)));
-   const mac=b64(await crypto.subtle.sign('HMAC',await key,new TextEncoder().encode(body)));
-   return {token:body+'.'+mac,expiresAt:new Date(claims.exp).toISOString(),proposalId:nonce};
+   const claims={v:1,t:'proposal',sub:uid,app:applicationId,h:await sha256(canonicalJson(content)),base:basedOnVersion,exp:now()+PROPOSAL_TTL_MS,n:nonce};
+   return {token:await sign(claims),expiresAt:new Date(claims.exp).toISOString(),proposalId:nonce};
   },
   /** Returns the verified claims or throws a DataError with a precise, non-sensitive code. */
   async verify(token,{uid,applicationId,content}){
-   const m=/^([A-Za-z0-9_-]{20,600})\.([A-Za-z0-9_-]{43})$/.exec(typeof token==='string'?token:'');
-   if(!m)throw new DataError('PROPOSAL_INVALID');
-   const ok=await crypto.subtle.verify('HMAC',await key,unb64(m[2]),new TextEncoder().encode(m[1]));
-   if(!ok)throw new DataError('PROPOSAL_INVALID');
-   let claims;try{claims=JSON.parse(new TextDecoder().decode(unb64(m[1])));}catch{throw new DataError('PROPOSAL_INVALID');}
-   if(claims.v!==1||claims.sub!==uid)throw new DataError('PROPOSAL_INVALID');
+   const claims=await open(token,'PROPOSAL_INVALID');
+   if(claims.t!=='proposal'||claims.sub!==uid)throw new DataError('PROPOSAL_INVALID');
    if(claims.app!==applicationId)throw new DataError('PROPOSAL_OTHER_APPLICATION');
    if(!Number.isSafeInteger(claims.exp)||claims.exp<=now())throw new DataError('PROPOSAL_EXPIRED');
    if(claims.h!==await sha256(canonicalJson(content)))throw new DataError('PROPOSAL_CONTENT_CHANGED');
+   return claims;
+  },
+  async issueInput({uid,applicationId,rubricVersion}){
+   const claims={v:1,t:'input',sub:uid,app:applicationId,rubric:rubricVersion,exp:now()+INPUT_TTL_MS};
+   return {ticket:await sign(claims),expiresAt:new Date(claims.exp).toISOString()};
+  },
+  async verifyInput(ticket,{uid,applicationId,rubricVersion}){
+   const claims=await open(ticket,'INPUT_TICKET_INVALID');
+   if(claims.t!=='input'||claims.sub!==uid)throw new DataError('INPUT_TICKET_INVALID');
+   if(claims.app!==applicationId)throw new DataError('INPUT_TICKET_OTHER_APPLICATION');
+   if(claims.rubric!==rubricVersion)throw new DataError('INPUT_TICKET_OTHER_RUBRIC');
+   if(!Number.isSafeInteger(claims.exp)||claims.exp<=now())throw new DataError('INPUT_TICKET_EXPIRED');
    return claims;
   }
  });

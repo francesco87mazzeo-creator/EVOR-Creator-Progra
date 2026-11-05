@@ -14,6 +14,7 @@ import{__resetTokenCacheForTests}from'../../../worker/src/firestore.mjs';
 const SECRET='s'.repeat(43),UID='synthetic_founder_0001',APP='synthetic-ai-01';
 const principal={uid:UID,role:'admin',version:1,scopes:['collective:read','collective:evaluate']};
 const good={score:72,summary:'Profilo coerente con il brand, metriche solide ma base ridotta.',rubricVersion:'rubric-test-0'};
+const ticket=async(app=APP,rubricVersion='rubric-test-0')=>(await createProposals({secret:SECRET}).issueInput({uid:UID,applicationId:app,rubricVersion})).ticket;
 
 test('evaluation content: strict shape, bounded text, known TEST rubric only',()=>{
  assert.deepEqual(validateEvaluation(good),good);
@@ -46,13 +47,13 @@ function fakeAi(state={exists:true,version:'2026-11-05T09:00:00.123456Z',fullNam
 }
 test('propose never writes and returns a signed proposal with the candidate identity for confirmation',async()=>{
  const {ai,calls}=fakeAi(),tools=createAiTools({ai,proposals:createProposals({secret:SECRET}),principal});
- const p=await tools.propose_ai_evaluation({applicationId:APP,...good});
+ const p=await tools.propose_ai_evaluation({applicationId:APP,...good,inputTicket:await ticket()});
  assert.equal(p.status,'proposta_pronta_non_salvata');assert.equal(p.candidate.fullName,'Giulia Prova');assert.equal(p.rubric.test,true);
  assert.match(p.nextStep,/conferma esplicita/);assert.deepEqual(calls.map(c=>c[0]),['state']);
 });
 test('save requires confirmation, the same content and the same application',async()=>{
  const {ai,calls}=fakeAi(),tools=createAiTools({ai,proposals:createProposals({secret:SECRET}),principal});
- const p=await tools.propose_ai_evaluation({applicationId:APP,...good});
+ const p=await tools.propose_ai_evaluation({applicationId:APP,...good,inputTicket:await ticket()});
  await assert.rejects(()=>tools.save_ai_evaluation({applicationId:APP,...good,proposalToken:p.proposalToken,confirmed:false}),{code:'CONFIRMATION_REQUIRED'});
  await assert.rejects(()=>tools.save_ai_evaluation({applicationId:APP,...good,summary:good.summary+' Modificata.',proposalToken:p.proposalToken,confirmed:true}),{code:'PROPOSAL_CONTENT_CHANGED'});
  await assert.rejects(()=>tools.save_ai_evaluation({applicationId:'synthetic-ai-02',...good,proposalToken:p.proposalToken,confirmed:true}),{code:'PROPOSAL_OTHER_APPLICATION'});
@@ -65,7 +66,7 @@ test('save reports duplicates as already saved and conflicts as an error, never 
  for(const [result,check] of [[{status:'already_saved',evaluatedAt:'x'},async r=>assert.equal((await r).duplicate,true)],
   [{status:'conflict'},r=>assert.rejects(r,{code:'APPLICATION_CHANGED_SINCE_PROPOSAL'})],[{status:'denied'},r=>assert.rejects(r,{code:'WRITE_DENIED'})],[{status:'weird'},r=>assert.rejects(r,{code:'AI_UNAVAILABLE'})]]){
   const {ai}=fakeAi(undefined,result),tools=createAiTools({ai,proposals:createProposals({secret:SECRET}),principal});
-  const p=await tools.propose_ai_evaluation({applicationId:APP,...good});
+  const p=await tools.propose_ai_evaluation({applicationId:APP,...good,inputTicket:await ticket()});
   await check(tools.save_ai_evaluation({applicationId:APP,...good,proposalToken:p.proposalToken,confirmed:true}));
  }
 });
@@ -75,7 +76,7 @@ test('MCP: without collective:evaluate the AI tools ask ChatGPT to re-authorize;
  for(const scopes of [['collective:read'],['collective:read','collective:evaluate']]){
   const server=createMcpServer(reader,{principal:{...principal,scopes},ai,proposals:createProposals({secret:SECRET}),metadataUrl:'https://mcp.synthetic.test/.well-known/oauth-protected-resource/mcp'});
   const [a,b]=InMemoryTransport.createLinkedPair();await server.connect(a);const client=new Client({name:'t',version:'1'});await client.connect(b);
-  const proposal=await client.callTool({name:'propose_ai_evaluation',arguments:{applicationId:APP,...good}});
+  const proposal=await client.callTool({name:'propose_ai_evaluation',arguments:{applicationId:APP,...good,inputTicket:await ticket()}});
   if(scopes.length===1){
    assert.equal(proposal.isError,true);const header=proposal._meta['mcp/www_authenticate'][0];
    assert.match(header,/error="insufficient_scope"/);assert.match(header,/scope="collective:read collective:evaluate"/);assert.match(header,/resource_metadata="https:\/\/mcp\.synthetic\.test/);

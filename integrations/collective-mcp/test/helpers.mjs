@@ -3,7 +3,7 @@ globalThis.fetch=async()=>{throw new Error('EXTERNAL_NETWORK_DISABLED_IN_TESTS')
 import {generateKeyPair, exportJWK, createLocalJWKSet, SignJWT} from 'jose';
 import {configuration, authorizer, READ_SCOPE} from '../src/auth.mjs';
 import {createReader, RECENT_FIELDS, DETAIL_FIELDS} from '../src/reader.mjs';
-import {INDEX_FIELDS, CANDIDATE_FIELDS} from '../../../server/collective/mcp-candidate-policy.mjs';
+import {INDEX_FIELDS, CANDIDATE_FIELDS, EVALUATION_FIELDS} from '../../../server/collective/mcp-candidate-policy.mjs';
 import {toFirestoreDocument} from '../../../worker/src/firestore.mjs';
 import scoreLevels from '../../../public/score-levels.js';
 import {DEFAULT_SCORING, computeScore, scoreDocumentFields} from '../../../server/collective/scoring.mjs';
@@ -42,7 +42,7 @@ export function dataFixture({applications=null,settings=null,projectId=PROJECT}=
   }
   if(request.method!=='GET')throw Error('Write operation forbidden');
   if(path.startsWith('settings/')){const id=path.slice(9);return Object.hasOwn(configurationDocs,id)?Response.json(encode(path,configurationDocs[id])):new Response(null,{status:404});}
-  if(path.startsWith('candidature/')){const id=path.slice(12);if(!documents.has(id))return new Response(null,{status:404});const mask=url.searchParams.getAll('mask.fieldPaths');if(JSON.stringify(mask)!==JSON.stringify(DETAIL_FIELDS)&&JSON.stringify(mask)!==JSON.stringify(CANDIDATE_FIELDS))throw Error('Mask mismatch');return Response.json(encode(path,documents.get(id),mask));}
+  if(path.startsWith('candidature/')){const id=path.slice(12);if(!documents.has(id))return new Response(null,{status:404});const mask=url.searchParams.getAll('mask.fieldPaths');if(JSON.stringify(mask)!==JSON.stringify(DETAIL_FIELDS)&&JSON.stringify(mask)!==JSON.stringify(CANDIDATE_FIELDS)&&JSON.stringify(mask)!==JSON.stringify(EVALUATION_FIELDS))throw Error('Mask mismatch');return Response.json(encode(path,documents.get(id),mask));}
   throw Error('Unknown path');
  }};
  return{reader:createReader({channel,projectId:PROJECT}),channel,requests,documents,settings:configurationDocs};

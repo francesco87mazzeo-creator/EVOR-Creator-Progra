@@ -12,16 +12,20 @@ service cloud.firestore {
     }
     function aiEvaluation(e) {
       return e is map
-        && e.keys().hasOnly(['score', 'summary', 'criteria', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
+        && e.keys().hasOnly(['score', 'summary', 'criteria', 'strengths', 'concerns', 'potential', 'limitations', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
         && e.keys().hasAll(['score', 'summary', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
         && e.score is int && e.score >= 0 && e.score <= 100
         && e.summary is string && e.summary.size() >= 20 && e.summary.size() <= 4000
-        && e.rubricVersion in ['rubric-test-0']
+        && e.rubricVersion in ['rubric-test-0', 'rubric-test-1']
         && e.evaluatedAt == request.time
         && e.evaluatedBy == 'founder'
         && e.basedOnVersion is string && e.basedOnVersion.size() <= 40
         && e.proposalId is string && e.proposalId.matches('[A-Za-z0-9_-]{22,64}')
-        && (!e.keys().hasAny(['criteria']) || (e.criteria is list && e.criteria.size() <= 12));
+        && (!e.keys().hasAny(['criteria']) || (e.criteria is list && e.criteria.size() <= 12))
+        && (!e.keys().hasAny(['strengths']) || (e.strengths is list && e.strengths.size() <= 8))
+        && (!e.keys().hasAny(['concerns']) || (e.concerns is list && e.concerns.size() <= 8))
+        && (!e.keys().hasAny(['limitations']) || (e.limitations is list && e.limitations.size() <= 8))
+        && (!e.keys().hasAny(['potential']) || (e.potential is string && e.potential.size() <= 1000));
     }
     // Re-evaluation: the previous evaluation is appended unchanged; at 20 entries the oldest is dropped.
     function aiHistory(d) {

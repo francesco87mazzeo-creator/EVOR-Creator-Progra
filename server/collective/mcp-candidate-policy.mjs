@@ -84,3 +84,14 @@ export function contentLink(value){
  try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password)return null;return u.origin+u.pathname;}catch{return null;}
 }
 export const normalizeSearch=value=>String(value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/^@+/,'').replace(/\s+/g,' ').trim();
+
+/**
+ * Independent AI evaluation input: original candidate data only. Never requested here: status, every site score
+ * (socialScore and components, legacy rates, lowBase, scoringVersion), staff evaluation, notes, previous AI
+ * evaluations. OCR and staff-correction values are read only to state where each metric comes from.
+ */
+export const EVALUATION_FIELDS=Object.freeze(['fullName','instagramHandle','date','isAdult','profileCategories','otherProfileCategory',
+ ...QUESTIONNAIRE.map(q=>q.key),...CONTENT_LINKS,...METRICS,'ocrInsights.merged','ocrProfile.result.followers','insightsCorrection.newValues']);
+/** Judgements and scores that the evaluation input must never contain (checked by tests). */
+export const NOT_FOR_EVALUATION=Object.freeze(['status','evaluation','socialScore','engagementRate','engagementScore','visibilityScore','reachEngagementRate',
+ 'lowBase','scoringVersion','perfLevel','bandLabel','erRate','reachRate','growthRate','aiEvaluation','aiEvaluationHistory','notes','creatorCode']);

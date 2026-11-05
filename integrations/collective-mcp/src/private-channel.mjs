@@ -3,7 +3,7 @@ import {MCP_PROFILES}from'../../../server/collective/mcp-profiles.mjs';
 // Adapter from the existing strictly bounded MCP reader to the private COLLECTIVE
 // Worker service binding. There is NO public HTTP or Google API fallback.
 import {RECENT_FIELDS,DETAIL_FIELDS,SETTING_FIELDS,validMcpDocumentId} from '../../../server/collective/mcp-read-policy.mjs';
-import {INDEX_FIELDS,CANDIDATE_FIELDS,MAX_INDEX} from '../../../server/collective/mcp-candidate-policy.mjs';
+import {INDEX_FIELDS,CANDIDATE_FIELDS,EVALUATION_FIELDS,MAX_INDEX} from '../../../server/collective/mcp-candidate-policy.mjs';
 import {DataError} from './reader.mjs';
 
 const PRIVATE_URL='https://collective-mcp.internal/internal/mcp/read';
@@ -34,6 +34,7 @@ export function privateReadOperation(request,projectId){
    if(!validMcpDocumentId(id)||Array.from(u.searchParams.keys()).some(key=>key!=='mask.fieldPaths'))throw new DataError('PRIVATE_READ_DENIED');
    if(sameList(mask,DETAIL_FIELDS))return Promise.resolve({operation:'application',argument:{id}});
    if(sameList(mask,CANDIDATE_FIELDS))return Promise.resolve({operation:'candidate',argument:{id}});
+   if(sameList(mask,EVALUATION_FIELDS))return Promise.resolve({operation:'evaluation',argument:{id}});
    throw new DataError('PRIVATE_READ_DENIED');
  }
  if(request.method==='GET'&&u.pathname.startsWith(root+'/settings/')&&!u.search){

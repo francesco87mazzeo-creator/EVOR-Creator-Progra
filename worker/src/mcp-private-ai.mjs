@@ -65,7 +65,8 @@ export function createPrivateAiHandler({secret,founderUid,verifyFounder,store}){
  */
 export function createAiFirestoreStore({serviceAccount,projectId,writer,transport=fetch,now=Date.now}){
  if(!/^[a-z0-9-]{4,40}$/.test(projectId||''))throw Error('INVALID_PROJECT');
- if(!writer||typeof writer.email!=='string'||typeof writer.password!=='string'||!/^[A-Za-z0-9_-]{20,60}$/.test(writer.apiKey||''))throw Error('AI_WRITER_NOT_CONFIGURED');
+ const filled=value=>typeof value==='string'&&value.length>0;
+ if(!writer||!filled(writer.email)||!filled(writer.password)||!/^[A-Za-z0-9_-]{20,60}$/.test(writer.apiKey||''))throw Error('AI_WRITER_NOT_CONFIGURED');
  const base=`projects/${projectId}/databases/(default)/documents`;
  let session=null;
  async function idToken(){
