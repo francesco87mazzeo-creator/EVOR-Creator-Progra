@@ -16,10 +16,10 @@ async function fixture(t,options={}){
  t.after(()=>client.close());await client.connect(transport);
  return{...data,...auth,worker,client,accessToken};
 }
-test('official SDK client initializes, discovers exactly five protected read-only tools and calls the original three',async t=>{
+test('official SDK client initializes, discovers five read-only tools and two evaluation tools, and calls the original three',async t=>{
  const f=await fixture(t);const catalog=await f.client.listTools();
- assert.deepEqual(catalog.tools.map(t=>t.name),['list_recent_applications','get_application_metrics','get_scoring_configuration','search_applications','get_application_details']);
- for(const tool of catalog.tools){assert.equal(tool.annotations.readOnlyHint,true);assert.equal(tool.annotations.destructiveHint,false);assert.equal(tool.annotations.openWorldHint,false);assert.deepEqual(tool._meta.securitySchemes,[{type:'oauth2',scopes:[READ_SCOPE]}]);}
+ assert.deepEqual(catalog.tools.map(t=>t.name),['list_recent_applications','get_application_metrics','get_scoring_configuration','search_applications','get_application_details','propose_ai_evaluation','save_ai_evaluation']);
+ for(const tool of catalog.tools){const evaluate=tool.name.endsWith('_ai_evaluation');assert.equal(tool.annotations.readOnlyHint,tool.name!=='save_ai_evaluation');assert.equal(tool.annotations.destructiveHint,false);assert.equal(tool.annotations.openWorldHint,false);assert.deepEqual(tool._meta.securitySchemes,[{type:'oauth2',scopes:evaluate?[READ_SCOPE,'collective:evaluate']:[READ_SCOPE]}]);}
  const wireResponse=await f.worker.fetch(bearer(f.accessToken,config.resource,{method:'POST',headers:{'content-type':'application/json','accept':'application/json, text/event-stream','mcp-protocol-version':'2025-11-25'},body:JSON.stringify({jsonrpc:'2.0',id:100,method:'tools/list',params:{}})}));
  const wire=await wireResponse.json();for(const tool of wire.result.tools)assert.deepEqual(tool.securitySchemes,tool._meta.securitySchemes,'OAuth schemes must be present on the wire; the generic SDK client strips this custom descriptor field');
  const recent=await f.client.callTool({name:'list_recent_applications',arguments:{limit:2}});assert.equal(recent.isError,undefined);assert.equal(recent.structuredContent.applications.length,2);assert.equal(recent.structuredContent.applications[0].id,'application_b');

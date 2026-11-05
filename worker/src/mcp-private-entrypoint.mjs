@@ -3,6 +3,7 @@ import {verifyStagePeer}from'../../integrations/collective-mcp/src/staging.mjs';
 // Named Cloudflare service-only entrypoint. Never add a public HTTP route for this class.
 import {WorkerEntrypoint} from 'cloudflare:workers';
 import {createPrivateMcpHandler,createPrivateFirestoreAccess} from './mcp-private-read.mjs';
+import {createPrivateAiHandler,createAiFirestoreStore,PRIVATE_AI_PATH} from './mcp-private-ai.mjs';
 
 function unavailable(){return new Response(JSON.stringify({error:'not_configured'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});}
 function founderVerifier(env,profile) {
@@ -30,6 +31,12 @@ export class CollectiveMcpReadService extends WorkerEntrypoint {
       const account=JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
       if(!account?.private_key||!account?.client_email||account.project_id!==env.FIRESTORE_PROJECT_ID)
         return unavailable();
+      // AI evaluation path: enabled only where the dedicated aiwriter identity is configured (staging today).
+      if(new URL(request.url).pathname===PRIVATE_AI_PATH){
+        if(!env.AI_WRITER_EMAIL||!env.AI_WRITER_PASSWORD||!env.FIREBASE_WEB_API_KEY)return unavailable();
+        const store=createAiFirestoreStore({serviceAccount:account,projectId:env.FIRESTORE_PROJECT_ID,writer:{email:env.AI_WRITER_EMAIL,password:env.AI_WRITER_PASSWORD,apiKey:env.FIREBASE_WEB_API_KEY}});
+        return createPrivateAiHandler({secret:env.MCP_PRIVATE_SHARED_KEY,founderUid:env.MCP_FOUNDER_UID,verifyFounder:founderVerifier(env,profile),store})(request);
+      }
       const readFirestore=createPrivateFirestoreAccess({serviceAccount:account,projectId:env.FIRESTORE_PROJECT_ID});
       const handler=createPrivateMcpHandler({
         secret:env.MCP_PRIVATE_SHARED_KEY,founderUid:env.MCP_FOUNDER_UID,

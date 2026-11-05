@@ -1,0 +1,42 @@
+rules_version = '2';
+// STAGING ONLY (evora-mcp-staging). Not the production ruleset.
+// Staging Workers read and write through IAM service accounts, which bypass these rules. The AI writer is a
+// password-authenticated Firebase identity with role `aiwriter`: these rules are the ONLY thing that lets it
+// write, and they allow nothing but `aiEvaluation` / `aiEvaluationHistory` on an existing application.
+// Every other client request is denied (no read, list, create, delete or other field).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function aiWriter() {
+      return request.auth != null && request.auth.token.get('role', '') == 'aiwriter'
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+    function aiEvaluation(e) {
+      return e is map
+        && e.keys().hasOnly(['score', 'summary', 'criteria', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
+        && e.keys().hasAll(['score', 'summary', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
+        && e.score is int && e.score >= 0 && e.score <= 100
+        && e.summary is string && e.summary.size() >= 20 && e.summary.size() <= 4000
+        && e.rubricVersion in ['rubric-test-0']
+        && e.evaluatedAt == request.time
+        && e.evaluatedBy == 'founder'
+        && e.basedOnVersion is string && e.basedOnVersion.size() <= 40
+        && e.proposalId is string && e.proposalId.matches('[A-Za-z0-9_-]{22,64}')
+        && (!e.keys().hasAny(['criteria']) || (e.criteria is list && e.criteria.size() <= 12));
+    }
+    // Re-evaluation: the previous evaluation is appended unchanged; at 20 entries the oldest is dropped.
+    function aiHistory(d) {
+      let previous = resource.data.get('aiEvaluation', null);
+      let before = resource.data.get('aiEvaluationHistory', []);
+      return previous == null
+        ? !d.keys().hasAny(['aiEvaluationHistory']) || d.aiEvaluationHistory == before
+        : d.aiEvaluationHistory == (before.size() < 20 ? before : before.removeAll([before[0]])).concat([previous]);
+    }
+    match /candidature/{id} {
+      allow update: if aiWriter()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiEvaluation', 'aiEvaluationHistory'])
+        && aiEvaluation(request.resource.data.aiEvaluation)
+        && aiHistory(request.resource.data)
+        && request.resource.data.aiEvaluation.proposalId != resource.data.get('aiEvaluation', {}).get('proposalId', '');
+    }
+  }
+}

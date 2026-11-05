@@ -4,6 +4,7 @@ import {createHandler} from './server.mjs';
 import {configuration,authorizer,remoteKeySet} from './auth.mjs';
 import {createReader} from './reader.mjs';
 import {createPrivateCollectiveChannel} from './private-channel.mjs';
+import {createAiChannel,createProposals} from './ai-channel.mjs';
 
 // Factory for local tests with explicitly supplied test authorities/data channels.
 // No ambient credentials or HTTP data fallback; use explicit private bindings only.
@@ -32,7 +33,10 @@ export function createConfiguredMcpWorker(env) {
       projectId:env.FIRESTORE_PROJECT_ID,identity,profile
     })
   });
-  const handler=createHandler({config,authorize,readerFactory});
+  const proposals=createProposals({secret:env.MCP_PRIVATE_SHARED_KEY});
+  // AI evaluation uses the same private facade binding on its own path; the facade decides whether writing is enabled.
+  const aiFactory=identity=>({ai:createAiChannel({binding:env.COLLECTIVE_MCP_READ,secret:env.MCP_PRIVATE_SHARED_KEY,identity}),proposals});
+  const handler=createHandler({config,authorize,readerFactory,aiFactory});
   return Object.freeze({async fetch(request){
     if(profile){try{await verifyStageHub(env,profile);}catch{return new Response(JSON.stringify({error:'STAGING_PEER_UNAVAILABLE'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});}}
     return handler(request);

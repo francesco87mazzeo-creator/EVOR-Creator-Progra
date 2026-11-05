@@ -6,7 +6,8 @@
   "preview_urls": false,
   "vars": {
     "MCP_DEPLOYMENT_PROFILE": "staging",
-    "FIRESTORE_PROJECT_ID": "evora-mcp-staging"
+    "FIRESTORE_PROJECT_ID": "evora-mcp-staging",
+    "FIREBASE_WEB_API_KEY": "AIzaSyDTMH6lsluDeLg3f2sLiql4OYAJRjDhIUI"
   },
   "services": [
     {

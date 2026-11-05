@@ -1059,6 +1059,53 @@ const CANDIDATE_SCREENSHOTS = [
   ["screenshotData2","Screenshot Insight 2"]
 ];
 
+// Valutazione AI salvata da ChatGPT (solo lettura qui): distinta dallo scoring automatico e dalla valutazione dello staff.
+const aiDate = v => v && typeof v.toDate === "function" ? v.toDate() : v;
+function AiEvaluationEntry({ev, compact}){
+  const test = typeof ev.rubricVersion === "string" && ev.rubricVersion.startsWith("rubric-test");
+  return (
+    <div style={{border:"1px solid var(--brd)",background:"var(--bg-2)",padding:compact?10:14,marginTop:compact?8:0}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div style={{fontFamily:"var(--fh)",fontWeight:800,fontSize:compact?18:28,color:"var(--t1)",lineHeight:1}}>
+          {Number.isInteger(ev.score) ? ev.score : "—"}<span className="label-xs" style={{marginLeft:6}}>/ 100</span>
+        </div>
+        <span className="label-xs">
+          {fmtDateTime(aiDate(ev.evaluatedAt))} · criteri {ev.rubricVersion || "—"}{test ? " · TEST" : ""}
+        </span>
+      </div>
+      {typeof ev.summary === "string" && <p className="body-sm" style={{marginTop:10,whiteSpace:"pre-wrap"}}>{ev.summary}</p>}
+      {Array.isArray(ev.criteria) && ev.criteria.length > 0 && !compact && (
+        <div style={{marginTop:10}}>
+          {ev.criteria.map((c,i)=>(
+            <div key={i} className="rate-row">
+              <span style={{fontFamily:"var(--fh)",fontWeight:600,fontSize:13,color:"var(--t2)"}}>{c.name}</span>
+              <span className="label-xs">{Number.isInteger(c.score) ? c.score + " / 100" : "—"}{c.note ? " · " + c.note : ""}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function AiEvaluationSection({app}){
+  const current = app.aiEvaluation && typeof app.aiEvaluation === "object" ? app.aiEvaluation : null;
+  const history = Array.isArray(app.aiEvaluationHistory) ? app.aiEvaluationHistory.slice().reverse() : [];
+  return (
+    <div className="panel" style={{padding:16}} data-testid="ai-evaluation">
+      <span className="body-sm" style={{fontSize:12,display:"block",marginBottom:10}}>
+        Valutazione generata con ChatGPT e salvata solo dopo conferma del Founder. Non vincolante: non modifica stato, scoring o valutazione del team.
+      </span>
+      {current ? <AiEvaluationEntry ev={current}/> : <p className="body-sm">Nessuna valutazione AI salvata.</p>}
+      {history.length > 0 && (
+        <details style={{marginTop:12}}>
+          <summary className="label-xs" style={{cursor:"pointer"}}>Storico rivalutazioni ({history.length})</summary>
+          {history.map((ev,i)=><AiEvaluationEntry key={i} ev={ev} compact/>)}
+        </details>
+      )}
+    </div>
+  );
+}
+
 function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDelete}){
   const s  = computeScore(app, scoring);
   const cfg = scoring || DEFAULT_SCORING;
@@ -1349,6 +1396,10 @@ function CandidateDetail({app, role, scoring, scoreLevels, onBack, onPatch, onDe
               )}
             </div>
           </div>
+        </Section>
+
+        <Section title="Valutazione AI">
+          <AiEvaluationSection app={app}/>
         </Section>
 
         {/* GESTIONE INTERNA */}

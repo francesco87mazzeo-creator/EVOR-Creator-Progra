@@ -3,6 +3,9 @@
 import {jwtVerify, createRemoteJWKSet} from 'jose';
 
 export const READ_SCOPE = 'collective:read';
+export const EVALUATE_SCOPE = 'collective:evaluate';
+// The only two grants the HUB issues: read alone, or read plus AI-evaluation saving.
+const GRANTS = new Set([READ_SCOPE, READ_SCOPE+' '+EVALUATE_SCOPE]);
 export const MAX_TOKEN_SECONDS = 300;
 export class AccessError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
@@ -47,16 +50,16 @@ export function authorizer({config, keySet, oauthAuthority, hubIdentity, now = D
     } catch { deny(); }
     const time = Math.floor(now()/1000);
     if (claims.aud !== config.resource || !Number.isInteger(claims.iat) || !Number.isInteger(claims.exp) || claims.iat > time || claims.exp - claims.iat > MAX_TOKEN_SECONDS || claims.exp <= claims.iat || !opaque(claims.jti)) deny();
-    if (claims.scope !== READ_SCOPE) throw new AccessError(403, 'insufficient_scope');
+    if (!GRANTS.has(claims.scope)) throw new AccessError(403, 'insufficient_scope');
     // UID is the personal HUB UID, not a client-provided role/email or a shared Firebase UID.
     if (claims.sub !== config.founderUid || claims.role !== 'admin' || !Number.isInteger(claims.hub_version) || claims.hub_version < 1) throw new AccessError(403, 'founder_required');
     // New OAuth authority contract: NOT implemented by the existing HUB SSO service.
     const status = await privateJson(oauthAuthority, 'https://oauth.internal/introspect', {token:match[1], token_type_hint:'access_token'});
-    if (status.active !== true || status.sub !== claims.sub || status.aud !== config.resource || status.scope !== READ_SCOPE || status.exp !== claims.exp || status.jti !== claims.jti || status.iss !== config.issuer) deny();
+    if (status.active !== true || status.sub !== claims.sub || status.aud !== config.resource || status.scope !== claims.scope || status.exp !== claims.exp || status.jti !== claims.jti || status.iss !== config.issuer) deny();
     // Existing private HUB check contract, verified in worker/src/hub-sso.mjs.
     const state = await privateJson(hubIdentity, 'https://hub.internal/internal/collective/check', {uid:claims.sub, role:'admin', version:claims.hub_version});
     const user = state?.user;
     if (!user || user.uid !== config.founderUid || user.role !== 'admin' || user.version !== claims.hub_version) throw new AccessError(403, 'founder_required');
-    return Object.freeze({uid:claims.sub, role:claims.role, version:claims.hub_version, scope:READ_SCOPE});
+    return Object.freeze({uid:claims.sub, role:claims.role, version:claims.hub_version, scope:claims.scope, scopes:Object.freeze(claims.scope.split(' '))});
   };
 }
