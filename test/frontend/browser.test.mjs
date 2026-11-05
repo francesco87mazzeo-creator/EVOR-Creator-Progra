@@ -1469,3 +1469,28 @@ test('Admin detail hides screenshots that were not uploaded',{timeout:60000},asy
  await page.getByAltText('Screenshot Insight 1 del candidato',{exact:true}).waitFor();
  assert.equal(await page.locator('img[alt$=" del candidato"]').count(),1);
 });
+
+/* ---------- Admin: valutazione AI salvata da ChatGPT, in sola lettura e distinta da scoring e team ---------- */
+test('Admin detail shows the AI evaluation, its TEST rubric and history, without any write',{timeout:60000},async t=>{
+ const candidate={...prepareApplication({...await publicFixture(),fullName:'Synthetic AI Rated'},{now:NOW}),
+  aiEvaluation:{score:72,summary:'Profilo coerente con il brand (valutazione sintetica di prova).',rubricVersion:'rubric-v1',roles:['Creator UGC'],evaluatedAt:'2026-11-05T10:00:00.000Z',
+   evaluatedBy:'founder',basedOnVersion:'v',proposalId:'p'.repeat(24),criteria:[{name:'Brand fit',score:80,note:'Coerente'}],
+   strengths:['Risposte argomentate'],concerns:['Base di audience ridotta'],limitations:['Link non esaminati'],potential:'Potenziale per contenuti tecnici sintetici.'},
+  aiEvaluationHistory:[{score:60,summary:'Prima valutazione sintetica di prova.',rubricVersion:'rubric-test-0',evaluatedAt:'2026-11-04T10:00:00.000Z',evaluatedBy:'founder',basedOnVersion:'u',proposalId:'q'.repeat(24)}]};
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic AI Rated'}).click();
+ const section=page.getByTestId('ai-evaluation');await section.waitFor();
+ // label-xs is rendered uppercase: compare case-insensitively.
+ const text=(await section.innerText()).toLowerCase();
+ for(const expected of ['72','/ 100','rubric-v1','Buono con riserve','Possibili ruoli per EVORΛ','Creator UGC','Profilo coerente con il brand','Brand fit','Non vincolante','Storico rivalutazioni (1)','Punti di forza','Risposte argomentate','Criticità','Base di audience ridotta','Dati mancanti e limiti','Link non esaminati','Potenziale per EVORΛ','Potenziale per contenuti tecnici sintetici.'])assert.ok(text.includes(expected.toLowerCase()),expected);
+ await section.getByText('Storico rivalutazioni (1)').click();const opened=(await section.innerText()).toLowerCase();
+ // Saved TEST evaluations stay readable as they are, marked TEST.
+ assert.ok(opened.includes('prima valutazione sintetica di prova.'));assert.ok(opened.includes('rubric-test-0'));assert.ok(opened.includes('test'));
+ assert.equal(await page.evaluate(()=>window.testCounters.writes),0,'viewing never writes');
+});
+test('Admin detail says when no AI evaluation exists',{timeout:60000},async t=>{
+ const candidate=prepareApplication({...await publicFixture(),fullName:'Synthetic Not Rated'},{now:NOW});
+ const {page}=await pageFor(t,{admin:true,candidate});
+ await page.locator('button.row').filter({hasText:'Synthetic Not Rated'}).click();
+ assert.ok((await page.getByTestId('ai-evaluation').innerText()).includes('Nessuna valutazione AI salvata.'));
+});
