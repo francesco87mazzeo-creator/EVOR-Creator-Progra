@@ -114,11 +114,48 @@ service cloud.firestore {
       return (!c.hasAny(['insightsCorrection']) || correction(d.insightsCorrection,d))
         && (!c.hasAny(['insightsHistory']) || (c.hasAny(['insightsCorrection']) && history(d.insightsHistory,d)));
     }
+    // AI evaluation saved from ChatGPT after explicit Founder confirmation. The private MCP facade signs in as a
+    // dedicated password identity with role 'aiwriter' (no IAM write credential exists): these rules are the only
+    // thing that lets it write, and only aiEvaluation / aiEvaluationHistory, rubric-v1, server time, append-only history.
+    function aiWriter() {
+      return request.auth != null && request.auth.token.get('role', '') == 'aiwriter'
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+    function aiEvaluation(e) {
+      return e is map
+        && e.keys().hasOnly(['score', 'summary', 'criteria', 'strengths', 'concerns', 'potential', 'roles', 'limitations', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
+        && e.keys().hasAll(['score', 'summary', 'rubricVersion', 'evaluatedAt', 'evaluatedBy', 'basedOnVersion', 'proposalId'])
+        && e.score is int && e.score >= 0 && e.score <= 100
+        && e.summary is string && e.summary.size() >= 20 && e.summary.size() <= 4000
+        && e.rubricVersion in ['rubric-v1']
+        && e.evaluatedAt == request.time
+        && e.evaluatedBy == 'founder'
+        && e.basedOnVersion is string && e.basedOnVersion.size() <= 40
+        && e.proposalId is string && e.proposalId.matches('[A-Za-z0-9_-]{22,64}')
+        && (!e.keys().hasAny(['criteria']) || (e.criteria is list && e.criteria.size() <= 12))
+        && (!e.keys().hasAny(['strengths']) || (e.strengths is list && e.strengths.size() <= 8))
+        && (!e.keys().hasAny(['concerns']) || (e.concerns is list && e.concerns.size() <= 8))
+        && (!e.keys().hasAny(['limitations']) || (e.limitations is list && e.limitations.size() <= 8))
+        && (!e.keys().hasAny(['roles']) || (e.roles is list && e.roles.size() <= 6))
+        && (!e.keys().hasAny(['potential']) || (e.potential is string && e.potential.size() <= 1000));
+    }
+    function aiHistory(d) {
+      let previous = resource.data.get('aiEvaluation', null);
+      let before = resource.data.get('aiEvaluationHistory', []);
+      return previous == null
+        ? !d.keys().hasAny(['aiEvaluationHistory']) || d.aiEvaluationHistory == before
+        : d.aiEvaluationHistory == (before.size() < 20 ? before : before.removeAll([before[0]])).concat([previous]);
+    }
+    function aiUpdate(d) {
+      return d.diff(resource.data).affectedKeys().hasOnly(['aiEvaluation', 'aiEvaluationHistory'])
+        && aiEvaluation(d.aiEvaluation) && aiHistory(d)
+        && d.aiEvaluation.proposalId != resource.data.get('aiEvaluation', {}).get('proposalId', '');
+    }
     match /candidature/{id} {
       // Server REST writes authenticated with IAM bypass these client rules.
       allow create: if false;
       allow get, list: if reader();
-      allow update: if staff() && staffUpdate(request.resource.data);
+      allow update: if (staff() && staffUpdate(request.resource.data)) || (aiWriter() && aiUpdate(request.resource.data));
       allow delete: if admin();
     }
     match /settings/scoring {
